@@ -9,6 +9,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@swarm/sim": "workspace:*"
+    "@swarm/sim": "workspace:*",
+    "@swarm/bot": "workspace:*"
   }
 }

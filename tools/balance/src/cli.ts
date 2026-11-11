@@ -1,20 +1,29 @@
 /**
- * Headless batch runner (SPEC §12.4). M1 plays random-legal games on Single Rock and reports
- * outcomes; strains, bots and the CI gate arrive in M2–M6.
+ * Headless batch runner (SPEC §12.4) on Single Rock.
  *
- *   pnpm balance -- --games 200 [--seed prefix] [--strains swarmer,biofilm] [--json]
+ *   pnpm balance -- --games 200 [--players normal,random] [--seed prefix] [--strains a,b] [--json]
+ *
+ * Seats alternate every game so neither policy always moves as player 0. Strains arrive in
+ * M4/M6; until then `--strains` is accepted and ignored.
  */
-import { playGame, randomPolicy, type PlayedGame } from "./play";
+import { isPolicyName, playGame, policyByName, type PlayedGame, type PolicyName } from "./play";
 
 interface Options {
   games: number;
   seed: string;
+  players: [PolicyName, PolicyName];
   strains: string[];
   json: boolean;
 }
 
 export function parseArgs(argv: readonly string[]): Options {
-  const opts: Options = { games: 200, seed: "balance", strains: [], json: false };
+  const opts: Options = {
+    games: 200,
+    seed: "balance",
+    players: ["normal", "normal"],
+    strains: [],
+    json: false,
+  };
   const args = argv.filter((a) => a !== "--");
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
@@ -33,6 +42,16 @@ export function parseArgs(argv: readonly string[]): Options {
       case "--seed":
         opts.seed = value();
         break;
+      case "--players": {
+        const names = value()
+          .split(",")
+          .map((s) => s.trim());
+        if (names.length !== 2 || !names.every(isPolicyName)) {
+          throw new Error("--players takes two of random, easy, normal, hard (e.g. normal,random)");
+        }
+        opts.players = names as [PolicyName, PolicyName];
+        break;
+      }
       case "--strains":
         opts.strains = value()
           .split(",")
@@ -44,7 +63,9 @@ export function parseArgs(argv: readonly string[]): Options {
         break;
       case "--help":
       case "-h":
-        console.log("Usage: pnpm balance -- --games N [--seed PREFIX] [--strains a,b] [--json]");
+        console.log(
+          "Usage: pnpm balance -- --games N [--players a,b] [--seed PREFIX] [--strains a,b] [--json]",
+        );
         process.exit(0);
         break;
       default:
@@ -54,35 +75,60 @@ export function parseArgs(argv: readonly string[]): Options {
   return opts;
 }
 
+export interface SideReport {
+  policy: PolicyName;
+  wins: number;
+  /** Slowest single turn and mean turn time for this side, in ms. */
+  maxTurnMs: number;
+  meanTurnMs: number;
+}
+
 export interface Report {
   games: number;
-  errors: { seed: string; message: string }[];
-  wins: Record<string, number>;
+  sides: [SideReport, SideReport];
   draws: number;
   reasons: Record<string, number>;
   averageTurns: number;
   turnLimitBelow40Pct: number;
   rejectedOrders: number;
+  errors: { seed: string; message: string }[];
 }
 
-export function runBatch(opts: Pick<Options, "games" | "seed">): Report {
+export function runBatch(opts: Pick<Options, "games" | "seed" | "players">): Report {
+  const sides = opts.players.map((policy) => ({
+    policy,
+    wins: 0,
+    maxTurnMs: 0,
+    meanTurnMs: 0,
+  })) as [SideReport, SideReport];
+  const timeSum = [0, 0];
+  const timeCount = [0, 0];
   const report: Report = {
     games: opts.games,
-    errors: [],
-    wins: {},
+    sides,
     draws: 0,
     reasons: {},
     averageTurns: 0,
     turnLimitBelow40Pct: 0,
     rejectedOrders: 0,
+    errors: [],
   };
   let turnSum = 0;
   let finished = 0;
   for (let g = 0; g < opts.games; g++) {
     const seed = `${opts.seed}-${g}`;
+    // Side A sits in seat 0 on even games and seat 1 on odd games.
+    const sideOfSeat = g % 2 === 0 ? [0, 1] : [1, 0];
+    const policies = sideOfSeat.map((side) => policyByName(opts.players[side] as PolicyName, seed));
     let game: PlayedGame;
     try {
-      game = playGame({ mode: "singleRock", playerCount: 2 }, seed, randomPolicy(seed));
+      game = playGame({ mode: "singleRock", playerCount: 2 }, seed, policies, (seat, ms) => {
+        const side = sideOfSeat[seat] as number;
+        const s = sides[side as 0 | 1];
+        s.maxTurnMs = Math.max(s.maxTurnMs, ms);
+        timeSum[side] = (timeSum[side] as number) + ms;
+        timeCount[side] = (timeCount[side] as number) + 1;
+      });
     } catch (err) {
       report.errors.push({
         seed,
@@ -95,17 +141,18 @@ export function runBatch(opts: Pick<Options, "games" | "seed">): Report {
     turnSum += result.turn;
     report.reasons[result.reason] = (report.reasons[result.reason] ?? 0) + 1;
     if (result.winner === null) report.draws++;
-    else report.wins[`p${result.winner}`] = (report.wins[`p${result.winner}`] ?? 0) + 1;
+    else sides[sideOfSeat[result.winner] as 0 | 1].wins++;
     const last = game.dominance.at(-1) ?? [];
-    if (
-      result.reason !== "dominance" &&
-      result.reason !== "lastStanding" &&
-      Math.max(...last) < 400
-    ) {
-      report.turnLimitBelow40Pct++;
+    if (result.reason === "turnLimit" || result.reason === "draw") {
+      if (Math.max(...last) < 400) report.turnLimitBelow40Pct++;
     }
     report.rejectedOrders += game.rejected;
   }
+  sides.forEach(
+    (s, i) =>
+      (s.meanTurnMs =
+        (timeCount[i] as number) === 0 ? 0 : (timeSum[i] as number) / (timeCount[i] as number)),
+  );
   report.averageTurns = finished === 0 ? 0 : Math.round((turnSum / finished) * 10) / 10;
   return report;
 }
@@ -117,22 +164,30 @@ function main(): void {
       `Note: strains (${opts.strains.join(", ")}) are not in the sim until M4/M6; using base rules.`,
     );
   }
-  const started = process.hrtime.bigint();
+  const started = performance.now();
   const report = runBatch(opts);
-  const ms = Number((process.hrtime.bigint() - started) / 1_000_000n);
+  const ms = Math.round(performance.now() - started);
   if (opts.json) {
     console.log(JSON.stringify({ ...report, ms }, null, 2));
   } else {
     const pct = (n: number) => `${((100 * n) / report.games).toFixed(1)}%`;
-    console.log(`Single Rock, random-legal vs random-legal — ${report.games} games in ${ms} ms`);
-    for (const [p, n] of Object.entries(report.wins).sort())
-      console.log(`  ${p} wins: ${n} (${pct(n)})`);
-    console.log(`  draws:   ${report.draws} (${pct(report.draws)})`);
+    const [a, b] = report.sides;
     console.log(
-      `  endings: ${Object.entries(report.reasons)
-        .map(([r, n]) => `${r} ${n}`)
-        .join(", ")}`,
+      `Single Rock, ${a.policy} vs ${b.policy} — ${report.games} games in ${ms} ms (seats alternate)`,
     );
+    for (const [label, s] of [
+      ["A", a],
+      ["B", b],
+    ] as const) {
+      console.log(
+        `  ${label} ${s.policy.padEnd(7)} wins: ${s.wins} (${pct(s.wins)})  turn time mean ${s.meanTurnMs.toFixed(2)} ms, max ${s.maxTurnMs.toFixed(1)} ms`,
+      );
+    }
+    console.log(`  draws: ${report.draws} (${pct(report.draws)})`);
+    const endings = Object.entries(report.reasons)
+      .map(([r, n]) => `${r} ${n}`)
+      .join(", ");
+    console.log(`  endings: ${endings}`);
     console.log(`  average length: ${report.averageTurns} turns`);
     console.log(
       `  turn limit with nobody above 40%: ${report.turnLimitBelow40Pct} (${pct(report.turnLimitBelow40Pct)})`,
