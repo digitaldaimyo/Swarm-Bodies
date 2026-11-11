@@ -1,6 +1,37 @@
 # Progress
 
-**Current milestone:** M1, Simulation core: complete. **Next:** M2, Bot (SPEC §15).
+**Current milestone:** M2, Bot: complete. **Next:** M3, Playable client vs bot (SPEC §15).
+
+## M2: Bot: done
+
+Scope (§15): `bot` package at Easy and Normal difficulty.
+
+- [x] `packages/bot`: `chooseOrders(state, playerId, difficulty, seed, options?)` (§13.1). It is pure and deterministic, lint-guarded like the sim, and always returns a set that passes `validateOrderSet`.
+- [x] Utility planner (§13.2):
+  - Board analysis: deposit pull, threat and defense per cell, and articulation "cut" counts for both sides.
+  - Candidates: grow paths (searched up to reach), assaults, reinforce-then-assault combos, severing, and threat-driven reinforces.
+  - Greedy selection by value per nutrient, under the budget and the 12-order limit.
+- [x] Easy: random top-3 per slot, ignores threats on half of its turns, never severs. Hard plays as Normal until M6.
+- [x] Personalities as weight presets (§13.3): balanced, aggressive, greedy, expansionist, saboteur.
+- [x] `tools/balance`: `--players a,b` (random, easy, normal, hard), alternating seats, and per-side win rates and turn times.
+- [x] Acceptance: **Normal beat random-legal play in 200/200 games** (`tools/balance/test/cli.test.ts` asserts ≥ 190/200).
+- [x] Acceptance: scenario puzzles pass (`packages/bot/test/puzzles.test.ts`): reinforce a threatened core, cut a single-link supply line, take a last core, prefer a nearby deposit, and reinforce a feeder to win an assault. The core and sever puzzles were checked to fail when the matching weight is zeroed.
+- [x] Acceptance: time budget. The test asserts under 50 ms per Normal turn (200 ms ÷ 4) across full Large-body games; the measured warm worst case is about 7 ms, with a mean of about 2–3 ms.
+
+Reference batch results (200 games each, seats alternating):
+
+| Matchup          | Result                                                                   | Avg length |
+| ---------------- | ------------------------------------------------------------------------ | ---------- |
+| Normal vs random | 200–0                                                                    | ~15 turns  |
+| Easy vs random   | 200–0                                                                    | ~15 turns  |
+| Normal vs Easy   | 171–29 (85.5%)                                                           | ~26 turns  |
+| Normal vs Normal | 85–115; seat 0 won 46.6% of 399 separate games (no meaningful seat bias) | ~28 turns  |
+
+## Next: M3, Playable client vs bot
+
+- `apps/client`: Vite, PixiJS v8 and Preact. Body view, path painting, radial menu, order drawer, submit, turn replay (§10.5), and results.
+- Skirmish against `@swarm/bot` in a Web Worker. Procedural art for the asteroid, cells, veins and cores. Synthesized SFX. PWA shell.
+- Acceptance: a full Single Rock game is playable on a phone-size viewport (390×844 first); 60 fps on a mid-range phone profile; the Playwright smoke test passes.
 
 ## M1: Simulation core: done
 
@@ -27,10 +58,3 @@ Ambiguities resolved during M1 are in `docs/DECISIONS.md`.
 - Orbits, fixed-point trig table, `forecast()`: M5. (`isqrt` already exists.)
 - Strains: M4 (Swarmer, Biofilm) and M6 (Predator, Sporer). `pnpm balance --strains` is accepted but ignored until then.
 - The balance CI gate on strain win rates: M6.
-
-## Next: M2, Bot
-
-- Create `packages/bot` (depends on `sim` only): `chooseOrders(state, playerId, difficulty, seed)` (§13.1).
-- Easy and Normal utility planners (§13.2); scenario puzzles (§13.4).
-- Plug the bot into `tools/balance` as a policy (`tools/balance/src/play.ts` already takes a `Policy`).
-- Acceptance: Normal beats random-legal play in ≥ 95% of 200 games; under 200 ms per turn on a Large body (with a 4× safety factor).
