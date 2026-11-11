@@ -1,0 +1,14 @@
+{
+  "name": "@swarm/sim",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "build:browser": "esbuild src/index.ts --bundle --format=iife --global-name=SwarmSim --target=es2022 --outfile=dist/browser/sim.iife.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p test/tsconfig.json --noEmit"
+  }
+}
