@@ -205,3 +205,41 @@ Rulings on ambiguous or unspecified points in `docs/SPEC.md`, as CLAUDE.md requi
     - **Kinds:** palette (your colony colour), vein thickness (×0.75 or ×1.35) and spore trail colour. All are earned from achievements, plus the season trail.
     - **Who sees them:** they apply to your own seat on your own screen, board and HUD alike. Everyone else sees the standard seat colours, and gameplay never changes.
 92. **Stored states from M6** gain the two M7 rule fields when loaded (`upgradeState`). Those fields only affect generation, but they change the hash of a replayed turn, so a reloaded M6 game logs a hash difference for turns stored before the upgrade. Play is unaffected: client and server both work from the upgraded state.
+
+## 2026-11-12 — M8 polish
+
+93. **Lighthouse 11 (§15 M8).** Lighthouse is pinned to 11.7, because version 12 removed the PWA category the acceptance asks for.
+    - **What runs:** `e2e/lighthouse.spec.ts` audits the app shell with Lighthouse's default mobile emulation and gates PWA, accessibility and best practices at 90. All three score 100.
+    - **Performance is left out.** That category fails inside Lighthouse 11 in this workspace (an old `tslib` in its own dependencies). Frame and bot performance are measured by the Playwright perf specs instead.
+94. **Accessibility audit.** Lighthouse only reaches URLs, so `e2e/a11y.spec.ts` runs axe-core (the engine behind Lighthouse's accessibility score) with the WCAG 2.1 A and AA rules on every screen at 390×844. The board canvas is excluded; its content is mirrored in the HUD and log.
+    - **Fixes it found:**
+      - The viewport no longer sets `user-scalable=no`. The board canvas keeps `touch-action: none`, so pinches on the board still zoom the game, not the page.
+      - Labelled `div` and `span` elements get roles (`group`, `img`).
+      - Locked and unearned items are dimmed with a dashed border instead of opacity, which failed the 4.5:1 text contrast.
+95. **No console errors (§15 M8).** A shared Playwright fixture fails any test whose pages, including pages in extra browser contexts, log an uncaught exception or `console.error`. Only the network-cut tests in `states.spec.ts` allow errors, and only the browser's own failed-request messages.
+96. **Text size: 100%, 125% and 150%** (§10.8 asks for 100–150%; three steps keep the layout testable). Every font size scales by `--text-scale`.
+    - CSS `zoom` was tried first: percentage sizes and the HUD's absolute insets broke under it.
+    - Layouts use `min-height` and wrapping, so larger text grows boxes instead of clipping. The 150% Settings screen passes axe without scrolling sideways.
+97. **Colourblind patterns (§10.4).** Each seat has a glyph: stripes, dots, rings and crosshatch, in seat order, matching `PLAYER_PATTERNS`. It is drawn dark over every cell, as pre-rendered sprites inside the cached colony layer, so it adds no per-frame cost. Off by default; on in Settings → Accessibility.
+98. **Landscape (§10.7)** applies to landscape screens up to 500 px tall (phones).
+    - **Match:** a left column holds stats, turn and dominance; a right column holds orders and Submit; the log and body strip sit between them.
+    - **Title:** the logo sits beside the menu.
+    - Taller landscape screens (tablets, desktop) keep the portrait arrangement, which fits them.
+99. **Error and offline states.**
+    - **Error boundary:** a screen that throws, or a lazy screen that cannot load (for example offline before it was cached), shows a recoverable message with "Back to title" and "Reload".
+    - **Unreachable server:** the Online screen shows Retry, and the ladder and the Daily leaderboard say they are unavailable offline. Offline play itself is unaffected.
+100.  **Audio mix.**
+      - **Bus:** a limiter on the master bus (threshold −6 dB, ratio 16).
+      - **Stacking:** a 45 ms dedupe per sound and at most 14 voices.
+      - **Peak levels:** capture 0.45, launch 0.42, squelch 0.32, thud 0.30, flare 0.30, stingers 0.22, starve 0.16, submit 0.14, click 0.08, income 0.07, tick 0.04.
+      - **New sounds:** submit, starvation, income, flare, and a win or lose stinger.
+      - **Pad and tabs:** the pad ducks to 45% during replays, and hidden tabs suspend the audio context.
+101.  **Tutorial pacing.** A step can wait for a condition: `canFruit` (asked of the sim's own order validator), `canLaunch` (a ripe fruiting body) or `contact` (an enemy cell touches yours). It stays hidden until the condition holds. Every action step has "Skip step".
+102.  **Performance pass.**
+      - **`playerRules` cache.** It is cached per player by the identity of the mutations array, with the rules object and strain checked as well, and the result is frozen.
+        - **Rule to keep:** the sim must keep replacing that array, never mutating it in place, and the same holds for rules objects. Nothing in the code base does otherwise.
+      - **Landing scorer:** it scatters neighbourhood sums instead of gathering them.
+      - **Results:** Hard on 4-player systems, mean 53.9 → 39.4 ms, p95 133 → 103 ms, max 192 → 165 ms.
+      - **Identical decisions:** bot outputs hash the same across 540 decisions before and after.
+      - **Devices:** no real phones were available. The 4× CPU-throttle frame tests stand in for a mid-range phone, and the bot runs in a worker, so a slow turn only delays the bot's sealed orders and never blocks input.
+103.  **Keyboard test in WebKit** presses Option+Tab: Safari's plain Tab skips buttons unless the user enables "Press Tab to highlight each item".
