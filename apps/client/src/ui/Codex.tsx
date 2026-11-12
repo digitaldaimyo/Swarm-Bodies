@@ -3,6 +3,7 @@ import {
   ACHIEVEMENTS,
   ALL_MUTATIONS,
   CAMPAIGN,
+  GUIDE,
   strainInfo,
   strainUnlockNode,
   unlockedMutations,
@@ -11,7 +12,7 @@ import {
 import { PLAYABLE_STRAINS, type MutationId } from "@swarm/sim";
 import { useProgress } from "./progress";
 
-type Tab = "strains" | "mutations" | "achievements";
+type Tab = "howto" | "strains" | "mutations" | "achievements";
 
 const mutationUnlockNode = (m: MutationId) =>
   CAMPAIGN.find((n) => n.unlocks.mutations?.includes(m))?.index ?? null;
@@ -22,7 +23,7 @@ const mutationUnlockNode = (m: MutationId) =>
  */
 export default function Codex({ onBack }: { onBack(): void }) {
   const progress = useProgress();
-  const [tab, setTab] = useState<Tab>("strains");
+  const [tab, setTab] = useState<Tab>("howto");
   const strains = unlockedStrains(progress);
   const pool = unlockedMutations(progress);
   return (
@@ -33,8 +34,8 @@ export default function Codex({ onBack }: { onBack(): void }) {
         </button>
         <h2>Codex</h2>
       </header>
-      <div class="segmented" role="tablist" aria-label="Codex sections">
-        {(["strains", "mutations", "achievements"] as const).map((t) => (
+      <div class="segmented wrap" role="tablist" aria-label="Codex sections">
+        {(["howto", "strains", "mutations", "achievements"] as const).map((t) => (
           <button
             key={t}
             role="tab"
@@ -42,14 +43,27 @@ export default function Codex({ onBack }: { onBack(): void }) {
             class={tab === t ? "seg active" : "seg"}
             onClick={() => setTab(t)}
           >
-            {t === "strains"
-              ? "Strains"
-              : t === "mutations"
-                ? `Mutations ${progress.drafted.length}/${ALL_MUTATIONS.length}`
-                : `Feats ${progress.achievements.length}/${ACHIEVEMENTS.length}`}
+            {t === "howto"
+              ? "How to play"
+              : t === "strains"
+                ? "Strains"
+                : t === "mutations"
+                  ? `Mutations ${progress.drafted.length}/${ALL_MUTATIONS.length}`
+                  : `Feats ${progress.achievements.length}/${ACHIEVEMENTS.length}`}
           </button>
         ))}
       </div>
+      {tab === "howto" &&
+        GUIDE.map((section) => (
+          <section key={section.id} class="card guide" aria-labelledby={`guide-${section.id}`}>
+            <h3 id={`guide-${section.id}`}>{section.title}</h3>
+            <ul class="facts">
+              {section.points.map((p) => (
+                <li key={p}>{p}</li>
+              ))}
+            </ul>
+          </section>
+        ))}
       {tab === "strains" &&
         PLAYABLE_STRAINS.map((id) => {
           const info = strainInfo(id);

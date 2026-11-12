@@ -253,3 +253,11 @@ Rulings on ambiguous or unspecified points in `docs/SPEC.md`, as CLAUDE.md requi
        - `404.html` is a copy of the shell, so `/replay/:id` links work without server rewrites.
      - **Base paths:** the client builds every URL from `import.meta.env.BASE_URL`: the manifest, service-worker fallback, push worker, share links and replay route.
      - **Neon:** a connection through Neon's pooler (a host containing `-pooler.`) turns off named prepared statements, which PgBouncer in transaction mode cannot keep. The transaction-scoped advisory locks used for turn resolution work through the pooler.
+
+## 2026-11-12 — Playtest feedback: combat in node 1
+
+105. **Combat is taught where players first meet it.** In the first real-device playtest, how combat works was unclear on campaign node 1: its bot fights back, but the assault tutorial lived in node 2.
+     - **Node 1:** it now has two more steps that wait until the colonies touch (`when: contact`). They explain the attack-vs-defense label and the formula.
+     - **Codex:** a "How to play" tab, now the first tab, covers the goal, turns, growing, combat, supply lines, nutrients, spores and mutations.
+     - **Generated text:** the rule numbers and the combat formula are generated from `BASE_RULES` (`content/guide.ts`), so the text follows any retune.
+     - **Card position:** the tutorial card moved from the bottom to just under the HUD, so it no longer covers the turn log or the order controls.

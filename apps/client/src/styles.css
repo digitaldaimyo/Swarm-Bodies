@@ -970,11 +970,10 @@ h3 {
     right: 180px;
     bottom: calc(8px + var(--safe-bottom));
   }
-  .tutorial-card,
-  .match.has-strip .tutorial-card {
+  .tutorial-card {
     left: calc(50% - 12px);
     width: min(420px, calc(100% - 360px));
-    bottom: calc(12px + var(--safe-bottom));
+    top: calc(10px + var(--safe-top));
   }
   .launch-banner {
     top: calc(12px + var(--safe-top));
@@ -1418,7 +1417,8 @@ h3 {
 .tutorial-card {
   position: absolute;
   left: 50%;
-  bottom: calc(100px + var(--safe-bottom));
+  /* Under the HUD, so it never covers the turn log or the order controls at the bottom. */
+  top: calc(84px + var(--safe-top));
   transform: translateX(-50%);
   width: min(440px, calc(100% - 24px));
   padding: 12px 14px;
@@ -1429,9 +1429,6 @@ h3 {
   display: grid;
   gap: 8px;
   z-index: 5;
-}
-.match.has-strip .tutorial-card {
-  bottom: calc(158px + var(--safe-bottom));
 }
 .tutorial-card p {
   margin: 0;
@@ -1553,4 +1550,10 @@ h3 {
   margin-top: 6px;
   white-space: pre-wrap;
   word-break: break-word;
+}
+/* Codex › How to play: rules read as body text, not the muted fact style. */
+.guide .facts {
+  color: var(--text);
+  font-size: calc(15px * var(--text-scale, 1));
+  line-height: 1.4;
 }

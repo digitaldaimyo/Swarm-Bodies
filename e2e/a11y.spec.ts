@@ -38,7 +38,7 @@ test("menus and panels pass axe (WCAG 2.1 AA)", async ({ page }) => {
   await page.getByRole("button", { name: "Back" }).click();
 
   await page.getByRole("button", { name: "Codex" }).click();
-  for (const tab of [/Strains/, /Mutations/, /Feats/]) {
+  for (const tab of [/How to play/, /Strains/, /Mutations/, /Feats/]) {
     await page.getByRole("tab", { name: tab }).click();
     await audit(page, `codex ${tab.source}`);
   }

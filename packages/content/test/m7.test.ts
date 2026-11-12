@@ -221,3 +221,40 @@ describe("M8 tutorial pacing", () => {
         if (st.when) expect(["always", "canFruit", "canLaunch", "contact"]).toContain(st.when.kind);
   });
 });
+
+describe("How to play and the node 1 combat steps", () => {
+  it("the guide quotes the live rule numbers and covers combat", async () => {
+    const { GUIDE, COMBAT_RULE } = await import("../src");
+    const { BASE_RULES } = await import("@swarm/sim");
+    const text = GUIDE.flatMap((s) => s.points).join(" ");
+    for (const id of [
+      "goal",
+      "turns",
+      "growing",
+      "combat",
+      "supply",
+      "nutrients",
+      "spores",
+      "mutations",
+    ])
+      expect(GUIDE.map((s) => s.id)).toContain(id);
+    expect(text).toContain(`${BASE_RULES.dominanceWinPermille / 10}%`);
+    expect(text).toContain(`turn ${BASE_RULES.turnLimit}`);
+    expect(text).toContain(`${BASE_RULES.fruitCost} N`);
+    expect(text).toContain(COMBAT_RULE.attack);
+    expect(text).toContain("attack vs defense");
+  });
+
+  it("node 1 explains combat once the colonies touch", async () => {
+    const { CAMPAIGN, COMBAT_RULE } = await import("../src");
+    const steps = CAMPAIGN[0]!.tutorial;
+    const combat = steps.filter((s) => s.when?.kind === "contact");
+    expect(combat).toHaveLength(2);
+    expect(combat[0]!.text).toContain("attack vs defense");
+    expect(combat[1]!.text).toContain(COMBAT_RULE.defense);
+    // They come after the growing steps, so they never jump the queue.
+    expect(steps.indexOf(combat[0]!)).toBeGreaterThan(
+      steps.findIndex((s) => s.until.kind === "submit"),
+    );
+  });
+});
