@@ -14,8 +14,8 @@ export class SpritePool {
     this.used = 0;
   }
 
-  /** A sprite centred on (x, y) with the given radius in world px. */
-  take(x: number, y: number, radius: number, tint: number, alpha = 1): Sprite {
+  /** The next sprite, made visible, with tint and alpha set; the caller places it. */
+  takeRaw(tint: number, alpha = 1): Sprite {
     let s = this.sprites[this.used];
     if (!s) {
       s = new Sprite(this.texture);
@@ -25,10 +25,17 @@ export class SpritePool {
     }
     this.used++;
     s.visible = true;
-    s.position.set(x, y);
-    s.width = s.height = radius * 2;
     s.tint = tint;
     s.alpha = alpha;
+    return s;
+  }
+
+  /** A sprite centred on (x, y) with the given radius in world px. */
+  take(x: number, y: number, radius: number, tint: number, alpha = 1): Sprite {
+    const s = this.takeRaw(tint, alpha);
+    s.rotation = 0;
+    s.position.set(x, y);
+    s.width = s.height = radius * 2;
     return s;
   }
 

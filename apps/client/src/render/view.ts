@@ -64,6 +64,10 @@ export class MatchView {
   private readonly goo = new Container();
   private readonly gooG = new Graphics();
   private readonly glowLayer = new Container();
+  private readonly triLayer = new Container();
+  private readonly bandLayer = new Container();
+  private triPool!: SpritePool;
+  private bandPool!: SpritePool;
   private readonly blobLayer = new Container();
   private readonly sheenLayer = new Container();
   private glowPool!: SpritePool;
@@ -153,7 +157,14 @@ export class MatchView {
 
     // Colonies: thick round-capped veins and overlapping blobs merge into organic shapes
     // without a blur filter, which keeps phones at 60 fps (SPEC §10.4, §10.7).
-    this.goo.addChild(this.glowLayer, this.gooG, this.blobLayer, this.sheenLayer);
+    this.goo.addChild(
+      this.gooG,
+      this.glowLayer,
+      this.triLayer,
+      this.bandLayer,
+      this.blobLayer,
+      this.sheenLayer,
+    );
     this.world.addChild(
       this.goo,
       this.flow,
@@ -183,6 +194,21 @@ export class MatchView {
       halo.circle(32, 32, 32 * (k / 8)).fill({ color: 0xffffff, alpha: 0.09 });
     const soft = this.app.renderer.generateTexture({ target: halo, resolution: 2 });
     this.glowPool = new SpritePool(this.glowLayer, soft);
+    // Vein bands and the triangle between three neighbours are sprites too: redrawing a
+    // board (several times per replay) then tessellates nothing.
+    const bar = this.app.renderer.generateTexture({
+      target: new Graphics().rect(0, 0, 8, 8).fill(0xffffff),
+      resolution: 1,
+    });
+    const side = HEX_SIZE * Math.sqrt(3);
+    const tri = this.app.renderer.generateTexture({
+      target: new Graphics()
+        .poly([0, 0, side, 0, side / 2, (side * Math.sqrt(3)) / 2])
+        .fill(0xffffff),
+      resolution: 2,
+    });
+    this.bandPool = new SpritePool(this.bandLayer, bar);
+    this.triPool = new SpritePool(this.triLayer, tri);
     this.blobPool = new SpritePool(this.blobLayer, disc);
     this.sheenPool = new SpritePool(this.sheenLayer, soft);
     BitmapFont.install({
@@ -485,12 +511,15 @@ export class MatchView {
     const body = state.bodies[0] as GameState["bodies"][number];
     const board = getBoard(body.radius);
     const g = this.gooG;
-    g.clear();
-    // Pin the cached texture's bounds to the whole body, so redrawing a growing colony
-    // re-renders into the same texture instead of reallocating one on every board swap.
-    const extent = (body.radius + 2) * HEX_SIZE * Math.sqrt(3);
-    g.rect(-extent, -extent, extent * 2, extent * 2).fill({ color: 0x000000, alpha: 0.001 });
+    if (g.context.instructions.length === 0) {
+      // Pin the cached texture's bounds to the whole body, so redrawing a growing colony
+      // re-renders into the same texture instead of reallocating one on every board swap.
+      const extent = (body.radius + 2) * HEX_SIZE * Math.sqrt(3);
+      g.rect(-extent, -extent, extent * 2, extent * 2).fill({ color: 0x000000, alpha: 0.001 });
+    }
     this.glowPool.begin();
+    this.triPool.begin();
+    this.bandPool.begin();
     this.blobPool.begin();
     this.sheenPool.begin();
     const colorOf = (c: Colony) =>
@@ -498,15 +527,15 @@ export class MatchView {
     const radiusOf = (c: Colony) => (c.core ? 13 : 9) + 1.1 * c.biomass;
 
     // Solid mass: fill the triangle between any three mutually adjacent same-owner cells, so
-    // a cluster reads as one slime body instead of a lattice.
+    // a cluster reads as one slime body instead of a lattice. With pointy-top hexes these are
+    // equilateral, pointing down (directions 0,5) or up (5,4) from the cell.
     colony.forEach((c, i) => {
       if (!c) return;
       const nbs = board.neighbours[i] as readonly number[];
       const h = board.cells[i] as Hex;
-      // Only two of the six triangles around each cell, so each is drawn once.
-      for (const [a, b] of [
-        [0, 5],
-        [5, 4],
+      for (const [a, b, up] of [
+        [0, 5, false],
+        [5, 4, true],
       ] as const) {
         const ha = { q: h.q + (HEX_DIRS[a] as Hex).q, r: h.r + (HEX_DIRS[a] as Hex).r };
         const hb = { q: h.q + (HEX_DIRS[b] as Hex).q, r: h.r + (HEX_DIRS[b] as Hex).r };
@@ -516,13 +545,19 @@ export class MatchView {
         const ca = colony[ia];
         const cb = colony[ib];
         if (!ca || !cb || ca.owner !== c.owner || cb.owner !== c.owner) continue;
-        const pts = [h, ha, hb].map((h) => hexToPixel(h));
-        const color = colorOf(c.connected ? c : ca.connected ? ca : cb);
-        g.poly(pts.flatMap((pt) => [pt.x, pt.y])).fill(color);
+        const p0 = hexToPixel(h);
+        const pa = hexToPixel(ha);
+        const pb = hexToPixel(hb);
+        const t = this.triPool.takeRaw(colorOf(c.connected ? c : ca.connected ? ca : cb));
+        // The texture's anchor is its centroid; an "up" triangle is the "down" one turned 180°.
+        t.anchor.set(0.5, 1 / 3);
+        t.position.set((p0.x + pa.x + pb.x) / 3, (p0.y + pa.y + pb.y) / 3);
+        t.rotation = up ? Math.PI : 0;
+        t.scale.set(1);
       }
     });
 
-    // Veins between adjacent same-owner cells, thickness by biomass.
+    // Veins between adjacent same-owner cells, thickness by biomass: one stretched bar each.
     colony.forEach((c, i) => {
       if (!c) return;
       const p = hexToPixel(board.cells[i] as Hex);
@@ -531,25 +566,12 @@ export class MatchView {
         const o = colony[n];
         if (!o || o.owner !== c.owner) continue;
         const q = hexToPixel(board.cells[n] as Hex);
-        const width = 12 + 1.6 * Math.min(c.biomass, o.biomass);
-        // A straight band: the blobs at both ends round it off, and it tessellates in a
-        // fraction of the time of a capped curve (replay frames redraw the whole colony).
-        const color = colorOf(c.connected ? c : o);
-        const dx = q.x - p.x;
-        const dy = q.y - p.y;
-        const len = Math.hypot(dx, dy) || 1;
-        const nx = (-dy / len) * (width / 2);
-        const ny = (dx / len) * (width / 2);
-        g.poly([
-          p.x + nx,
-          p.y + ny,
-          q.x + nx,
-          q.y + ny,
-          q.x - nx,
-          q.y - ny,
-          p.x - nx,
-          p.y - ny,
-        ]).fill(color);
+        const bar = this.bandPool.takeRaw(colorOf(c.connected ? c : o));
+        bar.anchor.set(0.5);
+        bar.position.set((p.x + q.x) / 2, (p.y + q.y) / 2);
+        bar.rotation = Math.atan2(q.y - p.y, q.x - p.x);
+        bar.width = Math.hypot(q.x - p.x, q.y - p.y);
+        bar.height = 12 + 1.6 * Math.min(c.biomass, o.biomass);
       }
     });
     colony.forEach((c, i) => {
@@ -569,6 +591,8 @@ export class MatchView {
       );
     });
     this.glowPool.end();
+    this.triPool.end();
+    this.bandPool.end();
     this.blobPool.end();
     this.sheenPool.end();
 
