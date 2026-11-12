@@ -1,4 +1,6 @@
 import {
+  attackOn,
+  defenseOf,
   getBoard,
   maxBiomassFor,
   playerRules,
@@ -43,7 +45,27 @@ export interface Analysis {
   cores: Map<PlayerId, number>;
 }
 
+/**
+ * Analyses are cached per state object, player and the two weights they depend on (income
+ * horizon and potential decay): Hard plans several times against the same state.
+ */
+const cache = new WeakMap<GameState, Map<string, Analysis>>();
+
 export function analyse(state: GameState, me: PlayerId, weights: BotWeights): Analysis {
+  const key = `${me}|${weights.incomeHorizon}|${weights.potentialDecay}`;
+  let byKey = cache.get(state);
+  if (!byKey) {
+    byKey = new Map();
+    cache.set(state, byKey);
+  }
+  const hit = byKey.get(key);
+  if (hit) return hit.weights === weights ? hit : { ...hit, weights };
+  const fresh = analyseUncached(state, me, weights);
+  byKey.set(key, fresh);
+  return fresh;
+}
+
+function analyseUncached(state: GameState, me: PlayerId, weights: BotWeights): Analysis {
   const horizon = Math.max(
     1,
     Math.min(weights.incomeHorizon, state.rules.turnLimit - state.turn + 1),
@@ -74,20 +96,34 @@ function analyseBody(
   const { colony } = body;
   const { rules } = state;
 
-  const depositValue = body.deposits.map((d) => (d ? rules.depositYield[d] * horizon : 0));
+  // What each cell would pay this player: their own yields (strain, mutations), comets while
+  // they last.
+  const yields = playerRules(state, me).depositYield;
+  const depositValue = body.deposits.map((d, i) => {
+    let v = d ? yields[d] * horizon : 0;
+    for (const c of body.comets)
+      if (c.cell === i) v += c.yield * Math.max(0, Math.min(horizon, c.until - state.turn));
+    return v;
+  });
 
   // Potential: max over deposits not ours of value × decay^distance (distance through non-rock).
   const decay: number[] = [1];
   for (let d = 1; d <= 2 * body.radius + 2; d++)
     decay.push((decay[d - 1] as number) * w.potentialDecay);
+  // Deposits of equal worth share one multi-source BFS: the max over them only needs the
+  // nearest one, so this equals one BFS per deposit at a fraction of the cost.
   const potential = new Array<number>(n).fill(0);
+  const byWorth = new Map<number, number[]>();
   for (let i = 0; i < n; i++) {
     const v = depositValue[i] as number;
     if (v === 0 || body.terrain[i] === "rock") continue;
     const owner = colony[i]?.owner;
     if (owner === me) continue;
     const worth = owner === undefined ? v : v / 2;
-    const dist = bfsDistances(board, body, i);
+    byWorth.set(worth, [...(byWorth.get(worth) ?? []), i]);
+  }
+  for (const [worth, sources] of [...byWorth].sort((a, b) => b[0] - a[0])) {
+    const dist = bfsDistances(board, body, sources);
     for (let j = 0; j < n; j++) {
       const d = dist[j] as number;
       if (d < 0) continue;
@@ -111,30 +147,20 @@ function analyseBody(
     }
   }
 
-  const mine = playerRules(state, me);
   const defense = new Array<number>(n).fill(0);
+  const flags = colony.map((c) => !!c?.connected);
   const threat = new Array<number>(n).fill(0);
   const threatReinforced = new Array<number>(n).fill(0);
   const nutrients = new Map(state.players.map((p) => [p.id, p.nutrients]));
   for (let i = 0; i < n; i++) {
     const c = colony[i];
     if (!c || c.owner !== me) continue;
-    let def = c.biomass;
-    const adjByOwner = new Map<PlayerId, number>();
-    for (const nb of board.neighbours[i] as readonly number[]) {
-      const o = colony[nb];
-      if (!o) continue;
-      if (o.owner === me) {
-        if (o.connected) def += mine.defenseSupport;
-      } else {
-        adjByOwner.set(o.owner, (adjByOwner.get(o.owner) ?? 0) + 1);
-      }
-    }
-    defense[i] = def;
+    defense[i] = defenseOf(state, body, colony, flags, i);
     for (const nb of board.neighbours[i] as readonly number[]) {
       const e = colony[nb];
       if (!e || e.owner === me || !e.connected) continue;
-      const attack = e.biomass + (adjByOwner.get(e.owner) ?? 1) - 1;
+      // Exactly the sim's pressure, assault bonus and mutations included.
+      const attack = attackOn(state, body, colony, e.owner, nb, i);
       const canReinforce =
         (nutrients.get(e.owner) ?? 0) >= rules.reinforceCost + rules.minEntryCost;
       const boost = canReinforce
@@ -161,10 +187,10 @@ function analyseBody(
   };
 }
 
-function bfsDistances(board: Board, body: Body, from: number): number[] {
+function bfsDistances(board: Board, body: Body, from: readonly number[]): number[] {
   const dist = new Array<number>(board.cells.length).fill(-1);
-  dist[from] = 0;
-  const queue = [from];
+  for (const f of from) dist[f] = 0;
+  const queue = [...from];
   for (let h = 0; h < queue.length; h++) {
     const i = queue[h] as number;
     for (const nb of board.neighbours[i] as readonly number[]) {

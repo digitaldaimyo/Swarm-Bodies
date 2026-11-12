@@ -124,6 +124,8 @@ test("skirmish: paint, submit, replay, and finish against the Easy bot", async (
 test("system skirmish: body strip, System view, launches, and a finished game (M5)", async ({
   page,
 }) => {
+  // A whole 3-player game: headroom for starved CI runners (PR #6: ~3.7× slower than usual).
+  test.setTimeout(300_000);
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
@@ -135,15 +137,17 @@ test("system skirmish: body strip, System view, launches, and a finished game (M
   await page.getByRole("radio", { name: "Asteroid system" }).click();
   await page.getByRole("radio", { name: "2 bots" }).click();
   await page.getByRole("radio", { name: "Easy bot" }).click();
-  await page.getByRole("textbox").fill("smoke-sys");
+  // A seed whose game is decided by dominance at turn 20 (most seeds run to the turn limit):
+  // the test's wall time scales with the runner, and a starved CI runner draws ~5 fps.
+  await page.getByRole("textbox").fill("smoke-sys-4");
   await page.getByRole("button", { name: "Start" }).click();
   await page.waitForFunction(
     () => (window as unknown as { __swarm?: { view?: unknown } }).__swarm?.view,
   );
 
-  // The body strip lists every body; three players get five bodies (SPEC §4.1).
+  // The body strip lists every body; three players get four (players + 1, DECISIONS #71).
   const strip = page.getByRole("navigation", { name: "Bodies" });
-  await expect(strip.getByRole("button", { name: /^Body \d+,/ })).toHaveCount(5);
+  await expect(strip.getByRole("button", { name: /^Body \d+,/ })).toHaveCount(4);
   await expect(strip.getByRole("button", { name: /^Body \d+, .*yours/ })).toHaveCount(1);
 
   // System view with the launch-window forecast, then open another body from the strip.
@@ -159,8 +163,14 @@ test("system skirmish: body strip, System view, launches, and a finished game (M
     () => ((window as unknown as { __swarm: { autoplay: boolean } }).__swarm.autoplay = true),
   );
   await expect(page.getByRole("heading", { name: /Victory|Defeat|Draw/ })).toBeVisible({
-    timeout: 170_000,
+    timeout: 280_000,
   });
+  const turns = await page.evaluate(
+    () =>
+      (window as unknown as { __swarm: { session: { state: { turn: number } } } }).__swarm.session
+        .state.turn,
+  );
+  expect(turns).toBeLessThanOrEqual(22);
   const launches = await page.evaluate(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const s = (window as any).__swarm.session;
@@ -169,5 +179,59 @@ test("system skirmish: body strip, System view, launches, and a finished game (M
       .filter((e: { type: string }) => e.type === "SporeLaunched").length;
   });
   expect(launches).toBeGreaterThan(0);
+  expect(errors).toEqual([]);
+});
+
+test("mutation draft: the modal offers three cards, inspect then pick (M6)", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+  await page.goto("/?e2e");
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.getByRole("button", { name: "Play skirmish" }).click();
+  await page.getByRole("radio", { name: /^Predator/ }).click();
+  await page.getByRole("radio", { name: "Hard bot" }).click();
+  await page.getByRole("textbox").fill("draft-1");
+  await page.getByRole("button", { name: "Start" }).click();
+  type Hook = {
+    autoplay: boolean;
+    stopAtDraft?: boolean;
+    phase: string;
+    session: { state: { players: { draft: unknown }[] }; planner: { orders: { type: string }[] } };
+  };
+  await page.waitForFunction(
+    () => (window as unknown as { __swarm?: { view?: unknown } }).__swarm?.view,
+  );
+  // The scripted player grows until our first draft (40 total biomass) is offered, then stops
+  // by itself so the offer is still pending when we look (race-free on slower engines).
+  await page.evaluate(() => {
+    const h = (window as unknown as { __swarm: Hook }).__swarm;
+    h.stopAtDraft = true;
+    h.autoplay = true;
+  });
+  await page.waitForFunction(
+    () => {
+      const h = (window as unknown as { __swarm: Hook }).__swarm;
+      return !h.autoplay && h.phase === "planning" && !!h.session.state.players[0]!.draft;
+    },
+    null,
+    { timeout: 120_000 },
+  );
+  const dialog = page.getByRole("dialog", { name: /Mutation draft 1 of 3/ });
+  await expect(dialog).toBeVisible();
+  const cards = dialog.locator(".draft-card");
+  await expect(cards).toHaveCount(3);
+  await cards.nth(2).click();
+  await expect(cards.nth(2)).toContainText("Tap again to pick");
+  await cards.nth(2).click();
+  await expect(dialog).toBeHidden();
+  const first = await page.evaluate(
+    () => (window as unknown as { __swarm: Hook }).__swarm.session.planner.orders[0]?.type,
+  );
+  expect(first).toBe("draft");
+  await page.getByRole("button", { name: "Submit" }).click();
+  await expect(page.getByLabel("What happened")).toContainText("You drafted");
+  await expect(page.getByLabel(/Mutations: /).first()).toBeVisible();
   expect(errors).toEqual([]);
 });

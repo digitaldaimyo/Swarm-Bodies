@@ -38,8 +38,8 @@ export function listLegalOrders(state: GameState, player: PlayerId): LegalOrderI
   if (!ps || ps.eliminated || state.result) return index;
   const canFruit =
     state.bodies.filter((b) => b.orbit !== null).length > 1 &&
-    fruitingCount(state, player) < state.rules.maxFruiting &&
-    ps.nutrients >= state.rules.fruitCost;
+    fruitingCount(state, player) < playerRules(state, player).maxFruiting &&
+    ps.nutrients >= playerRules(state, player).fruitCost;
   for (const body of state.bodies) {
     const board = getBoard(body.radius);
     body.colony.forEach((c, i) => {

@@ -28,6 +28,10 @@ export interface BotWeights {
   expansion: number;
   /** Fraction of a future launch's value credited to growing a fruiting body now. */
   fruitFaith: number;
+  /** Worth of each N a Predator capture pays. */
+  feed: number;
+  /** Share of a cell's value saved by reinforcing it before Irradiated burns it. */
+  burn: number;
 }
 
 export const NORMAL_WEIGHTS: BotWeights = {
@@ -42,11 +46,25 @@ export const NORMAL_WEIGHTS: BotWeights = {
   contestRisk: 0.5,
   expansion: 0.6,
   fruitFaith: 0.6,
+  feed: 0.5,
+  burn: 0.6,
 };
 
 export type Personality = "balanced" | "aggressive" | "greedy" | "expansionist" | "saboteur";
 
 /** Campaign flavours (SPEC §13.3), as adjustments to the Normal weights. */
+/**
+ * Hard's base weights: sharper about threats, captures and cuts. Found by self-play against
+ * Normal on systems (about 61% over 120 games, M6); Hard adds the 1-ply robustness check.
+ */
+export const HARD_WEIGHTS: BotWeights = {
+  ...NORMAL_WEIGHTS,
+  threat: 1.5,
+  sever: 4,
+  coreKill: 80,
+  capture: 4,
+};
+
 export const PERSONALITIES: Record<Personality, BotWeights> = {
   balanced: NORMAL_WEIGHTS,
   aggressive: { ...NORMAL_WEIGHTS, capture: 4, coreKill: 80, threat: 0.5 },

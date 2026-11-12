@@ -1,7 +1,9 @@
 import {
+  defenseOf,
   entryCost,
   maxBiomassFor,
   playerRules,
+  reachFor,
   type Colony,
   type Hex,
   type Order,
@@ -67,6 +69,7 @@ function generateReinforce(
   if (opts.ignoreThreats) return;
   const { state, me, weights } = a;
   const { body, board } = ba;
+  const burns = body.type === "irradiated" && !playerRules(state, me).irradiationImmune;
   for (let i = 0; i < body.colony.length; i++) {
     const c = body.colony[i];
     if (!c || c.owner !== me || !c.connected) continue;
@@ -74,7 +77,24 @@ function generateReinforce(
       playerRules(state, me).reinforceAmount,
       maxBiomassFor(state, c, body) - c.biomass,
     );
-    if (add <= 0 || (ba.threatReinforced[i] as number) === 0) continue;
+    if (add <= 0) continue;
+    const h0 = board.cells[i] as Hex;
+    // Irradiated bodies burn biomass-1 cells at the end of the turn (fresh ones get one turn's
+    // grace): reinforcing them now is what keeps the body (SPEC §4.3).
+    if (burns && c.biomass === 1 && !c.core) {
+      out.push({
+        kind: "reinforce",
+        orders: [{ type: "reinforce", body: body.id, cell: { q: h0.q, r: h0.r } }],
+        value: lossValue(a, ba, i, c) * weights.burn,
+        cost: state.rules.reinforceCost,
+        claims: [],
+        start: null,
+        reinforces: `${body.id}:${i}`,
+        key: `rb:${body.id}:${i}`,
+      });
+      continue;
+    }
+    if ((ba.threatReinforced[i] as number) === 0) continue;
     const def = ba.defense[i] as number;
     const t = ba.threat[i] as number;
     const tr = ba.threatReinforced[i] as number;
@@ -105,7 +125,27 @@ function generatePaths(
   const { colony } = body;
   const { rules } = state;
   const mine = playerRules(state, me);
-  const reach = mine.growReach;
+  // Chemotaxis can stretch a path by its reach bonus when it ends on a deposit; the exact
+  // limit is checked per path below.
+  const reach =
+    mine.growReach + (mine.mutations.includes("chemotaxis") ? rules.mutations.chemotaxisReach : 0);
+  const flags = colony.map((c) => !!c?.connected);
+  // Per-cell entry cost, reach and defense, computed once (they rebuild player rules each call).
+  const costOf = new Array<number>(colony.length).fill(-1);
+  const reachTo = new Array<number>(colony.length).fill(-1);
+  const defenseAt = new Array<number>(colony.length).fill(-1);
+  const cellCost = (t: number) =>
+    (costOf[t] as number) >= 0
+      ? (costOf[t] as number)
+      : (costOf[t] = entryCost(state, body, t, me));
+  const cellReach = (t: number) =>
+    (reachTo[t] as number) >= 0
+      ? (reachTo[t] as number)
+      : (reachTo[t] = reachFor(state, body, t, me));
+  const cellDefense = (t: number) =>
+    (defenseAt[t] as number) >= 0
+      ? (defenseAt[t] as number)
+      : (defenseAt[t] = defenseOf(state, body, colony, flags, t));
   const enemyOwned = (i: number): Colony | null => {
     const c = colony[i];
     return c && c.owner !== me ? c : null;
@@ -155,16 +195,14 @@ function generatePaths(
             gain = (w.cell + (ba.depositValue[t] as number)) * risk;
             newB = rules.newCellBiomass;
           } else {
-            let defense = defender.biomass;
-            for (const n of board.neighbours[t] as readonly number[]) {
-              const o = colony[n];
-              if (o && o.owner === defender.owner && o.connected && !claimed.has(n))
-                defense += playerRules(state, defender.owner).defenseSupport;
-            }
+            const defense = cellDefense(t);
+            attack += mine.assaultBonus;
             if (attack <= defense) continue; // The path would halt here.
             capture = true;
             newB = Math.min(mine.maxBiomass, attack - defense);
             gain = w.cell + w.capture + (ba.depositValue[t] as number) * 1.5;
+            // Predator: a capture pays the defender's biomass in N.
+            if (mine.captureFeeds) gain += defender.biomass * w.feed;
             if (opts.sever) gain += (ba.enemyCut[t] as number) * w.sever;
             if (defender.core)
               gain += w.coreKill * ((a.cores.get(defender.owner) ?? 0) <= 1 ? 10 : 1);
@@ -173,11 +211,11 @@ function generatePaths(
           path.push(t);
           claimed.add(t);
           const v = value + gain;
-          const c = cost + entryCost(state, body, t, me);
+          const c = cost + cellCost(t);
           const wasCapture = hasCapture;
           hasCapture = hasCapture || capture;
           // A boosted variant only makes sense if it enables an assault.
-          if (extra === 0 || hasCapture)
+          if ((extra === 0 || hasCapture) && path.length - 1 <= cellReach(t))
             out.push(makePath(a, ba, path, v, c, extra, capture || wasCapture));
           if (path.length - 1 < reach) visit(t, newB, v, c);
           hasCapture = wasCapture;

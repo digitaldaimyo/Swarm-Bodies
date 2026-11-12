@@ -1,10 +1,14 @@
 import {
+  attackOn,
+  defenseOf,
   getBoard,
+  incomeFor,
   maxBiomassFor,
   playerRules,
   validateOrder,
   type GameState,
   type Hex,
+  type MutationId,
   type Order,
   type PlayerId,
   type ValidationResult,
@@ -40,6 +44,25 @@ export class Planner {
   remove(index: number): void {
     this.orders = this.orders.filter((_, i) => i !== index);
     this.revalidate();
+  }
+
+  /** The pending draft pick, if one is queued (it is always the first order). */
+  get draftPick(): MutationId | null {
+    const first = this.orders[0];
+    return first?.type === "draft" ? first.mutation : null;
+  }
+
+  /**
+   * Picks a mutation from the pending draft (SPEC §7.2): the pick goes first in the set, so every
+   * other order is judged with it in effect; orders it makes invalid are dropped.
+   */
+  pickDraft(mutation: MutationId): ValidationResult {
+    const order: Order = { type: "draft", mutation };
+    const r = validateOrder(this.state, this.player, order, []);
+    if (!r.ok) return r;
+    this.orders = [order, ...this.orders.filter((o) => o.type !== "draft")];
+    this.revalidate();
+    return r;
   }
 
   undo(): void {
@@ -78,7 +101,7 @@ export class Planner {
   ordersAt(body: number, h: Hex): number[] {
     const out: number[] = [];
     this.orders.forEach((o, i) => {
-      if (o.body !== body) return;
+      if (o.type === "draft" || o.body !== body) return;
       const cells = o.type === "grow" ? o.path : [o.cell];
       if (cells.some((c) => c.q === h.q && c.r === h.r)) out.push(i);
     });
@@ -86,18 +109,9 @@ export class Planner {
   }
 }
 
+/** Next turn's income if the board stayed as it is (the sim's own phase-10 rule). */
 export function incomeOf(state: GameState, player: PlayerId): number {
-  let n = 0;
-  for (const body of state.bodies) {
-    body.colony.forEach((c, i) => {
-      if (!c || c.owner !== player || !c.connected) return;
-      if (c.core) n += state.rules.incomePerCore;
-      const d = body.deposits[i];
-      if (d) n += state.rules.depositYield[d];
-      for (const comet of body.comets) if (comet.cell === i) n += comet.yield;
-    });
-  }
-  return n;
+  return incomeFor(state, player);
 }
 
 export interface StepPreview {
@@ -125,25 +139,26 @@ export function previewPath(
   if (!b || path.length < 2) return [];
   const board = getBoard(b.radius);
   const at = (h: Hex) => board.indexOf(h.q, h.r);
-  const own = new Set<number>();
-  b.colony.forEach((c, i) => c?.owner === player && own.add(i));
-  const start = b.colony[at(path[0] as Hex)];
-  if (!start) return [];
-  let feederB = start.biomass;
-  let feederIdx = at(path[0] as Hex);
+  const startIdx = at(path[0] as Hex);
+  if (!b.colony[startIdx]) return [];
+  // A virtual board: cells this path has already taken count as ours for the next step, the way
+  // they will on the sim's board at the start of that step. Pressure itself is the sim's.
+  const virtual = b.colony.slice();
+  const flags = b.colony.map((c) => !!c?.connected);
+  const pr = playerRules(state, player);
+  let feederIdx = startIdx;
   const out: StepPreview[] = [];
   for (const h of path.slice(1)) {
     const t = at(h);
     if (t < 0) break;
-    if (own.has(t)) {
-      feederB = (b.colony[t] as NonNullable<(typeof b.colony)[number]>).biomass;
+    const here = virtual[t];
+    if (here && here.owner === player) {
       feederIdx = t;
       continue;
     }
-    let attack = feederB;
+    const attack = attackOn(state, b, virtual, player, feederIdx, t);
     let enemyNear = false;
     for (const n of board.neighbours[t] as readonly number[]) {
-      if (n !== feederIdx && own.has(n)) attack++;
       const c = b.colony[n];
       if (c && c.owner !== player) enemyNear = true;
     }
@@ -157,14 +172,16 @@ export function previewPath(
         outcome: "capture",
         uncertain: enemyNear,
       });
-      feederB = state.rules.newCellBiomass;
+      virtual[t] = {
+        owner: player,
+        biomass: state.rules.newCellBiomass,
+        core: false,
+        connected: true,
+        fruiting: null,
+        cut: 0,
+      };
     } else {
-      let defense = defender.biomass;
-      for (const n of board.neighbours[t] as readonly number[]) {
-        const c = b.colony[n];
-        if (c && c.owner === defender.owner && c.connected)
-          defense += playerRules(state, defender.owner).defenseSupport;
-      }
+      const defense = defenseOf(state, b, b.colony, flags, t);
       const win = attack > defense;
       out.push({
         cell: h,
@@ -175,9 +192,15 @@ export function previewPath(
         uncertain: true,
       });
       if (!win) break;
-      feederB = Math.min(playerRules(state, player).maxBiomass, attack - defense);
+      virtual[t] = {
+        owner: player,
+        biomass: Math.min(pr.maxBiomass, attack - defense),
+        core: false,
+        connected: true,
+        fruiting: null,
+        cut: 0,
+      };
     }
-    own.add(t);
     feederIdx = t;
   }
   return out;

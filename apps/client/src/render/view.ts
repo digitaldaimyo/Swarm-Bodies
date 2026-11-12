@@ -122,6 +122,8 @@ export class MatchView {
   private paintCancelled = false;
   private numbersDirty = true;
   reduceMotion = false;
+  /** Board redraws so far: the perf test separates swap frames from typical ones. */
+  boardSwaps = 0;
 
   private constructor(private readonly cb: ViewCallbacks) {}
 
@@ -688,6 +690,7 @@ export class MatchView {
 
   /** Redraws colonies from a colony array (the live state or a replay frame). */
   setBoard(colony: readonly (Colony | null)[], state = this.state): void {
+    this.boardSwaps++;
     this.colony = colony.slice();
     const body = (state.bodies[this.bodyId] ?? state.bodies[0]) as Body;
     const board = getBoard(body.radius);
@@ -973,6 +976,7 @@ export class MatchView {
     g.clear();
     const color = playerColor(player);
     orders.forEach((o, k) => {
+      if (o.type === "draft") return;
       if (o.type === "launch" && o.targetBody === this.bodyId) {
         const p = hexToPixel(o.targetCell);
         g.circle(p.x, p.y, HEX_SIZE * 0.7).stroke({ width: 2.5, color, alpha: 0.9 });

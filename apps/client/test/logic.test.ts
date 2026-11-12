@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { createGame, hashState, resolveTurn, type Hex } from "@swarm/sim";
+import { applyDraftPick, createGame, hashState, resolveTurn, type Hex } from "@swarm/sim";
 import { chooseOrders } from "@swarm/bot";
 import { cellAt, grow, reinforce, scenario } from "@swarm/sim/testing";
 import { hexToPixel, pixelToHex } from "../src/game/layout";
 import { PathPainter } from "../src/game/painter";
 import { Planner, previewPath } from "../src/game/planner";
 import { buildTimeline, describeEvents, timelineDuration } from "../src/game/timeline";
-import { SkirmishSession, type SavedSkirmish } from "../src/game/session";
+import { neutralBodies, SkirmishSession, type SavedSkirmish } from "../src/game/session";
 import type { BotRunner } from "../src/game/bot-client";
 
 const syncBot: BotRunner = {
@@ -151,7 +151,7 @@ describe("replay timeline (SPEC §10.5)", () => {
       const lastEvent = frames.filter((f) => f.phase !== "final").at(-1);
       if (lastEvent) {
         const strip = (cs: (typeof state.bodies)[0]["colony"]) =>
-          cs.map((c) => (c ? { ...c, connected: false } : null));
+          cs.map((c) => (c ? { ...c, connected: false, cut: 0 } : null));
         expect(strip(lastEvent.colony.get(0)!)).toEqual(strip(state.bodies[0]!.colony));
       }
       s = state;
@@ -175,7 +175,7 @@ describe("replay timeline (SPEC §10.5)", () => {
         if (lastEvent) {
           // Fruiting progress (phase 11) has no event; the final frame carries it.
           const strip = (cs: (typeof state.bodies)[0]["colony"]) =>
-            cs.map((c) => (c ? { ...c, connected: false, fruiting: null } : null));
+            cs.map((c) => (c ? { ...c, connected: false, fruiting: null, cut: 0 } : null));
           for (const b of state.bodies)
             expect(strip(lastEvent.colony.get(b.id)!)).toEqual(strip(b.colony));
         }
@@ -212,12 +212,12 @@ describe("replay timeline (SPEC §10.5)", () => {
         botStrain: "biofilm",
         map: "system",
         bots: 3,
-        size: "compact",
+        size: "wide",
       },
       syncBot,
     );
     expect(s.state.players).toHaveLength(4);
-    expect(s.state.bodies).toHaveLength(Math.max(s.state.rules.systemMinBodies, 5));
+    expect(s.state.bodies).toHaveLength(4 + neutralBodies(4, "wide"));
     await s.submitAndWait();
     expect(s.state.turn).toBe(2);
     expect(s.seats().map((x) => x.name)).toEqual(["You", "Bot 1", "Bot 2", "Bot 3"]);
@@ -273,5 +273,41 @@ describe("projected income (M5)", () => {
       }
       s = state;
     }
+  });
+});
+
+describe("draft picks in the planner (M6)", () => {
+  it("puts the pick first, applies it to later orders, and replaces an earlier pick", () => {
+    const base = scenario({
+      cells: [
+        { q: 0, r: 0, owner: 0, biomass: 5, core: true },
+        { q: 1, r: 0, owner: 0, biomass: 3 },
+        { q: 2, r: 0, owner: 1, biomass: 3 },
+        { q: -8, r: 0, owner: 1, biomass: 5, core: true },
+      ],
+    });
+    const s = {
+      ...base,
+      players: base.players.map((p) =>
+        p.id === 0
+          ? { ...p, draft: { index: 0, options: ["acid_tendrils", "quorum", "dormancy"] as const } }
+          : p,
+      ),
+    } as typeof base;
+    const planner = new Planner(s, 0);
+    expect(planner.add(grow([0, 0], [-1, 0])).ok).toBe(true);
+    expect(planner.pickDraft("quorum").ok).toBe(true);
+    expect(planner.orders[0]).toEqual({ type: "draft", mutation: "quorum" });
+    expect(planner.pickDraft("acid_tendrils").ok).toBe(true);
+    expect(planner.orders.filter((o) => o.type === "draft")).toHaveLength(1);
+    expect(planner.draftPick).toBe("acid_tendrils");
+    expect(planner.orders).toHaveLength(2);
+    // Acid Tendrils is in effect for the preview of an assault planned after the pick.
+    const preview = previewPath(applyDraftPick(s, 0, "acid_tendrils"), 0, 0, [
+      { q: 1, r: 0 },
+      { q: 2, r: 0 },
+    ]);
+    expect(preview[0]).toMatchObject({ kind: "assault", outcome: "capture" });
+    expect(planner.pickDraft("thick_veins" as never).ok).toBe(false);
   });
 });

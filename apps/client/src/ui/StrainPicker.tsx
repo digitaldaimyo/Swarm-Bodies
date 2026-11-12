@@ -2,7 +2,7 @@ import { strainInfo } from "@swarm/content";
 import type { Strain } from "@swarm/protocol";
 import { audio } from "../audio/sfx";
 
-const STRAINS: Strain[] = ["swarmer", "biofilm"];
+export const STRAINS: readonly Strain[] = ["swarmer", "biofilm", "predator", "sporer"];
 
 /** Pick a strain (SPEC §7.1). The rule lines come from the sim's own numbers. */
 export function StrainPicker({
@@ -44,7 +44,7 @@ const KEY = "swarm.strain.v1";
 export function loadStrain(): Strain {
   try {
     const v = localStorage.getItem(KEY);
-    return v === "biofilm" ? "biofilm" : "swarmer";
+    return (STRAINS as readonly string[]).includes(v ?? "") ? (v as Strain) : "swarmer";
   } catch {
     return "swarmer";
   }

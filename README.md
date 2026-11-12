@@ -7,7 +7,7 @@ A simultaneous-turn strategy game for web and mobile web. Rival colonies of slim
 
 ## Status
 
-Milestones 1–5 are complete: the deterministic simulation core, the Easy and Normal bot, a playable client (a PWA) with offline skirmish, online multiplayer with Swarmer and Biofilm strains, and the multi-body star system (orbits, spores, flares and comets). Next is M6: strains, mutations, and balance. See [docs/PROGRESS.md](docs/PROGRESS.md) for details, and [docs/DECISIONS.md](docs/DECISIONS.md) for rulings on ambiguous spec points.
+Milestones 1–6 are complete: the deterministic simulation core, the Easy, Normal and Hard bots, a playable client (a PWA) with offline skirmish, online multiplayer, the multi-body star system, and four strains with 12 drafted mutations, balanced to the spec's targets. Next is M7: progression and replayability. See [docs/PROGRESS.md](docs/PROGRESS.md) for details, and [docs/DECISIONS.md](docs/DECISIONS.md) for rulings on ambiguous spec points.
 
 ## Getting started
 

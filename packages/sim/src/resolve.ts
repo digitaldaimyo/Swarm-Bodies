@@ -3,7 +3,17 @@ import { getBoard, type Hex } from "./hex";
 import { idiv } from "./math";
 import { bodyPosition, travelTime } from "./orbit";
 import { rngStream } from "./rng";
-import { cellIndexOf, maxBiomassFor, playableCellCount, playerRules, playerTotals } from "./rules";
+import {
+  attackOn,
+  cellIndexOf,
+  defenseOf,
+  incomeFor,
+  maxBiomassFor,
+  playableCellCount,
+  playerRules,
+  playerTotals,
+} from "./rules";
+import type { MutationId } from "./config";
 import type {
   Body,
   CellRef,
@@ -17,7 +27,7 @@ import type {
   ResolveResult,
   Spore,
 } from "./types";
-import { filterOrderSet, newCellPositions } from "./validate";
+import { applyDraftPick, filterOrderSet, isWellFormedOrder, newCellPositions } from "./validate";
 
 /**
  * resolveTurn (SPEC §5.3). Never mutates `state`. Players are always iterated in ascending id,
@@ -29,8 +39,44 @@ export function resolveTurn(
 ): ResolveResult {
   if (state.result) return { state, events: [] };
   const events: GameEvent[] = [];
-  const next = cloneState(state);
   const pids = state.players.map((p) => p.id).sort((a, b) => a - b);
+  const rawOrders = (pid: PlayerId): unknown[] => {
+    const raw: unknown = Object.prototype.hasOwnProperty.call(ordersByPlayer, pid)
+      ? ordersByPlayer[pid]
+      : [];
+    return Array.isArray(raw) ? raw : [];
+  };
+
+  // Phase 1: draft picks (SPEC §7.2). A Draft order first in the set picks; otherwise the first
+  // option is assigned. New mutations apply to this whole resolution, validation included: an
+  // explicit pick is applied by validation itself, an assigned one to the state judged below.
+  let base = state;
+  const explicit = new Map<PlayerId, MutationId>();
+  for (const pid of pids) {
+    const ps = state.players.find((p) => p.id === pid);
+    if (!ps?.draft || ps.eliminated) continue;
+    const first = rawOrders(pid)[0];
+    const chosen =
+      isWellFormedOrder(first) &&
+      first.type === "draft" &&
+      ps.draft.options.includes(first.mutation)
+        ? first.mutation
+        : null;
+    if (chosen) explicit.set(pid, chosen);
+    else base = applyDraftPick(base, pid, ps.draft.options[0] as MutationId);
+    events.push({
+      type: "DraftPicked",
+      player: pid,
+      mutation: chosen ?? (ps.draft.options[0] as MutationId),
+      auto: chosen === null,
+    });
+  }
+  const next = cloneState(base);
+  for (const [pid, mutation] of explicit) {
+    const ps = next.players.find((p) => p.id === pid) as GameState["players"][number];
+    ps.mutations = [...ps.mutations, mutation];
+    ps.draft = null;
+  }
   const player = (id: PlayerId) =>
     next.players.find((p) => p.id === id) as GameState["players"][number];
   const bodyOf = (id: number) => next.bodies.find((b) => b.id === id) as Body;
@@ -39,18 +85,12 @@ export function resolveTurn(
     return { body: body.id, q: h.q, r: h.r };
   };
 
-  // Phase 1: draft picks — none until M6.
-
-  // Phase 2: pay and validate against the start-of-turn state.
+  // Phase 2: pay and validate against the start-of-turn state (with assigned drafts applied).
   const accepted = new Map<PlayerId, { index: number; order: Order }[]>();
   for (const pid of pids) {
     const ps = player(pid);
     if (ps.eliminated) continue;
-    const raw: unknown = Object.prototype.hasOwnProperty.call(ordersByPlayer, pid)
-      ? ordersByPlayer[pid]
-      : [];
-    const list: unknown[] = Array.isArray(raw) ? raw : [];
-    const filtered = filterOrderSet(state, pid, list);
+    const filtered = filterOrderSet(base, pid, rawOrders(pid));
     for (const r of filtered.rejected)
       events.push({ type: "OrderRejected", player: pid, index: r.index, reason: r.reason });
     if (filtered.accepted.length > 0) {
@@ -106,13 +146,13 @@ export function resolveTurn(
       const body = bodyOf(order.body);
       const i = cellIndexOf(body, order.cell);
       const c = body.colony[i] as Colony;
-      body.colony[i] = { ...c, fruiting: next.rules.fruitMatureTurns };
+      body.colony[i] = { ...c, fruiting: playerRules(next, pid).fruitMatureTurns };
       events.push({ type: "FruitStarted", player: pid, cell: ref(body, i) });
     }
   }
 
   // Phase 5: growth in lockstep steps.
-  resolveGrowth(state, next, pids, accepted, events, ref);
+  resolveGrowth(base, next, pids, accepted, events, ref);
 
   // Phase 6: launches.
   for (const pid of pids) {
@@ -133,7 +173,7 @@ export function resolveTurn(
         sourceBody: body.id,
         targetBody: target.id,
         targetCell: { q: order.targetCell.q, r: order.targetCell.r },
-        landing: next.rules.landingBiomass,
+        landing: playerRules(next, pid).landingBiomass,
         launchedTurn: state.turn,
         arrivalTurn: state.turn + travelTime(next, body, target, state.turn),
       };
@@ -156,13 +196,30 @@ export function resolveTurn(
   // Phase 8: connectivity.
   for (const body of next.bodies) refreshConnectivity(body);
 
-  // Phase 9: starvation.
+  // Phase 9: starvation. `cut` counts consecutive disconnected turns (Dormancy, SPEC §7.3).
+  const dormancy = new Map(pids.map((pid) => [pid, playerRules(next, pid).dormancyTurns]));
   for (const body of next.bodies) {
     for (let i = 0; i < body.colony.length; i++) {
       const c = body.colony[i];
-      if (!c || c.connected || c.core) continue;
+      if (!c) continue;
+      if (c.connected || c.core) {
+        if (c.cut !== 0) body.colony[i] = { ...c, cut: 0 };
+        continue;
+      }
+      const cut = c.cut + 1;
+      const grace = dormancy.get(c.owner) ?? 0;
+      if (cut <= grace) {
+        body.colony[i] = { ...c, cut };
+        events.push({
+          type: "Dormant",
+          player: c.owner,
+          cell: ref(body, i),
+          turnsLeft: grace - cut,
+        });
+        continue;
+      }
       const biomass = c.biomass - next.rules.starvationLoss;
-      body.colony[i] = biomass > 0 ? { ...c, biomass } : null;
+      body.colony[i] = biomass > 0 ? { ...c, biomass, cut } : null;
       events.push({
         type: "Starved",
         player: c.owner,
@@ -172,25 +229,27 @@ export function resolveTurn(
     }
   }
 
-  // Phase 10: income.
-  const income = new Map<PlayerId, number>();
-  for (const body of next.bodies) {
-    for (let i = 0; i < body.colony.length; i++) {
-      const c = body.colony[i];
-      if (!c || !c.connected) continue;
-      let gain = c.core ? next.rules.incomePerCore : 0;
-      const d = body.deposits[i];
-      if (d) gain += next.rules.depositYield[d];
-      for (const comet of body.comets) if (comet.cell === i) gain += comet.yield;
-      income.set(c.owner, (income.get(c.owner) ?? 0) + gain);
-    }
-  }
+  // Phase 10: income (per player: strain yields, Deep Reserves), then Regeneration.
+  const income = new Map(pids.map((pid) => [pid, incomeFor(next, pid)]));
   for (const pid of pids) {
     const ps = player(pid);
     if (ps.eliminated) continue;
     const amount = income.get(pid) ?? 0;
     ps.nutrients += amount;
     events.push({ type: "Income", player: pid, amount, nutrients: ps.nutrients });
+  }
+  if (state.turn % next.rules.mutations.regenerationEvery === 0) {
+    const regen = new Map(pids.map((pid) => [pid, playerRules(next, pid).regeneration]));
+    for (const body of next.bodies) {
+      body.colony.forEach((c, i) => {
+        const r = c ? regen.get(c.owner) : null;
+        if (!c || !r || !c.connected || c.biomass >= r.below) return;
+        const biomass = Math.min(maxBiomassFor(next, c, body), c.biomass + r.amount);
+        if (biomass === c.biomass) return;
+        body.colony[i] = { ...c, biomass };
+        events.push({ type: "Regenerated", player: c.owner, cell: ref(body, i), biomass });
+      });
+    }
   }
 
   // Phase 11: fruiting progress.
@@ -207,10 +266,21 @@ export function resolveTurn(
   resolveEvents(next, state.turn, events, ref);
 
   // Phase 13: body rules. Irradiated bodies burn away biomass-1 cells (cores are spared).
+  // Cells gained this turn are spared once, so thin new growth can be thickened next turn:
+  // otherwise nothing could ever grow on an Irradiated body (DECISIONS).
+  const shielded = new Set(pids.filter((pid) => playerRules(next, pid).irradiationImmune));
+  const fresh = new Set<string>();
+  for (const e of events) {
+    if (e.type === "CellClaimed" || e.type === "CellCaptured" || e.type === "SporeLanded")
+      fresh.add(`${e.cell.body}:${e.cell.q},${e.cell.r}`);
+  }
   for (const body of next.bodies) {
     if (body.type !== "irradiated") continue;
+    const board = getBoard(body.radius);
     body.colony.forEach((c, i) => {
-      if (!c || c.core || c.biomass !== 1) return;
+      if (!c || c.core || c.biomass !== 1 || shielded.has(c.owner)) return;
+      const h = board.cells[i] as Hex;
+      if (fresh.has(`${body.id}:${h.q},${h.r}`)) return;
       body.colony[i] = null;
       events.push({ type: "Irradiated", player: c.owner, cell: ref(body, i) });
     });
@@ -218,7 +288,8 @@ export function resolveTurn(
   // Flares and irradiation can cut supply lines: refresh so the next turn starts consistent.
   for (const body of next.bodies) refreshConnectivity(body);
 
-  // Phase 14: biomass thresholds and draft offers arrive in M6.
+  // Phase 14: biomass thresholds queue draft offers (SPEC §7.2).
+  offerDrafts(next, pids, events);
 
   // Phase 15: elimination and victory.
   checkEndOfTurn(next, pids, events);
@@ -226,6 +297,33 @@ export function resolveTurn(
   // Phase 16: advance the turn; orbits move with it (positions derive from the turn).
   next.turn = state.turn + 1;
   return { state: next, events };
+}
+
+/**
+ * A player whose total biomass reaches their next threshold gets a draft of `draftOptions`
+ * mutations, drawn without replacement from the pool minus what they own (stream
+ * `draft:<player>:<index>`). One offer at a time: a later threshold waits for the pick.
+ */
+function offerDrafts(next: GameState, pids: readonly PlayerId[], events: GameEvent[]): void {
+  const { rules } = next;
+  const totals = playerTotals(next);
+  for (const pid of pids) {
+    const ps = next.players.find((p) => p.id === pid) as GameState["players"][number];
+    if (ps.eliminated || ps.draft || ps.draftsOffered >= rules.draftThresholds.length) continue;
+    if ((totals.get(pid)?.biomass ?? 0) < (rules.draftThresholds[ps.draftsOffered] as number))
+      continue;
+    const index = ps.draftsOffered;
+    ps.draftsOffered++;
+    const pool = [...rules.mutationPool].filter((m) => !ps.mutations.includes(m)).sort();
+    const rng = rngStream(next.seed, `draft:${pid}:${index}`);
+    const options: MutationId[] = [];
+    while (options.length < rules.draftOptions && pool.length > 0) {
+      options.push(pool.splice(rng.int(pool.length), 1)[0] as MutationId);
+    }
+    if (options.length === 0) continue;
+    ps.draft = { index, options };
+    events.push({ type: "DraftOffered", player: pid, index, options });
+  }
 }
 
 function cloneState(state: GameState): GameState {
@@ -326,11 +424,7 @@ function resolveGrowth(
         continue;
       }
       const feederIdx = p.cells[pos - 1] as number;
-      const feeder = board[feederIdx] as Colony;
-      let attack = feeder.biomass;
-      for (const n of getBoard(p.body.radius).neighbours[target] as readonly number[]) {
-        if (n !== feederIdx && board[n]?.owner === p.player) attack++;
-      }
+      const attack = attackOn(next, p.body, board, p.player, feederIdx, target);
       const k = `${String(p.body.id).padStart(4, "0")}:${String(target).padStart(5, "0")}`;
       let entry = claims.get(k);
       if (!entry) {
@@ -379,6 +473,7 @@ function resolveGrowth(
           core: false,
           connected: false,
           fruiting: null,
+          cut: 0,
         };
         events.push({
           type: "CellClaimed",
@@ -393,11 +488,7 @@ function resolveGrowth(
       }
       if (defender.owner === winner.path.player) continue; // Cannot happen after validation.
 
-      let defense = defender.biomass;
-      for (const n of getBoard(body.radius).neighbours[cell] as readonly number[]) {
-        if (board[n]?.owner === defender.owner && flags[n])
-          defense += playerRules(next, defender.owner).defenseSupport;
-      }
+      const defense = defenseOf(next, body, board, flags, cell);
       if (winner.attack > defense) {
         const cap = maxBiomassFor(next, { owner: winner.path.player, core: false }, body);
         const biomass = Math.min(cap, Math.max(1, winner.attack - defense));
@@ -407,6 +498,7 @@ function resolveGrowth(
           core: false,
           connected: false,
           fruiting: null,
+          cut: 0,
         };
         events.push({
           type: "CellCaptured",
@@ -419,6 +511,7 @@ function resolveGrowth(
           defense,
           biomass,
         });
+        feedOnCapture(next, winner.path.player, defender.biomass, ref(body, cell), events);
         if (defender.core) {
           events.push({
             type: "CoreDestroyed",
@@ -562,7 +655,14 @@ function landSpores(
     const coreMax = maxBiomassFor(next, { owner: s.owner, core: true }, body);
     if (!c) {
       const biomass = Math.min(coreMax, s.landing);
-      body.colony[i] = { owner: s.owner, biomass, core: true, connected: true, fruiting: null };
+      body.colony[i] = {
+        owner: s.owner,
+        biomass,
+        core: true,
+        connected: true,
+        fruiting: null,
+        cut: 0,
+      };
       events.push({
         type: "SporeLanded",
         player: s.owner,
@@ -586,16 +686,18 @@ function landSpores(
       });
     } else {
       // A landing contests the cell like an assault: landing biomass against the defense.
-      const board = getBoard(body.radius);
       const connected = flags.get(body.id) as boolean[];
-      let defense = c.biomass;
-      for (const n of board.neighbours[i] as readonly number[]) {
-        if (body.colony[n]?.owner === c.owner && connected[n])
-          defense += playerRules(next, c.owner).defenseSupport;
-      }
+      const defense = defenseOf(next, body, body.colony, connected, i);
       if (s.landing > defense) {
         const biomass = Math.min(coreMax, Math.max(1, s.landing - defense));
-        body.colony[i] = { owner: s.owner, biomass, core: true, connected: true, fruiting: null };
+        body.colony[i] = {
+          owner: s.owner,
+          biomass,
+          core: true,
+          connected: true,
+          fruiting: null,
+          cut: 0,
+        };
         events.push({
           type: "SporeLanded",
           player: s.owner,
@@ -606,6 +708,7 @@ function landSpores(
           from: c.owner,
         });
         if (c.core) events.push({ type: "CoreDestroyed", player: c.owner, by: s.owner, cell });
+        feedOnCapture(next, s.owner, c.biomass, cell, events);
       } else {
         const biomass = Math.max(1, c.biomass - 1);
         body.colony[i] = { ...c, biomass };
@@ -621,6 +724,20 @@ function landSpores(
       }
     }
   }
+}
+
+/** Predator (SPEC §7.1): a capture pays the attacker the biomass the defender lost. */
+function feedOnCapture(
+  next: GameState,
+  player: PlayerId,
+  amount: number,
+  cell: CellRef,
+  events: GameEvent[],
+): void {
+  if (amount <= 0 || !playerRules(next, player).captureFeeds) return;
+  const ps = next.players.find((p) => p.id === player) as GameState["players"][number];
+  ps.nutrients += amount;
+  events.push({ type: "CaptureFed", player, cell, amount });
 }
 
 /** √3 × 10000, for the integer flare test below. */
@@ -657,12 +774,14 @@ function resolveEvents(
         const pos = bodyPosition(body, turn);
         const board = getBoard(body.radius);
         body.colony.forEach((c, i) => {
-          if (!c) return;
+          if (!c || playerRules(next, c.owner).flareImmune) return;
           const h = board.cells[i] as Hex;
           const dot = SQRT3_FX * (2 * h.q + h.r) * -pos.x + 30000 * h.r * -pos.y;
           if (dot < 0) return;
           const left = c.biomass - rules.flareLoss;
-          const biomass = c.core ? Math.max(1, left) : left;
+          const floor = c.core ? 1 : Math.min(c.biomass, rules.flareMinBiomass);
+          const biomass = Math.max(floor, left);
+          if (biomass === c.biomass) return;
           body.colony[i] = biomass > 0 ? { ...c, biomass } : null;
           events.push({
             type: "FlareStruck",

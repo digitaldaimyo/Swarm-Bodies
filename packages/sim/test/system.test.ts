@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  BASE_RULES,
   bodyPosition,
   cosFx,
   createGame,
@@ -76,24 +77,32 @@ const ABC = (
   });
 
 describe("SPEC §4.1–4.4 system generation", () => {
+  // M6 balance: playerCount + 1, at least 3 (DECISIONS).
   it.each([
-    [2, 4],
-    [3, 5],
-    [4, 6],
-  ])("%i players get %i bodies (playerCount + 2)", (players, bodies) => {
+    [2, 3],
+    [3, 4],
+    [4, 5],
+  ])("%i players get %i bodies (playerCount + systemExtraBodies)", (players, bodies) => {
     expect(createGame({ mode: "system", playerCount: players }, "count").bodies).toHaveLength(
       bodies,
     );
   });
 
-  it("clamps the body count to 4–7", () => {
+  it("clamps the body count to the configured range", () => {
     expect(
       createGame({ mode: "system", playerCount: 4, rules: { systemExtraBodies: 9 } }, "x").bodies,
     ).toHaveLength(7);
     expect(
       createGame({ mode: "system", playerCount: 2, rules: { systemExtraBodies: 0 } }, "x").bodies,
-    ).toHaveLength(4);
+    ).toHaveLength(BASE_RULES.systemMinBodies);
     expect(() => createGame({ mode: "system", playerCount: 5 }, "x")).toThrow();
+    // Never zero neutral bodies: homes are placed by distance to the nearest one.
+    const tight = createGame(
+      { mode: "system", playerCount: 4, rules: { systemExtraBodies: 0, systemMinBodies: 3 } },
+      "x",
+    );
+    expect(tight.bodies).toHaveLength(5);
+    expect(tight.players).toHaveLength(4);
   });
 
   it.each(Array.from({ length: 12 }, (_, i) => `sys-${i}`))(
@@ -141,8 +150,9 @@ describe("SPEC §4.1–4.4 system generation", () => {
           core: true,
           connected: true,
           fruiting: null,
+          cut: 0,
         });
-        expect(p.nutrients).toBe(10);
+        expect(p.nutrients).toBe(BASE_RULES.startNutrients);
         const board = getBoard(home.radius);
         const near = board.cells
           .map((h, i) => ({ d: home.deposits[i], dist: hexDistance(h, { q: 0, r: 0 }) }))
@@ -398,7 +408,14 @@ describe("SPEC §5.1 Launch and §6 spores", () => {
                 ...b,
                 colony: b.colony.map((c, i) =>
                   i === getBoard(b.radius).indexOf(3, 0)
-                    ? { owner: 0, biomass: 2, core: false, connected: false, fruiting: null }
+                    ? {
+                        owner: 0,
+                        biomass: 2,
+                        core: false,
+                        connected: false,
+                        fruiting: null,
+                        cut: 0,
+                      }
                     : c,
                 ),
               }
@@ -469,7 +486,7 @@ describe("SPEC §5.1 Launch and §6 spores", () => {
               ...b,
               colony: b.colony.map((c, k) =>
                 k === i
-                  ? { owner: 1, biomass: 9, core: false, connected: true, fruiting: null }
+                  ? { owner: 1, biomass: 9, core: false, connected: true, fruiting: null, cut: 0 }
                   : c,
               ),
             }
@@ -595,13 +612,51 @@ describe("SPEC §4.3 body types", () => {
     expect(cellAt(r.state, 0, 0, 0)).toMatchObject({ core: true, biomass: 1 });
     expect(ofType(r.events, "Irradiated")).toHaveLength(1);
   });
+
+  it("Irradiated spares cells gained this turn once, so they can be thickened (DECISIONS)", () => {
+    const s = systemScenario({
+      bodies: [
+        {
+          orbit: { radius: 3, period: 360, phase: 0 },
+          type: "irradiated",
+          cells: [
+            { q: 0, r: 0, owner: 0, biomass: 5, core: true },
+            { q: 1, r: 0, owner: 0, biomass: 3 },
+          ],
+        },
+        {
+          orbit: { radius: 9, period: 360, phase: 0 },
+          cells: [{ q: 0, r: 0, owner: 1, biomass: 5, core: true }],
+        },
+      ],
+    });
+    const grow: Order = {
+      type: "grow",
+      body: 0,
+      path: [
+        { q: 1, r: 0 },
+        { q: 2, r: 0 },
+      ],
+    };
+    const t1 = resolveTurn(s, { 0: [grow] });
+    expect(cellAt(t1.state, 0, 2, 0)).toMatchObject({ owner: 0, biomass: 1 });
+    expect(ofType(t1.events, "Irradiated")).toEqual([]);
+    // Left thin, it burns at the end of the next turn; reinforced, it stays.
+    expect(cellAt(resolveTurn(t1.state, {}).state, 0, 2, 0)).toBeNull();
+    const kept = resolveTurn(t1.state, {
+      0: [{ type: "reinforce", body: 0, cell: { q: 2, r: 0 } }],
+    });
+    expect(cellAt(kept.state, 0, 2, 0)).toMatchObject({ biomass: 4 });
+  });
 });
 
 describe("SPEC §8 events", () => {
   it("a flare hits the sun-facing half of each body: −2 biomass, removed at 0, cores kept at ≥ 1", () => {
     // Body 0 sits at (3, 0): the star is to its −x side, so cells with 2q + r ≤ 0 face it.
+    // The spec's flare (M6 ships a gentler one, tested below; DECISIONS).
     const s = ABC(
       {
+        rules: { flareLoss: 2, flareMinBiomass: 0 },
         schedule: [
           { kind: "flare", turn: 0 },
           { kind: "flare", turn: 1 },
@@ -627,6 +682,19 @@ describe("SPEC §8 events", () => {
     expect(ofType(r.events, "FlareWarning")).toEqual([{ type: "FlareWarning", impactTurn: 1 }]);
     // Body 1 at (9, 0): its core at (0, 0) is on the boundary (dot = 0) and is hit too.
     expect(ofType(r.events, "FlareStruck").some((e) => e.cell.body === 1)).toBe(true);
+  });
+
+  it("the tuned flare weakens sun-facing cells by 1 but never below 1 (DECISIONS)", () => {
+    const s = ABC({ schedule: [{ kind: "flare", turn: 0 }] }, [
+      { q: -2, r: 0, owner: 0, biomass: 5 },
+      { q: -1, r: 0, owner: 0, biomass: 1 },
+    ]);
+    const r = resolveTurn(s, {});
+    expect(cellAt(r.state, 0, -2, 0)?.biomass).toBe(4);
+    expect(cellAt(r.state, 0, -1, 0)).toMatchObject({ biomass: 1 });
+    expect(ofType(r.events, "FlareStruck").some((e) => e.cell.q === -1 && e.cell.body === 0)).toBe(
+      false,
+    );
   });
 
   it("a comet is announced 2 turns ahead, seeds a yield-5 Organic deposit for 6 turns, then fades", () => {
@@ -704,5 +772,32 @@ describe("stored states from before M5", () => {
     );
     // Current states pass through unchanged.
     expect(upgradeState(fresh)).toEqual(fresh);
+  });
+});
+
+describe("stored states from before M6", () => {
+  it("keep their rules and gain no drafts", () => {
+    const fresh = createGame({ mode: "system", playerCount: 2 }, "upgrade-m6");
+    const old = JSON.parse(JSON.stringify(fresh)) as GameState;
+    const rules = old.rules as Partial<GameState["rules"]>;
+    delete rules.draftThresholds;
+    delete rules.draftOptions;
+    delete rules.mutationPool;
+    delete rules.mutations;
+    delete rules.flareMinBiomass;
+    delete rules.minDepositYield;
+    for (const p of old.players) {
+      delete (p as Partial<typeof p>).mutations;
+      delete (p as Partial<typeof p>).draft;
+      delete (p as Partial<typeof p>).draftsOffered;
+    }
+    const up = upgradeState(old);
+    expect(up.rules.draftThresholds).toEqual([]);
+    expect(up.rules.flareMinBiomass).toBe(0);
+    expect(up.rules.mutations).toEqual(BASE_RULES.mutations);
+    expect(up.players.every((p) => p.mutations.length === 0 && p.draft === null)).toBe(true);
+    let s = up;
+    for (let t = 0; t < 8; t++) s = resolveTurn(s, {}).state;
+    expect(s.players.every((p) => p.draft === null)).toBe(true);
   });
 });

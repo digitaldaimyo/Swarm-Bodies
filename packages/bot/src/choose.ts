@@ -11,7 +11,15 @@ import {
 } from "@swarm/sim";
 import { analyse } from "./analysis";
 import { generateCandidates, type Candidate } from "./candidates";
-import { NORMAL_WEIGHTS, PERSONALITIES, type BotWeights, type Personality } from "./weights";
+import { pickMutation, withPick } from "./drafts";
+import { hardPlan } from "./hard";
+import {
+  HARD_WEIGHTS,
+  NORMAL_WEIGHTS,
+  PERSONALITIES,
+  type BotWeights,
+  type Personality,
+} from "./weights";
 
 export type Difficulty = "easy" | "normal" | "hard";
 
@@ -35,26 +43,61 @@ export function chooseOrders(
 ): OrderSet {
   const me = state.players.find((p) => p.id === playerId);
   if (!me || me.eliminated || state.result) return [];
-  if (difficulty === "hard") {
-    // Hard (1-ply robustness check) ships in M6; until then it plays like Normal.
-    difficulty = "normal";
-  }
-  const rng = rngStream(seed, `bot:${playerId}:${state.turn}`);
   const weights =
-    options.weights ?? PERSONALITIES[options.personality ?? "balanced"] ?? NORMAL_WEIGHTS;
-  const easy = difficulty === "easy";
-  const ignoreThreats = easy && rng.int(2) === 0;
-
-  const analysis = analyse(state, playerId, weights);
-  const candidates = generateCandidates(analysis, { ignoreThreats, sever: !easy })
-    .filter((c) => c.value > 0)
-    .sort(byRatio);
-
-  const orders = select(state, playerId, candidates, easy ? rng : null);
+    options.weights ??
+    (options.personality
+      ? PERSONALITIES[options.personality]
+      : difficulty === "hard"
+        ? HARD_WEIGHTS
+        : NORMAL_WEIGHTS);
+  // A pending draft is picked first; the rest of the plan is made with the mutation in effect.
+  const pick = pickMutation(state, playerId);
+  const planState = withPick(state, playerId, pick);
+  const plan =
+    difficulty === "hard"
+      ? hardPlan(planState, playerId, seed, weights)
+      : greedyPlan(planState, playerId, difficulty, seed, weights);
+  const orders: Order[] = pick ? [{ type: "draft", mutation: pick }, ...plan] : plan;
   // Repair: never hand back a set the sim would reject.
   return validateOrderSet(state, playerId, orders).ok
     ? orders
     : filterOrderSet(state, playerId, orders).accepted.map((x) => x.order);
+}
+
+/**
+ * The utility planner (SPEC §13.2): Normal is greedy; Easy picks among the top three per slot,
+ * ignores threats half the time and never severs. `variant` reseeds the Easy randomness, which
+ * Hard uses to sample plausible alternatives.
+ */
+export function greedyPlan(
+  state: GameState,
+  playerId: PlayerId,
+  difficulty: "easy" | "normal",
+  seed: string,
+  weights: BotWeights,
+): Order[] {
+  const rng = rngStream(seed, `bot:${playerId}:${state.turn}`);
+  const easy = difficulty === "easy";
+  const ignoreThreats = easy && rng.int(2) === 0;
+  const analysis = analyse(state, playerId, weights);
+  // When nutrients outrun what 12 orders can spend, the order limit is the binding constraint:
+  // rank by value per order instead of value per N (SPEC §5.1 order limit).
+  const banked = state.players.find((p) => p.id === playerId)?.nutrients ?? 0;
+  const rich = banked >= state.rules.maxOrdersPerSet * RICH_N_PER_ORDER;
+  const candidates = generateCandidates(analysis, { ignoreThreats, sever: !easy })
+    .filter((c) => c.value > 0)
+    .sort(rich ? byValuePerOrder : byRatio);
+  return select(state, playerId, candidates, easy ? rng : null);
+}
+
+/** N per order above which a bot counts as rich (orders, not nutrients, limit it). */
+const RICH_N_PER_ORDER = 6;
+
+function byValuePerOrder(a: Candidate, b: Candidate): number {
+  const ra = a.value / Math.max(1, a.orders.length);
+  const rb = b.value / Math.max(1, b.orders.length);
+  if (ra !== rb) return rb - ra;
+  return byRatio(a, b);
 }
 
 function byRatio(a: Candidate, b: Candidate): number {

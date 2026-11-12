@@ -2,12 +2,26 @@
  * Headless batch runner (SPEC §12.4), two-player, on Single Rock or a generated system.
  *
  *   pnpm balance -- --games 200 [--players normal,random] [--seed prefix] [--strains a,b]
- *                   [--map singleRock|system] [--json]
+ *                   [--map singleRock|system] [--rules JSON] [--json]
+ *   pnpm balance -- --matrix --games 200 --map system [--gate] [--jobs 4] [--rules JSON]
+ *
+ * `--matrix` plays every pair of playable strains (Normal vs Normal) and checks the SPEC §12.4
+ * targets; `--gate` exits non-zero if any pair leaves 30–70% (the CI gate). `--jobs N` splits
+ * the pairs over N processes. `--rules` overrides tunables for experiments.
  *
  * Seats alternate every game so neither policy always moves as player 0. `--strains a,b` gives
  * side A strain a and side B strain b; each strain follows its side when seats swap.
  */
-import { STRAIN_IDS, type GameMode, type StrainId } from "@swarm/sim";
+import {
+  MUTATION_IDS,
+  STRAIN_IDS,
+  type GameMode,
+  type MutationId,
+  type Rules,
+  type StrainId,
+} from "@swarm/sim";
+import { execFile } from "node:child_process";
+import { checkTargets, formatMatrix, mergeMatrices, runMatrix, type MatrixReport } from "./matrix";
 import { isPolicyName, playGame, policyByName, type PlayedGame, type PolicyName } from "./play";
 
 interface Options {
@@ -17,6 +31,11 @@ interface Options {
   strains: [StrainId, StrainId];
   map: GameMode;
   json: boolean;
+  matrix: boolean;
+  gate: boolean;
+  jobs: number;
+  shard: { index: number; of: number } | null;
+  rules: Partial<Rules> | null;
 }
 
 export function parseArgs(argv: readonly string[]): Options {
@@ -27,6 +46,11 @@ export function parseArgs(argv: readonly string[]): Options {
     strains: ["base", "base"],
     map: "singleRock",
     json: false,
+    matrix: false,
+    gate: false,
+    jobs: 1,
+    shard: null,
+    rules: null,
   };
   const args = argv.filter((a) => a !== "--");
   for (let i = 0; i < args.length; i++) {
@@ -80,10 +104,35 @@ export function parseArgs(argv: readonly string[]): Options {
       case "--json":
         opts.json = true;
         break;
+      case "--matrix":
+        opts.matrix = true;
+        break;
+      case "--gate":
+        opts.gate = true;
+        break;
+      case "--jobs": {
+        const n = Number(value());
+        if (!Number.isInteger(n) || n < 1) throw new Error("--jobs must be a positive integer");
+        opts.jobs = n;
+        break;
+      }
+      case "--shard": {
+        const m = /^(\d+)\/(\d+)$/.exec(value());
+        if (!m || Number(m[1]) >= Number(m[2])) throw new Error("--shard takes k/n with k < n");
+        opts.shard = { index: Number(m[1]), of: Number(m[2]) };
+        break;
+      }
+      case "--rules": {
+        const v: unknown = JSON.parse(value());
+        if (typeof v !== "object" || v === null || Array.isArray(v))
+          throw new Error("--rules takes a JSON object of rule overrides");
+        opts.rules = v as Partial<Rules>;
+        break;
+      }
       case "--help":
       case "-h":
         console.log(
-          "Usage: pnpm balance -- --games N [--players a,b] [--seed PREFIX] [--strains a,b] [--map singleRock|system] [--json]",
+          "Usage: pnpm balance -- --games N [--players a,b] [--seed PREFIX] [--strains a,b] [--map singleRock|system] [--rules JSON] [--json]\n       pnpm balance -- --matrix --games N [--map system] [--gate] [--jobs N] [--rules JSON] [--json]",
         );
         process.exit(0);
         break;
@@ -113,6 +162,10 @@ export interface Report {
   rejectedOrders: number;
   /** Spore launches across all games (system maps only). */
   launches: number;
+  /** Per mutation: how often a player ended the game with it, and how often that player won. */
+  mutations: Record<MutationId, { picks: number; wins: number }>;
+  /** Mean dominance (per-mille) per side at each turn, over the games still running then. */
+  curves: [number[], number[]];
   errors: { seed: string; message: string }[];
 }
 
@@ -120,6 +173,8 @@ export function runBatch(
   opts: Pick<Options, "games" | "seed" | "players"> & {
     strains?: [StrainId, StrainId];
     map?: GameMode;
+    /** Rule overrides for tuning experiments (SPEC §12.4). */
+    rules?: Partial<Rules>;
   },
 ): Report {
   const strains = opts.strains ?? ["base", "base"];
@@ -141,8 +196,14 @@ export function runBatch(
     turnLimitBelow40Pct: 0,
     rejectedOrders: 0,
     launches: 0,
+    mutations: Object.fromEntries(
+      MUTATION_IDS.map((m) => [m, { picks: 0, wins: 0 }]),
+    ) as Report["mutations"],
+    curves: [[], []],
     errors: [],
   };
+  const curveSum: [number[], number[]] = [[], []];
+  const curveCount: number[] = [];
   let turnSum = 0;
   let finished = 0;
   for (let g = 0; g < opts.games; g++) {
@@ -154,7 +215,12 @@ export function runBatch(
     try {
       const seatStrains = sideOfSeat.map((side) => strains[side] as StrainId);
       game = playGame(
-        { mode: opts.map ?? "singleRock", playerCount: 2, strains: seatStrains },
+        {
+          mode: opts.map ?? "singleRock",
+          playerCount: 2,
+          strains: seatStrains,
+          ...(opts.rules ? { rules: opts.rules } : {}),
+        },
         seed,
         policies,
         (seat, ms) => {
@@ -183,6 +249,20 @@ export function runBatch(
       if (Math.max(...last) < 400) report.turnLimitBelow40Pct++;
     }
     report.rejectedOrders += game.rejected;
+    for (const p of game.final.players) {
+      for (const m of p.mutations) {
+        const stat = report.mutations[m];
+        stat.picks++;
+        if (result.winner === p.id) stat.wins++;
+      }
+    }
+    game.dominance.forEach((byPlayer, t) => {
+      curveCount[t] = (curveCount[t] ?? 0) + 1;
+      sideOfSeat.forEach((side, seat) => {
+        const curve = curveSum[side as 0 | 1];
+        curve[t] = (curve[t] ?? 0) + (byPlayer[seat] ?? 0);
+      });
+    });
     for (const t of game.turns) {
       for (const set of Object.values(t))
         report.launches += set.filter((o) => o.type === "launch").length;
@@ -194,13 +274,76 @@ export function runBatch(
         (timeCount[i] as number) === 0 ? 0 : (timeSum[i] as number) / (timeCount[i] as number)),
   );
   report.averageTurns = finished === 0 ? 0 : Math.round((turnSum / finished) * 10) / 10;
+  report.curves = curveSum.map((c) =>
+    c.map((v, t) => Math.round(v / Math.max(1, curveCount[t] ?? 1))),
+  ) as [number[], number[]];
   return report;
+}
+
+function matrixMain(opts: Options): void {
+  const started = performance.now();
+
+  if (opts.jobs > 1 && !opts.shard) {
+    // Fan the pairs out to child processes and merge their JSON reports.
+    const base = process.argv
+      .slice(2)
+      .filter((a, i, all) => a !== "--jobs" && all[i - 1] !== "--jobs");
+    const parts = Array.from({ length: opts.jobs }, (_, k) =>
+      execFileAsync(process.execPath, [
+        ...process.execArgv,
+        process.argv[1] as string,
+        ...base,
+        "--shard",
+        `${k}/${opts.jobs}`,
+        "--json",
+      ]),
+    );
+    void Promise.all(parts).then((outs) => {
+      finish(mergeMatrices(outs.map((o) => JSON.parse(o) as MatrixReport)));
+    });
+    return;
+  }
+  const report = runMatrix({
+    games: opts.games,
+    seed: opts.seed,
+    map: opts.map,
+    policy: opts.players[0],
+    ...(opts.rules ? { rules: opts.rules } : {}),
+    ...(opts.shard ? { shard: opts.shard } : {}),
+  });
+  finish(report);
+
+  function finish(m: MatrixReport): void {
+    if (opts.json) console.log(JSON.stringify(m));
+    else console.log(`${formatMatrix(m)}\n  ${Math.round(performance.now() - started)} ms`);
+    if (m.errors > 0) process.exitCode = 1;
+    if (opts.gate && !opts.shard && !checkTargets(m).gate.ok) {
+      console.error("Balance gate failed: a strain pair is outside 30–70%.");
+      process.exitCode = 1;
+    }
+  }
+}
+
+function execFileAsync(cmd: string, args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(cmd, args, { maxBuffer: 64 * 1024 * 1024 }, (err, stdout) =>
+      err ? reject(err) : resolve(stdout),
+    );
+  });
 }
 
 function main(): void {
   const opts = parseArgs(process.argv.slice(2));
+  if (opts.matrix) return matrixMain(opts);
   const started = performance.now();
-  const report = runBatch(opts);
+  const report = runBatch({
+    games: opts.games,
+    seed: opts.seed,
+    players: opts.players,
+    strains: opts.strains,
+    map: opts.map,
+    ...(opts.rules ? { rules: opts.rules } : {}),
+  });
   const ms = Math.round(performance.now() - started);
   if (opts.json) {
     console.log(JSON.stringify({ ...report, ms }, null, 2));

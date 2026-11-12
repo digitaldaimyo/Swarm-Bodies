@@ -10,6 +10,7 @@ import {
   type Order,
   type PlayerId,
 } from "@swarm/sim";
+import { mutationInfo } from "@swarm/content";
 
 /**
  * Turn replay (SPEC §10.5). The sim's ordered events are folded into a short sequence of
@@ -183,6 +184,7 @@ export function buildTimeline(
           core: false,
           connected: true,
           fruiting: null,
+          cut: 0,
         });
         break;
       }
@@ -211,6 +213,7 @@ export function buildTimeline(
           core: false,
           connected: true,
           fruiting: null,
+          cut: 0,
         });
         break;
       }
@@ -312,6 +315,7 @@ export function buildTimeline(
             core: true,
             connected: true,
             fruiting: null,
+            cut: 0,
           });
         }
         break;
@@ -334,6 +338,11 @@ export function buildTimeline(
           arrived: e.type === "CometArrived",
         });
         break;
+      case "Regenerated": {
+        const c = get(e.cell);
+        if (c) set(e.cell, { ...c, biomass: e.biomass });
+        break;
+      }
       case "Irradiated":
         open("events").effects.push({
           kind: "fade",
@@ -450,6 +459,22 @@ export function describeEvents(
       case "Income":
         if (e.player === viewer)
           out.push({ text: `+${e.amount} N income`, body: 0, cell: null, important: false });
+        break;
+      case "DraftPicked":
+        out.push({
+          text: `${who(e.player)} drafted ${mutationInfo(e.mutation).name}${e.auto ? " (assigned)" : ""}`,
+          body: 0,
+          cell: null,
+          important: true,
+        });
+        break;
+      case "DraftOffered":
+        if (e.player === viewer)
+          out.push({ text: "A mutation draft is waiting", body: 0, cell: null, important: true });
+        break;
+      case "CaptureFed":
+        if (e.player === viewer)
+          out.push({ text: `+${e.amount} N from a capture`, ...at, important: false });
         break;
       case "FruitMatured":
         if (e.player === viewer)

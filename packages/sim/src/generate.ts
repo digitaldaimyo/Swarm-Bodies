@@ -2,7 +2,8 @@ import { resolveRules, type BodySize, type BodyType, type DepositKind, type Rule
 import { refreshConnectivity } from "./connectivity";
 import { getBoard, hexDistance, HEX_DIRECTIONS, type Board, type Hex } from "./hex";
 import { idiv, permille } from "./math";
-import { distanceScaled } from "./orbit";
+import { distanceScaled, distanceSquared } from "./orbit";
+import { TRIG_SCALE } from "./trig";
 import { rngStream, type Rng } from "./rng";
 import type {
   Body,
@@ -119,6 +120,7 @@ function createSingleRock(config: GameConfig, rules: Rules, seed: string): GameS
       core: true,
       connected: true,
       fruiting: null,
+      cut: 0,
     };
     for (const a of adjacent0) {
       colony[idx(flip(a))] = {
@@ -127,6 +129,7 @@ function createSingleRock(config: GameConfig, rules: Rules, seed: string): GameS
         core: false,
         connected: true,
         fruiting: null,
+        cut: 0,
       };
     }
     players.push({
@@ -137,6 +140,9 @@ function createSingleRock(config: GameConfig, rules: Rules, seed: string): GameS
       eliminatedOnTurn: null,
       dominanceStreak: 0,
       home: { body: 0, cell: core },
+      mutations: [],
+      draft: null,
+      draftsOffered: 0,
     });
   }
 
@@ -245,31 +251,51 @@ function createSystem(config: GameConfig, rules: Rules, seed: string): GameState
     throw new Error(`A system supports 2–4 players, got ${players}`);
   }
   const rng = rngStream(seed, "system");
-  const count = Math.min(
-    rules.systemMaxBodies,
-    Math.max(rules.systemMinBodies, players + rules.systemExtraBodies),
+  // At least one neutral body: homes are placed by their distance to the nearest one.
+  const count = Math.max(
+    players + 1,
+    Math.min(
+      rules.systemMaxBodies,
+      Math.max(rules.systemMinBodies, players + rules.systemExtraBodies),
+    ),
   );
 
-  // Orbits: distinct radii, inner bodies first; wider orbits have longer periods.
-  const radii: number[] = [];
-  for (let r = rules.orbitRadiusMin; r <= rules.orbitRadiusMax; r++) radii.push(r);
-  const chosen = rng
-    .shuffle(radii)
-    .slice(0, count)
-    .sort((a, b) => a - b);
-  const orbits: Orbit[] = chosen.map((radius) => {
-    const span = rules.orbitPeriodMax - rules.orbitPeriodMin;
-    const base =
-      rules.orbitPeriodMin +
-      idiv((radius - rules.orbitRadiusMin) * span, rules.orbitRadiusMax - rules.orbitRadiusMin);
-    const period = Math.min(
-      rules.orbitPeriodMax,
-      Math.max(rules.orbitPeriodMin, base + rng.range(-1, 1)),
-    );
-    return { radius, period, phase: rng.int(360) };
-  });
-
-  const homes = chooseHomes(orbits, players);
+  // Orbits: distinct radii, inner bodies first; wider orbits have longer periods. Layouts are
+  // drawn until every home has early and regular launch windows to a neutral body (DECISIONS),
+  // keeping the best one if none qualifies.
+  const drawOrbits = (): Orbit[] => {
+    const radii: number[] = [];
+    for (let r = rules.orbitRadiusMin; r <= rules.orbitRadiusMax; r++) radii.push(r);
+    const chosen = rng
+      .shuffle(radii)
+      .slice(0, count)
+      .sort((a, b) => a - b);
+    return chosen.map((radius) => {
+      const span = rules.orbitPeriodMax - rules.orbitPeriodMin;
+      const base =
+        rules.orbitPeriodMin +
+        idiv((radius - rules.orbitRadiusMin) * span, rules.orbitRadiusMax - rules.orbitRadiusMin);
+      const period = Math.min(
+        rules.orbitPeriodMax,
+        Math.max(rules.orbitPeriodMin, base + rng.range(-1, 1)),
+      );
+      return { radius, period, phase: rng.int(360) };
+    });
+  };
+  let orbits: Orbit[] = [];
+  let homes: number[] = [];
+  let bestScore = -1;
+  for (let attempt = 0; attempt < rules.orbitAttempts; attempt++) {
+    const candidate = drawOrbits();
+    const candidateHomes = chooseHomes(candidate, players);
+    const { ok, score } = reachability(candidate, candidateHomes, rules);
+    if (score > bestScore) {
+      bestScore = score;
+      orbits = candidate;
+      homes = candidateHomes;
+    }
+    if (ok) break;
+  }
   const bodies: Body[] = orbits.map((orbit, id) => {
     const owner = homes.indexOf(id);
     const isHome = owner >= 0;
@@ -288,6 +314,9 @@ function createSystem(config: GameConfig, rules: Rules, seed: string): GameState
     eliminatedOnTurn: null,
     dominanceStreak: 0,
     home: { body: bodyId, cell: { q: 0, r: 0 } },
+    mutations: [],
+    draft: null,
+    draftsOffered: 0,
   }));
 
   return {
@@ -306,11 +335,40 @@ function createSystem(config: GameConfig, rules: Rules, seed: string): GameState
 }
 
 /**
- * Picks the home bodies so each player's distance (at turn 1) to its nearest neutral body is as
- * equal as possible (SPEC §4.1). Every combination is tried; ties go to the first found.
+ * How reachable the neutral bodies are from each home over the opening turns: a layout is
+ * acceptable when every home has a window to some neutral body by `homeFirstWindowMax` and on
+ * at least `homeWindowTurnsMin` of the first `windowHorizon` turns. The score is the worst
+ * home's window count, so the best fallback layout is the fairest one.
  */
-function chooseHomes(orbits: readonly Orbit[], players: number): number[] {
-  const probe = orbits.map((orbit, id): Body => ({
+function reachability(
+  orbits: readonly Orbit[],
+  homes: readonly number[],
+  rules: Rules,
+): { ok: boolean; score: number } {
+  const probe = orbits.map(probeBody);
+  const range = rules.launchRange * TRIG_SCALE;
+  let ok = true;
+  let worst = Infinity;
+  for (const h of homes) {
+    let first = Infinity;
+    let turns = 0;
+    for (let t = 1; t <= rules.windowHorizon; t++) {
+      const open = probe.some(
+        (b) => !homes.includes(b.id) && distanceSquared(probe[h] as Body, b, t) <= range * range,
+      );
+      if (open) {
+        turns++;
+        if (first === Infinity) first = t;
+      }
+    }
+    if (first > rules.homeFirstWindowMax || turns < rules.homeWindowTurnsMin) ok = false;
+    worst = Math.min(worst, turns);
+  }
+  return { ok, score: worst };
+}
+
+function probeBody(orbit: Orbit, id: number): Body {
+  return {
     id,
     size: "small",
     type: "carbonaceous",
@@ -321,7 +379,15 @@ function chooseHomes(orbits: readonly Orbit[], players: number): number[] {
     orbit,
     home: null,
     comets: [],
-  }));
+  };
+}
+
+/**
+ * Picks the home bodies so each player's distance (at turn 1) to its nearest neutral body is as
+ * equal as possible (SPEC §4.1). Every combination is tried; ties go to the first found.
+ */
+function chooseHomes(orbits: readonly Orbit[], players: number): number[] {
+  const probe = orbits.map(probeBody);
   let best: number[] = [];
   let bestSpread = Infinity;
   const pick = (start: number, chosen: number[]): void => {
@@ -388,6 +454,7 @@ function buildBody(
       core: true,
       connected: true,
       fruiting: null,
+      cut: 0,
     };
     for (const a of adjacent) {
       colony[idx(a)] = {
@@ -396,6 +463,7 @@ function buildBody(
         core: false,
         connected: true,
         fruiting: null,
+        cut: 0,
       };
     }
   }

@@ -3,8 +3,9 @@ import type { Difficulty } from "@swarm/bot";
 import type { Strain } from "@swarm/protocol";
 import { audio } from "../audio/sfx";
 import type { GameMode } from "@swarm/sim";
-import type { SkirmishSettings, SystemSize } from "../game/session";
-import { loadStrain, storeStrain, StrainPicker } from "./StrainPicker";
+import { neutralBodies, type SkirmishSettings, type SystemSize } from "../game/session";
+import { strainInfo } from "@swarm/content";
+import { loadStrain, storeStrain, STRAINS, StrainPicker } from "./StrainPicker";
 
 interface Props {
   defaultSeed: string;
@@ -13,9 +14,9 @@ interface Props {
 }
 
 const SIZES: { id: SystemSize; label: string }[] = [
-  { id: "compact", label: "Compact" },
   { id: "standard", label: "Standard" },
   { id: "wide", label: "Wide" },
+  { id: "vast", label: "Vast" },
 ];
 
 /** Skirmish setup (SPEC §10.1): bot count and difficulty, strains, system size and seed. */
@@ -24,6 +25,7 @@ export function Setup({ defaultSeed, onBack, onStart }: Props) {
   const [map, setMap] = useState<GameMode>("system");
   const [bots, setBots] = useState(1);
   const [size, setSize] = useState<SystemSize>("standard");
+  const neutral = neutralBodies(bots + 1, size);
   const [seed, setSeed] = useState(defaultSeed);
   const [strain, setStrain] = useState<Strain>(loadStrain);
   const [botStrain, setBotStrain] = useState<Strain>(() =>
@@ -68,7 +70,7 @@ export function Setup({ defaultSeed, onBack, onStart }: Props) {
           </div>
         )}
         <div class="segmented" role="radiogroup" aria-label="Bot difficulty">
-          {(["easy", "normal"] as const).map((d) => (
+          {(["easy", "normal", "hard"] as const).map((d) => (
             <button
               key={d}
               role="radio"
@@ -79,17 +81,19 @@ export function Setup({ defaultSeed, onBack, onStart }: Props) {
                 setDifficulty(d);
               }}
             >
-              {d === "easy" ? "Easy bot" : "Normal bot"}
+              {d === "easy" ? "Easy bot" : d === "normal" ? "Normal bot" : "Hard bot"}
             </button>
           ))}
         </div>
         <p class="hint">
           {difficulty === "easy"
             ? "Forgiving: it ignores threats half the time."
-            : "Plays greedily and cuts your supply lines."}
+            : difficulty === "normal"
+              ? "Plays greedily and cuts your supply lines."
+              : "Checks its plan against your likely replies before committing."}
         </p>
-        <div class="segmented" role="radiogroup" aria-label="Bot strain">
-          {(["swarmer", "biofilm"] as const).map((s) => (
+        <div class="segmented wrap" role="radiogroup" aria-label="Bot strain">
+          {STRAINS.map((s) => (
             <button
               key={s}
               role="radio"
@@ -97,8 +101,7 @@ export function Setup({ defaultSeed, onBack, onStart }: Props) {
               class={botStrain === s ? "seg active" : "seg"}
               onClick={() => setBotStrain(s)}
             >
-              {bots > 1 && map === "system" ? "Bots play" : "Bot plays"}{" "}
-              {s === "swarmer" ? "Swarmer" : "Biofilm"}
+              {bots > 1 && map === "system" ? "Bots play" : "Bot plays"} {strainInfo(s).name}
             </button>
           ))}
         </div>
@@ -137,9 +140,8 @@ export function Setup({ defaultSeed, onBack, onStart }: Props) {
               ))}
             </div>
             <p class="hint">
-              A home asteroid each plus{" "}
-              {size === "compact" ? "one" : size === "standard" ? "two" : "three"} neutral bod
-              {size === "compact" ? "y" : "ies"} in orbit. Grow, fruit and launch spores to spread.
+              A home asteroid each plus {neutral} neutral bod{neutral === 1 ? "y" : "ies"} in orbit.
+              Grow, fruit and launch spores to spread.
             </p>
           </>
         ) : (

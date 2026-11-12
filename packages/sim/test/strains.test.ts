@@ -1,8 +1,37 @@
 import { describe, expect, it } from "vitest";
-import { createGame, playerRules, resolveTurn, validateOrderSet } from "./sim";
+import { BASE_RULES, createGame, playerRules, resolveTurn, validateOrderSet } from "./sim";
 import { cellAt, grow, reinforce, scenario, type CellSpec } from "./helpers";
 
 const P1: CellSpec = { q: -8, r: 0, owner: 1, biomass: 5, core: true };
+
+/**
+ * These tests exercise the strain modifiers with the SPEC §7.1 launch values. M6 balance tuned
+ * the shipped numbers (DECISIONS); "the tuned defaults" below pins those.
+ */
+const LAUNCH_RULES = {
+  strains: {
+    ...BASE_RULES.strains,
+    swarmer: { growReach: 4, entryCostDelta: -1, maxBiomass: 7 },
+    biofilm: { growReach: 2, maxBiomass: 12, defenseSupport: 2, reinforceAmount: 4 },
+  },
+};
+
+describe("M6 tuned strain defaults (DECISIONS)", () => {
+  it("ships the balanced numbers", () => {
+    const s = scenario({ cells: [P1], strains: ["swarmer", "biofilm"] });
+    expect(playerRules(s, 0)).toMatchObject({ growReach: 4, entryCostDelta: 0, maxBiomass: 7 });
+    expect(playerRules(s, 1)).toMatchObject({
+      growReach: 2,
+      maxBiomass: 12,
+      defenseSupport: 1,
+      reinforceAmount: 4,
+      fruitCost: 14,
+    });
+    const t = scenario({ cells: [P1], strains: ["predator", "sporer"] });
+    expect(playerRules(t, 0)).toMatchObject({ growReach: 4, assaultBonus: 1, captureFeeds: true });
+    expect(playerRules(t, 1)).toMatchObject({ fruitCost: 7, fruitMatureTurns: 1, maxFruiting: 3 });
+  });
+});
 
 describe("SPEC §7.1 strains", () => {
   it("createGame assigns strains by seat", () => {
@@ -17,7 +46,11 @@ describe("SPEC §7.1 strains", () => {
   });
 
   it("resolves per-player rules", () => {
-    const s = scenario({ cells: [P1], strains: ["swarmer", "biofilm"] });
+    const s = scenario({
+      rules: LAUNCH_RULES,
+      cells: [P1],
+      strains: ["swarmer", "biofilm"],
+    });
     expect(playerRules(s, 0)).toMatchObject({
       growReach: 4,
       entryCostDelta: -1,
@@ -36,6 +69,7 @@ describe("SPEC §7.1 strains", () => {
   describe("Swarmer: reach 4, entry cost −1, max biomass 7", () => {
     const s = () =>
       scenario({
+        rules: LAUNCH_RULES,
         cells: [
           { q: 0, r: 0, owner: 0, biomass: 5, core: true },
           { q: 1, r: 0, owner: 0, biomass: 6 },
@@ -60,6 +94,7 @@ describe("SPEC §7.1 strains", () => {
         reason: "atMaxBiomass",
       });
       const cap = scenario({
+        rules: LAUNCH_RULES,
         cells: [
           { q: 0, r: 0, owner: 0, biomass: 9, core: true },
           { q: 1, r: 0, owner: 1, biomass: 1 },
@@ -77,6 +112,7 @@ describe("SPEC §7.1 strains", () => {
   describe("Biofilm: reach 2, max biomass 12, support 2, reinforce +4", () => {
     it("limits reach to 2", () => {
       const s = scenario({
+        rules: LAUNCH_RULES,
         cells: [{ q: 0, r: 0, owner: 0, biomass: 5, core: true }, P1],
         strains: ["biofilm", "base"],
       });
@@ -87,6 +123,7 @@ describe("SPEC §7.1 strains", () => {
     });
     it("reinforces by 4 up to 12 (cores up to 15)", () => {
       const s = scenario({
+        rules: LAUNCH_RULES,
         cells: [
           { q: 0, r: 0, owner: 0, biomass: 12, core: true },
           { q: 1, r: 0, owner: 0, biomass: 9 },
@@ -105,13 +142,26 @@ describe("SPEC §7.1 strains", () => {
         { q: 2, r: 0, owner: 1, biomass: 2 },
         { q: 3, r: 0, owner: 1, biomass: 5, core: true },
       ];
-      const base = resolveTurn(scenario({ cells }), { 0: [grow([1, 0], [2, 0])] });
+      const base = resolveTurn(
+        scenario({
+          rules: LAUNCH_RULES,
+          cells,
+        }),
+        { 0: [grow([1, 0], [2, 0])] },
+      );
       expect(base.events).toContainEqual(
         expect.objectContaining({ type: "CellCaptured", attack: 6, defense: 3 }),
       );
-      const film = resolveTurn(scenario({ cells, strains: ["base", "biofilm"] }), {
-        0: [grow([1, 0], [2, 0])],
-      });
+      const film = resolveTurn(
+        scenario({
+          rules: LAUNCH_RULES,
+          cells,
+          strains: ["base", "biofilm"],
+        }),
+        {
+          0: [grow([1, 0], [2, 0])],
+        },
+      );
       expect(film.events).toContainEqual(
         expect.objectContaining({ type: "CellCaptured", attack: 6, defense: 4 }),
       );

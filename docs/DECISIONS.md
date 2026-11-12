@@ -107,3 +107,61 @@ Rulings on ambiguous or unspecified points in `docs/SPEC.md`, as CLAUDE.md requi
 61. **Skirmish options (§10.1).** "System size" maps to `systemExtraBodies` (compact 1, standard 2, wide 3), within the 4–7 clamp. All bots play the chosen bot strain. Saved skirmishes from earlier versions load as 1-bot Single Rock games.
 62. **System view rendering.** The System view is drawn in screen space in Pixi, in the same canvas as the Body view, so there is no second WebGL context. Only one of the two is visible at a time. The body strip and forecast are DOM. Pinching out (or scrolling out on desktop) past the whole body opens the System view.
 63. **Body art seeds.** Each body's art is seeded with `seed:bodyId`, so bodies in one system differ. This changed Single Rock's look, but not its rules.
+
+## 2026-11-12 — M6 strains, mutations, and balance
+
+64. **Mutations as data plus hooks (§7.3).** `mutations.ts` declares each mutation. Static changes (`adjust`) are applied to the player's rules after the strain. Per-contest hooks (`attack`, `defense`, `entryCost`, `reach`) run against the board being judged. Both run in mutation-ID order. Validation, the resolver, the bot and the client all use the same helpers from `rules.ts` (`attackOn`, `defenseOf`, `entryCost`, `reachFor`, `cellYield`, `incomeFor`), so a new mutation never touches the resolver.
+65. **Drafts (§7.2).**
+    - Thresholds are on total biomass across all cells, and each is offered once.
+    - Only one offer is pending at a time; a later threshold waits for the pick.
+    - A Draft order must be the first order of a set. Later orders are validated with the mutation already in effect.
+    - Without a valid pick (none, or a rejected one), the first option is assigned in phase 1, and the turn's orders are judged with it.
+    - Offers come from `draft:<player>:<index>`. That makes offers seat-dependent, so the mirror property test runs with drafts off.
+66. **Mutation details.**
+    - **Quorum:** the attack bonus is judged on the feeder cell; the defense bonus on the defended cell.
+    - **Thick Veins:** applies to any cell next to an own core.
+    - **Chemotaxis:** the reach bonus applies when the path's last cell is a deposit.
+    - **Deep Reserves:** interest is paid on the N held at the income phase, after the turn's costs.
+    - **Regeneration:** runs in phase 10, after income.
+    - **Dormancy:** counts consecutive disconnected turns in `Colony.cut`, which resets on reconnection.
+    - **Radiation Shielding:** covers both flares and the Irradiated rule.
+67. **Predator feeding (§7.1).** A capture pays the defender's biomass in N at once, whether it comes from growth or from a spore landing.
+68. **Launch windows guaranteed (§4.1, §4.5).**
+    - **Reachability:** generation draws up to `orbitAttempts` (32) orbit layouts from the `system` stream. It keeps the first in which every home has a window to a neutral body by turn 4, and on at least 8 of the first 20 turns. If none qualifies, it keeps the fairest layout.
+    - **Why:** before this, 38% of body pairs never came into range in 40 turns.
+    - **Minimum bodies:** a system always has at least one neutral body. Home placement needs one; without it, the generated state had no players.
+69. **Irradiated grace (§4.3).** New cells start at biomass 1, so "remove every biomass-1 cell" made Irradiated bodies impossible to grow on. Cells gained this turn (claimed, captured or landed) are spared once; reinforce them next turn or they burn.
+70. **How balance is measured (§12.4).** The measure is 2-player star systems, Normal against Normal, with seats alternating and draws counting half. `pnpm balance -- --matrix` runs every pair of playable strains. "Pick win rate" means how often a player holding the mutation at the end of the game won. Targets are judged on 960-game matrices (160 games a pair). One-pair noise is about ±4%, and a second seed set shifts single pairs by up to about 10 points.
+71. **Tuned numbers (§3, §4.1, §7.1, §7.3, §8).** These change values the spec states; they are all in `config.ts`. **Flagged for the user's review**, since several are spec table values.
+    - Dominance to win: 60% → **50%**. With two even colonies the front lines lock, and 60% was rarely reached (§17 asks the same question).
+    - Starting nutrients: 10 → **20**.
+    - Bodies: `players + 2`, min 4 → **`players + 1`, min 3**. With two neutrals, each player took one and never met. One shared neutral body creates the contested hotspot.
+    - Solar flares: −2 and removed at 0 → **−1, never below 1** (cores already were). They erased half of every thin colony and drove most stalls.
+    - Swarmer: loses **Entry cost −1 N** (it won 70–85% of pairs with it).
+    - Biofilm: defensive support 2 → **1**, and **Fruit costs 14 N** (reach 2, max 12 and reinforce +4 kept).
+    - Predator: gains **Grow reach 4**.
+    - Sporer: Fruit **7 N** (was 6).
+    - Acid Tendrils: +2 → **+1**. Dormant Cells: 3 → **5** turns.
+    - Regeneration: "even turns, below 3" → **every 3 turns, below 2**.
+    - Result on the default CI seeds, 960 games: pairs 42.5–56.3%, average length 24.2 turns, 0.8% stalls, top mutation pick win rate 57.1%.
+72. **Bot changes found while balancing.**
+    - **Fruiting:** the bot fruits for windows up to 12 turns ahead, discounted 10% a turn. Before, it fruited only for windows within 6 turns, so bots hoarded over 1,000 N with nothing to do.
+    - **Rich mode:** when its N outruns what 12 orders can spend, it ranks by value per order.
+    - **Irradiated bodies:** it reinforces its thin cells on Irradiated bodies.
+73. **Hard (§13.2).**
+    - **Weights:** Normal's, sharper on threats, captures, cuts and core kills. These were found by self-play and win about 61% against Normal on their own.
+    - **Robustness check:** 4–6 alternative plans are each resolved against 8 opponent samples made with the Normal policy. With several opponents, each has 4 replies and the 8 samples mix them, to stay within the time budget.
+    - **Veto:** the check only vetoes. An alternative replaces the plan only if its worst sampled case is at least 12 points better and its average no worse. A free choice by a one-turn evaluation did worse than Normal.
+    - **Evaluation:** it values launchers and spores in flight; without that it read Fruit as lost N.
+    - **Results:** Hard beats Normal 85% on Single Rock and 60% on systems. It takes about 55 ms a turn mean here (max about 200 ms on 4-player systems).
+74. **CI gate.** `pnpm balance -- --matrix --games 200 --map system --gate --jobs 4` fails if any pair leaves 30–70%. Seeds are fixed, so the gate is deterministic and only moves when code changes. The §12.4 targets themselves are verified on the 960-game runs recorded in PROGRESS.
+75. **Stored rules from before M6.** `upgradeState` fills rule fields added in M6 with today's defaults, except that old games get no drafts and keep the spec's flares, so they play on as they started.
+76. **Mutation glyphs** are text characters, so the HUD needs no bitmap icons (CLAUDE.md).
+77. **Skirmish sizes** are Standard (the tuned default), Wide and Vast: +0, +1 and +2 bodies over it. M5 saves that say "compact" load as Standard.
+78. **Perf measurement on starved CI hosts (PR #6 CI, refines #33).**
+    - **What happened:** one Chromium run drew 4.7 fps where its retry drew 18.7. The replay sample, a fixed 2.5 s window, then held 12 frames, 4–6 of them board swaps, so the "typical frame" median landed on a swap (7.2 ms against 5 ms).
+    - **Swap frames excluded:** the replay statistic now leaves out frames in which a board swap ran (the view counts swaps); swaps are timed on their own.
+    - **Whole replays:** the sample runs to the end of each replay instead of a fixed window.
+    - **Best of several:** idle and view windows are best of 3, replays best of 2, and swap timing is the second-fastest of 9. Contention only ever adds time, so the best measurement estimates the work, while a real regression slows every run.
+    - **Verification:** the tests pass three times without retries with four busy loops on a 4-core host, and an injected 10 ms swap regression still fails (15.1 ms against 11.7). Budgets are unchanged.
+79. **e2e hook `stopAtDraft`.** The scripted player stops by itself when a draft is pending for the viewer. Before, the draft test turned autoplay off after seeing the turn change. On a slower engine (WebKit on CI) the scripted player had already planned the next turn by then, and took draft 1 with it. This is reproduced in Chromium by slowing the test's polling.
