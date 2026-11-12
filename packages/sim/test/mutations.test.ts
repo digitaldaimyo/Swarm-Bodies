@@ -236,11 +236,11 @@ describe("SPEC §7.3 mutations", () => {
     expect(cellAt(resolveTurn(s, {}).state, 1, 0)).toMatchObject({ biomass: 2, cut: 0 });
   });
 
-  it("hardened_spores: landing biomass +2; rapid_fruiting: 1 turn faster, minimum 1", () => {
+  it("hardened_spores: landing biomass +1; rapid_fruiting: 1 turn faster, minimum 1", () => {
     const s = sporerSystem(["base", "sporer"]);
     s.players[0]!.mutations = ["hardened_spores", "rapid_fruiting"];
     s.players[1]!.mutations = ["rapid_fruiting"];
-    expect(playerRules(s, 0)).toMatchObject({ landingBiomass: 5, fruitMatureTurns: 1 });
+    expect(playerRules(s, 0)).toMatchObject({ landingBiomass: 4, fruitMatureTurns: 1 });
     expect(playerRules(s, 1)).toMatchObject({ landingBiomass: 2, fruitMatureTurns: 1 });
   });
 

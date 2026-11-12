@@ -283,7 +283,7 @@ function createSystem(config: GameConfig, rules: Rules, seed: string): GameState
   };
   let orbits: Orbit[] = [];
   let homes: number[] = [];
-  let bestScore = -1;
+  let bestScore = -Infinity;
   for (let attempt = 0; attempt < rules.orbitAttempts; attempt++) {
     const candidate = drawOrbits();
     const candidateHomes = chooseHomes(candidate, players);
@@ -348,6 +348,7 @@ function reachability(
   const range = rules.launchRange * TRIG_SCALE;
   let ok = true;
   let worst = Infinity;
+  let latest = 0;
   for (const h of homes) {
     let first = Infinity;
     let turns = 0;
@@ -367,8 +368,10 @@ function reachability(
     }
     if (first > rules.homeFirstWindowMax || turns < rules.homeWindowTurnsMin) ok = false;
     worst = Math.min(worst, turns);
+    latest = Math.max(latest, first);
   }
-  return { ok, score: worst };
+  // Fairest fallback first: the home that waits longest for a window, then the scarcest windows.
+  return { ok, score: -Math.min(latest, rules.windowHorizon + 1) * 100 + worst };
 }
 
 function probeBody(orbit: Orbit, id: number): Body {

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ALL_MUTATIONS, mutationInfo, strainInfo } from "../src/index";
 
 describe("strain content", () => {
-  it("describes the strains from the sim's (M6-tuned) numbers (SPEC §7.1)", () => {
+  it("describes the strains from the sim's (tuned) numbers (SPEC §7.1)", () => {
     expect(strainInfo("swarmer")).toEqual({
       id: "swarmer",
       name: "Swarmer",
@@ -11,7 +11,7 @@ describe("strain content", () => {
     });
     expect(strainInfo("biofilm").rules).toEqual([
       "Grow reach 2",
-      "Max biomass 12",
+      "Max biomass 11",
       "Reinforce adds +4",
       "Fruit costs 14 N",
     ]);
@@ -28,7 +28,7 @@ describe("M6 content", () => {
       "Deposit yields −1 (min 1)",
     ]);
     expect(strainInfo("sporer").rules).toEqual([
-      "Fruit costs 7 N",
+      "Fruit costs 9 N",
       "Matures in 1 turn",
       "Max 3 fruiting bodies",
       "Launch range +2",
