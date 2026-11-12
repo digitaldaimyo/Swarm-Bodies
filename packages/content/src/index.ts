@@ -47,3 +47,4 @@ export {
 } from "./progress";
 export { COSMETICS, cosmetic, type Cosmetic, type CosmeticKind } from "./cosmetics";
 export { dailyDate, dailyScore, dailySetup, isDailyDate, type DailySetup } from "./daily";
+export { COMBAT_RULE, GUIDE, type GuideSection } from "./guide";

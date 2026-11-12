@@ -9,6 +9,7 @@ import {
   type Rules,
   type StrainId,
 } from "@swarm/sim";
+import { COMBAT_RULE } from "./guide";
 import { MODIFIERS, type ModifierId } from "./modifiers";
 import type { GameSummary } from "./summary";
 
@@ -146,6 +147,17 @@ export const CAMPAIGN: readonly CampaignNode[] = [
       {
         text: "Deposits pay income every turn while connected to a core. Spread to them and hold more than half the rock to win.",
         until: { kind: "next" },
+      },
+      // Combat, the first time the colonies meet (players hit it here, before node 2 teaches it).
+      {
+        text: "Your colony touches the enemy's. Drag into one of their cells to assault it: the label shows attack vs defense, and green means you will capture it.",
+        until: { kind: "next" },
+        when: { kind: "contact" },
+      },
+      {
+        text: `Attack is ${COMBAT_RULE.attack}. Defense is ${COMBAT_RULE.defense}. Thick cells win: Reinforce before you push. Codex › How to play has all the rules.`,
+        until: { kind: "next" },
+        when: { kind: "contact" },
       },
     ],
   },
