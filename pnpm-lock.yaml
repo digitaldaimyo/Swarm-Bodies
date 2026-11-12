@@ -85,6 +85,12 @@ importers:
         specifier: workspace:*
         version: link:../sim
 
+  packages/content:
+    dependencies:
+      '@swarm/sim':
+        specifier: workspace:*
+        version: link:../sim
+
   packages/sim: {}
 
   tools/balance:
