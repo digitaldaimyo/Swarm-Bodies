@@ -1,17 +1,9 @@
 import type { Difficulty } from "@swarm/bot";
-import {
-  createGame,
-  dominancePermille,
-  playerTotals,
-  resolveTurn,
-  type GameEvent,
-  type GameState,
-  type Order,
-  type OrderSet,
-  type PlayerId,
-} from "@swarm/sim";
+import { createGame, type Order, type OrderSet, type PlayerId, type StrainId } from "@swarm/sim";
 import type { BotRunner } from "./bot-client";
-import { Planner } from "./planner";
+import { SessionBase, type MatchSession, type SeatStatus } from "./match-session";
+
+export { matchSummary, type TurnRecord, type TurnStats } from "./match-session";
 
 export const HUMAN: PlayerId = 0;
 export const BOT: PlayerId = 1;
@@ -19,25 +11,14 @@ export const BOT: PlayerId = 1;
 export interface SkirmishSettings {
   seed: string;
   difficulty: Difficulty;
-}
-
-export interface TurnRecord {
-  before: GameState;
-  after: GameState;
-  orders: Record<PlayerId, OrderSet>;
-  events: GameEvent[];
-}
-
-export interface TurnStats {
-  turn: number;
-  dominance: number[];
-  cells: number[];
-  biomass: number[];
+  /** Your strain and the bot's (SPEC §7.1). */
+  strain: Exclude<StrainId, "base">;
+  botStrain: Exclude<StrainId, "base">;
 }
 
 /** The saved form of a skirmish: the seed plus every turn's orders (SPEC §9.4: reconstructable). */
 export interface SavedSkirmish {
-  version: 1;
+  version: 2;
   settings: SkirmishSettings;
   turns: Record<PlayerId, OrderSet>[];
   draft: Order[];
@@ -47,45 +28,71 @@ export interface SavedSkirmish {
  * One offline skirmish against the bot (SPEC §3, §9.5). The bot plans in its worker as soon as
  * a turn starts; its orders stay sealed until the human submits.
  */
-export class SkirmishSession {
-  state: GameState;
-  planner: Planner;
-  readonly history: TurnRecord[] = [];
-  readonly stats: TurnStats[] = [];
+export class SkirmishSession extends SessionBase implements MatchSession {
+  readonly kind = "skirmish" as const;
+  readonly deadline = null;
+  readonly turnSeconds = null;
   private botOrders: Promise<OrderSet> | null = null;
   botReady = false;
-  private listeners = new Set<() => void>();
+  private resolving = false;
 
   constructor(
     readonly settings: SkirmishSettings,
     private readonly bot: BotRunner,
+    startBot = true,
   ) {
-    this.state = createGame({ mode: "singleRock", playerCount: 2 }, settings.seed);
-    this.planner = new Planner(this.state, HUMAN);
-    this.recordStats();
-    this.startBot();
+    super(
+      createGame(
+        { mode: "singleRock", playerCount: 2, strains: [settings.strain, settings.botStrain] },
+        settings.seed,
+      ),
+      HUMAN,
+    );
+    if (startBot) this.startBot();
   }
 
   /** Rebuilds a saved skirmish by replaying its orders through the sim. */
   static restore(saved: SavedSkirmish, bot: BotRunner): SkirmishSession {
-    const s = new SkirmishSession(saved.settings, bot);
-    for (const orders of saved.turns) s.apply(orders);
+    const s = new SkirmishSession(saved.settings, bot, false);
+    for (const orders of saved.turns) s.applyTurn(orders);
     for (const o of saved.draft) s.planner.add(o);
     s.startBot();
     return s;
   }
 
-  onChange(fn: () => void): () => void {
-    this.listeners.add(fn);
-    return () => this.listeners.delete(fn);
+  get description(): string {
+    return `${this.settings.difficulty === "easy" ? "Easy" : "Normal"} bot · seed ${this.settings.seed}`;
   }
 
-  notify(): void {
-    for (const fn of this.listeners) fn();
+  get submitted(): boolean {
+    return this.resolving;
   }
 
-  get finished(): boolean {
-    return this.state.result !== null;
+  name(seat: PlayerId): string {
+    return seat === HUMAN ? "You" : "Bot";
+  }
+
+  seats(): SeatStatus[] {
+    return this.state.players.map((p) => ({
+      seat: p.id,
+      name: this.name(p.id),
+      strain: p.strain,
+      you: p.id === HUMAN,
+      ready: p.id === HUMAN ? this.resolving : this.botReady,
+      thinking: p.id === BOT && !this.botReady,
+      botControlled: false,
+      connected: true,
+    }));
+  }
+
+  canUnsubmit(): boolean {
+    return false;
+  }
+
+  unsubmit(): void {}
+
+  saveDraft(): void {
+    // Skirmish drafts are saved with the game (see storage.ts).
   }
 
   private startBot(): void {
@@ -107,66 +114,42 @@ export class SkirmishSession {
     });
   }
 
-  /** Submits the human's planned orders, resolves the turn, and returns the record for replay. */
-  async submit(): Promise<TurnRecord> {
-    if (this.finished || !this.botOrders) throw new Error("No turn to submit");
-    const bot = await this.botOrders;
-    const record = this.apply({ [HUMAN]: this.planner.orders, [BOT]: bot });
-    this.startBot();
+  /** Resolves as soon as the bot's sealed orders are ready, then emits the turn. */
+  submit(): void {
+    if (this.finished || !this.botOrders || this.resolving) return;
+    this.resolving = true;
     this.notify();
-    return record;
+    void this.botOrders.then((bot) => {
+      const record = this.applyTurn({ [HUMAN]: this.planner.orders, [BOT]: bot });
+      this.resolving = false;
+      this.startBot();
+      this.emitTurn(record);
+      this.notify();
+    });
   }
 
-  private apply(orders: Record<PlayerId, OrderSet>): TurnRecord {
-    const before = this.state;
-    const { state, events } = resolveTurn(before, orders);
-    const record = { before, after: state, orders, events };
-    this.history.push(record);
-    this.state = state;
-    this.planner = new Planner(state, HUMAN);
-    this.recordStats();
-    return record;
-  }
-
-  private recordStats(): void {
-    const totals = playerTotals(this.state);
-    const ids = this.state.players.map((p) => p.id);
-    this.stats.push({
-      turn: this.state.turn - 1,
-      dominance: ids.map((id) => dominancePermille(this.state, id)),
-      cells: ids.map((id) => totals.get(id)?.cells ?? 0),
-      biomass: ids.map((id) => totals.get(id)?.biomass ?? 0),
+  /** Resolves one turn and waits for it (tests, and the e2e scripted player). */
+  async submitAndWait(): Promise<void> {
+    await new Promise<void>((resolve) => {
+      const off = this.onTurn(() => {
+        off();
+        resolve();
+      });
+      this.submit();
     });
   }
 
   save(): SavedSkirmish {
     return {
-      version: 1,
+      version: 2,
       settings: this.settings,
       turns: this.history.map((h) => h.orders),
       draft: this.planner.orders,
     };
   }
 
-  dispose(): void {
+  override dispose(): void {
     this.bot.dispose();
-    this.listeners.clear();
+    super.dispose();
   }
-}
-
-/** Per-player event counts for the results screen. */
-export function matchSummary(history: readonly TurnRecord[], player: PlayerId) {
-  let captures = 0;
-  let lost = 0;
-  let stalemates = 0;
-  let grown = 0;
-  for (const h of history) {
-    for (const e of h.events) {
-      if (e.type === "CellCaptured" && e.player === player) captures++;
-      if (e.type === "CellCaptured" && e.from === player) lost++;
-      if (e.type === "CellClaimed" && e.player === player) grown++;
-      if (e.type === "CellStalemate" && e.players.includes(player)) stalemates++;
-    }
-  }
-  return { captures, lost, stalemates, grown };
 }

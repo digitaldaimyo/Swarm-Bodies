@@ -218,6 +218,7 @@ export const ReplayResponseSchema = z.object({
 });
 export type ReplayResponse = z.infer<typeof ReplayResponseSchema>;
 export const ErrorResponseSchema = z.object({ code: z.string(), message: z.string() });
+export const OkResponseSchema = z.object({ ok: z.literal(true) });
 
 /** Orders arrive keyed by seat as strings (JSON); the sim wants numeric player ids. */
 export function ordersBySeat(record: Record<string, Order[]>): Record<number, Order[]> {

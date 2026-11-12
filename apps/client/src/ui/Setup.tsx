@@ -1,17 +1,23 @@
 import { useState } from "preact/hooks";
 import type { Difficulty } from "@swarm/bot";
+import type { Strain } from "@swarm/protocol";
 import { audio } from "../audio/sfx";
+import { loadStrain, storeStrain, StrainPicker } from "./StrainPicker";
 
 interface Props {
   defaultSeed: string;
   onBack(): void;
-  onStart(seed: string, difficulty: Difficulty): void;
+  onStart(seed: string, difficulty: Difficulty, strain: Strain, botStrain: Strain): void;
 }
 
-/** Skirmish setup (SPEC §10.1). Single Rock and the base strain are the only options until M4/M5. */
+/** Skirmish setup (SPEC §10.1): bot difficulty, strains and seed. Single Rock until M5. */
 export function Setup({ defaultSeed, onBack, onStart }: Props) {
   const [difficulty, setDifficulty] = useState<Difficulty>("easy");
   const [seed, setSeed] = useState(defaultSeed);
+  const [strain, setStrain] = useState<Strain>(loadStrain);
+  const [botStrain, setBotStrain] = useState<Strain>(() =>
+    loadStrain() === "swarmer" ? "biofilm" : "swarmer",
+  );
   return (
     <main class="panel-screen">
       <header class="screen-header">
@@ -20,6 +26,16 @@ export function Setup({ defaultSeed, onBack, onStart }: Props) {
         </button>
         <h2>Skirmish</h2>
       </header>
+      <section class="card">
+        <h3>Your strain</h3>
+        <StrainPicker
+          value={strain}
+          onChange={(s) => {
+            setStrain(s);
+            storeStrain(s);
+          }}
+        />
+      </section>
       <section class="card">
         <h3>Opponent</h3>
         <div class="segmented" role="radiogroup" aria-label="Bot difficulty">
@@ -43,14 +59,24 @@ export function Setup({ defaultSeed, onBack, onStart }: Props) {
             ? "Forgiving: it ignores threats half the time."
             : "Plays greedily and cuts your supply lines."}
         </p>
+        <div class="segmented" role="radiogroup" aria-label="Bot strain">
+          {(["swarmer", "biofilm"] as const).map((s) => (
+            <button
+              key={s}
+              role="radio"
+              aria-checked={botStrain === s}
+              class={botStrain === s ? "seg active" : "seg"}
+              onClick={() => setBotStrain(s)}
+            >
+              Bot plays {s === "swarmer" ? "Swarmer" : "Biofilm"}
+            </button>
+          ))}
+        </div>
       </section>
       <section class="card">
         <h3>System</h3>
         <p class="option-fixed">
           <strong>Single Rock</strong>: one large asteroid, two colonies on opposite edges.
-        </p>
-        <p class="option-fixed">
-          <strong>Strain</strong>: base rules (strains arrive with online play).
         </p>
         <label class="field">
           <span>Seed</span>
@@ -66,7 +92,7 @@ export function Setup({ defaultSeed, onBack, onStart }: Props) {
         class="btn btn-primary btn-wide"
         onClick={() => {
           audio.click();
-          onStart(seed.trim() || defaultSeed, difficulty);
+          onStart(seed.trim() || defaultSeed, difficulty, strain, botStrain);
         }}
       >
         Start

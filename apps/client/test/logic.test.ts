@@ -168,7 +168,10 @@ describe("replay timeline (SPEC §10.5)", () => {
 
 describe("skirmish session", () => {
   it("plays a turn, records history, and restores from seed + orders", async () => {
-    const a = new SkirmishSession({ seed: "sess", difficulty: "easy" }, syncBot);
+    const a = new SkirmishSession(
+      { seed: "sess", difficulty: "easy", strain: "swarmer", botStrain: "biofilm" },
+      syncBot,
+    );
     const start = a.state.players[0]!.home.cell;
     const legal = a.planner.add({
       type: "grow",
@@ -176,8 +179,8 @@ describe("skirmish session", () => {
       path: [start, { q: start.q - 1, r: start.r }],
     });
     if (!legal.ok) a.planner.clear();
-    await a.submit();
-    await a.submit();
+    await a.submitAndWait();
+    await a.submitAndWait();
     expect(a.history).toHaveLength(2);
     expect(a.state.turn).toBe(3);
     const saved: SavedSkirmish = JSON.parse(JSON.stringify(a.save()));

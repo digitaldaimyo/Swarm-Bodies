@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import type { SkirmishSession } from "../game/session";
+import type { MatchSession } from "../game/match-session";
 import { buildTimeline } from "../game/timeline";
 import { MatchView } from "../render/view";
 import { getSettings } from "./settings";
@@ -9,7 +9,7 @@ export default function ReplayViewer({
   session,
   onClose,
 }: {
-  session: SkirmishSession;
+  session: MatchSession;
   onClose(): void;
 }) {
   const host = useRef<HTMLDivElement>(null);
