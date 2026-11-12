@@ -18,6 +18,7 @@ export {
   validateOrderSet,
   filterOrderSet,
   isWellFormedOrder,
+  newCellPositions,
   type OrderSetValidation,
   type FilteredOrders,
 } from "./validate";

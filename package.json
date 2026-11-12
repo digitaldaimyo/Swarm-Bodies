@@ -10,7 +10,7 @@
     "dev": "pnpm -r --parallel --if-present dev",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "pnpm --filter @swarm/sim build:browser && playwright test",
+    "test:e2e": "pnpm --filter @swarm/sim build:browser && pnpm --filter @swarm/client build && playwright test",
     "typecheck": "tsc -p tsconfig.json && pnpm -r --if-present typecheck",
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
@@ -35,7 +35,8 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "esbuild"
+      "esbuild",
+      "sharp"
     ]
   }
 }

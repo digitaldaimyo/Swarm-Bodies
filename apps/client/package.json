@@ -1,0 +1,25 @@
+{
+  "name": "@swarm/client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 4173 --strictPort",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@swarm/bot": "workspace:*",
+    "@swarm/sim": "workspace:*",
+    "pixi.js": "8.22.0",
+    "preact": "10.29.8",
+    "workbox-window": "7.4.1"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.6",
+    "sharp": "~0.34.5",
+    "vite": "8.3.5",
+    "vite-plugin-pwa": "2.0.0"
+  }
+}
