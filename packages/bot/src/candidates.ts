@@ -7,8 +7,9 @@ import {
   type Order,
 } from "@swarm/sim";
 import type { Analysis, BodyAnalysis } from "./analysis";
+import { generateSporeCandidates } from "./spores";
 
-export type CandidateKind = "grow" | "assault" | "reinforce";
+export type CandidateKind = "grow" | "assault" | "reinforce" | "fruit" | "launch";
 
 export interface Candidate {
   kind: CandidateKind;
@@ -53,6 +54,7 @@ export function generateCandidates(a: Analysis, opts: GenerateOptions): Candidat
     generateReinforce(a, ba, opts, out);
     generatePaths(a, ba, opts, out);
   }
+  generateSporeCandidates(a, opts, out);
   return out;
 }
 
@@ -70,7 +72,7 @@ function generateReinforce(
     if (!c || c.owner !== me || !c.connected) continue;
     const add = Math.min(
       playerRules(state, me).reinforceAmount,
-      maxBiomassFor(state, c) - c.biomass,
+      maxBiomassFor(state, c, body) - c.biomass,
     );
     if (add <= 0 || (ba.threatReinforced[i] as number) === 0) continue;
     const def = ba.defense[i] as number;
@@ -116,7 +118,7 @@ function generatePaths(
     if (!nbs.some((n) => body.terrain[n] !== "rock" && colony[n]?.owner !== me)) continue;
 
     const touchesEnemy = nbs.some((n) => enemyOwned(n) !== null);
-    const boost = Math.min(mine.reinforceAmount, maxBiomassFor(state, start) - start.biomass);
+    const boost = Math.min(mine.reinforceAmount, maxBiomassFor(state, start, body) - start.biomass);
     const variants = touchesEnemy && boost > 0 ? [0, boost] : [0];
 
     for (const extra of variants) {

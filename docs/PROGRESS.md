@@ -1,6 +1,50 @@
 # Progress
 
-**Current milestone:** M4, Online multiplayer: complete. **Next:** M5, The system (SPEC §15).
+**Current milestone:** M5, The system: complete (branch `m5-system`, PR pending review). **Next:** M6, Strains, mutations, and balance (SPEC §15).
+
+## M5: The system: done
+
+Scope (§15): multiple bodies, orbits, System view, body strip, Fruit/Launch/spores, launch windows and forecast, solar flares, comets, and all four body types.
+
+- [x] Sim (§4–8):
+  - Systems of `playerCount + 2` bodies (clamped to 4–7), on distinct orbits with integer periods and phases. Positions use the fixed-point trig table (`trig.ts`, sin × 10000); distances and launch range are exact integer comparisons.
+  - Fair homes: of all assignments, the one with the smallest spread of nearest-neutral distance at turn 1. A home core starts with 2 adjacent cells, and an organic and an ice deposit 2–3 cells away.
+  - Body types: Carbonaceous, Icy, Metallic (+2 max biomass), and Irradiated (+50% deposits; burns away non-core biomass-1 cells).
+  - Fruit (10 N, biomass ≥ 5, matures in 2 turns, at most 2 at once) and Launch (range 6, plus strain bonus). Spores travel `ceil(distance / 3)` turns, fixed at launch, and land as a core (biomass 3): on empty cells, on own cells, or capturing a weaker enemy cell; ties kill each other.
+  - Solar flares every 7–10 turns: −2 biomass on sun-facing cells, with a warning the turn before. Comets every 10–14 turns: a +5 N deposit for 6 turns, with a warning 2 turns ahead. `forecast()` gives launch windows and scheduled events.
+  - Elimination waits for a player's spores in flight.
+  - 35 new rule tests, plus property tests for system invariants.
+- [x] Golden replays extended to **50** (20 Single Rock + 30 system, 2–4 players, every strain). They include 82 Fruit and 28 Launch orders. The 20 Single Rock replays kept identical orders and results through the state-shape change.
+- [x] Bot (§13.2):
+  - Launches mature fruiting bodies at the best body in range (unclaimed room, deposits, capturable cells).
+  - Fruits when the forecast shows a window opening after maturity.
+  - Reinforces a fruit site toward biomass 5 when none qualifies yet.
+  - Puzzles cover each case. **Normal bots launch in every sampled system game** (acceptance), and `pnpm balance -- --map system` reports launches.
+- [x] Protocol and server: games are `singleRock` (2 players) or `system` (2–4 players). Defaults and quick match are 2-player systems. Replays carry the map. A 3-player system game is created, filled and started in the server tests.
+- [x] Stored states from before M5 are upgraded on load (`upgradeState`). Startup restore skips, and logs, a game it cannot load, instead of exiting.
+- [x] Client:
+  - **Body view** shows any body; only the shown body is rendered.
+  - **System view** (Pixi): the star, orbits, ownership rings, alert dots, launch range, and spores in flight on curved arcs. Open it from the body strip or by pinching out past the whole body; tap a body to open it.
+  - **Body strip**, with ownership rings and alert dots for contested bodies and off-screen action.
+  - **Radial menu** gains Fruit, and Launch on mature fruiting bodies (greyed out with the next window when nothing is in range).
+  - **Launch flow:** pick an in-range body in System view, then a landing cell.
+  - **Forecast strip** for the next 6 turns: windows, flares and comets.
+  - **Art:** fruiting stalks that grow and glow when mature, comet shards, landing markers for your own spores, and a sun-direction marker.
+  - **Replays:** launch, landing, flare and comet effects, with a launch "thoom". The event log covers all the new events.
+  - **Skirmish setup:** asteroid system or Single Rock, 1–3 bots, and system size (compact, standard or wide). Online "create game" offers 2–4 players.
+- [x] e2e:
+  - The smoke test pins Single Rock, and a new system smoke test covers the strip, System view, a body switch and a full 3-player game with launches.
+  - The online tests now play systems.
+  - Perf adds a 4-player system run. Body view and System view each stay under the same budgets: p95 2.8 ms and 2.4 ms under 4× throttle.
+
+**Open items for the user:**
+
+- **Balance (M6):** on systems, Normal mirrors reach the turn limit with nobody above 40% dominance in about 80% of games (20-game sample; target under 5%, §12.4). Spores and the 40-turn limit interact here: the turn limit, the 60% threshold and the launch and spore numbers are all M6 tuning.
+- **Strains on systems:** Normal Swarmer beats Biofilm in 78% of system games (50-game sample; 98% on Single Rock). CI now runs this batch as a smoke check, without asserting the rate.
+- The sun-direction marker sits on the body on very wide screens; the M8 polish pass should revisit it.
+- Strain balance (DECISIONS #36), real-device 60 fps, and WebKit e2e (CI only): as below.
+
+## M4: Online multiplayer: done
 
 ## M4: Online multiplayer: done
 
@@ -37,12 +81,9 @@ Scope (§15): `protocol`, server, guest accounts, create/join by code, live and 
 
 Running locally: Postgres 16 (`postgres://swarm:swarm@localhost:5432`). Set `TEST_DATABASE_URL=postgres://swarm:swarm@localhost:5432/postgres` for the server tests; `pnpm test:e2e` starts the server on `swarm_e2e` (created if missing; override with `E2E_DATABASE_URL`). `pnpm dev` runs the client (Vite proxies `/api` and `/ws`) and the server (`DATABASE_URL`, default `postgres://swarm:swarm@localhost:5432/swarm`).
 
-## Next: M5, The system
+## Next: M6, Strains, mutations, and balance
 
-- Multiple bodies (`playerCount + 2`, 4–7), the four body types (§4.3), orbits with the fixed-point trig table and launch windows (§4.5).
-- Fruit, Launch, spores and landings (§5.1, §6); solar flares and comets (§8); `forecast()`.
-- Client: System view, body strip, launch flow, forecast strip; the bot uses launches.
-- Acceptance: the full rules in §4–8 implemented and tested; the bot uses launches; golden replays extended to 50.
+See SPEC §15 M6: Predator and Sporer, mutations and drafts, achievements data, the Hard bot, and balance passes with `pnpm balance` (including `--map system`).
 
 ## M3: Playable client vs bot: done
 

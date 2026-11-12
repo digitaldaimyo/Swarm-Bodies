@@ -36,6 +36,6 @@ test("golden replays match committed hashes in the browser", async ({ page }) =>
     }
     return { count: replays.length, out };
   }, golden);
-  expect(mismatches.count).toBe(20);
+  expect(mismatches.count).toBe(50);
   expect(mismatches.out).toEqual([]);
 });

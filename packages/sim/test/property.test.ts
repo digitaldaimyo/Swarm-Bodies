@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import fc from "fast-check";
 import {
   connectivityOf,
+  maxBiomassFor,
   createGame,
   hashState,
   randomOrderSet,
@@ -14,6 +15,7 @@ import {
 /** SPEC §14 sim invariants, checked after every turn. */
 function checkInvariants(s: GameState): void {
   const { rules } = s;
+  void rules.maxBiomass;
   for (const body of s.bodies) {
     const flags = connectivityOf(body.radius, body.colony);
     body.colony.forEach((c, i) => {
@@ -21,7 +23,9 @@ function checkInvariants(s: GameState): void {
       expect(body.terrain[i]).not.toBe("rock");
       expect(Number.isInteger(c.biomass)).toBe(true);
       expect(c.biomass).toBeGreaterThanOrEqual(1);
-      expect(c.biomass).toBeLessThanOrEqual(c.core ? rules.coreMaxBiomass : rules.maxBiomass);
+      expect(c.biomass).toBeLessThanOrEqual(maxBiomassFor(s, c, body));
+      if (c.core) expect(c.fruiting).toBeNull();
+      if (c.fruiting !== null) expect(c.fruiting).toBeGreaterThanOrEqual(0);
       expect(c.connected).toBe(flags[i]);
       expect(s.players.some((p) => p.id === c.owner)).toBe(true);
     });
@@ -33,6 +37,16 @@ function checkInvariants(s: GameState): void {
     expect(p.nutrients).toBeGreaterThanOrEqual(0);
   }
   expect(s.turn).toBeLessThanOrEqual(rules.turnLimit + 1);
+  for (const sp of s.spores) {
+    expect(sp.arrivalTurn).toBeGreaterThanOrEqual(s.turn);
+    expect(sp.targetBody).not.toBe(sp.sourceBody);
+  }
+  for (const p of s.players) {
+    let fruiting = 0;
+    for (const b of s.bodies)
+      for (const c of b.colony) if (c?.owner === p.id && c.fruiting !== null) fruiting++;
+    expect(fruiting).toBeLessThanOrEqual(rules.maxFruiting);
+  }
 }
 
 const hexArb = fc.record({
@@ -89,6 +103,38 @@ describe("SPEC §14 property tests", () => {
       ),
       { numRuns: 30 },
     );
+  });
+
+  it("random-legal star-system games (2–4 players) keep every invariant, launch spores, and finish", () => {
+    let launched = 0;
+    fc.assert(
+      fc.property(
+        fc.string({ minLength: 1, maxLength: 12 }),
+        fc.integer({ min: 2, max: 4 }),
+        (seed, players) => {
+          let st = createGame(
+            {
+              mode: "system",
+              playerCount: players,
+              strains: ["swarmer", "biofilm", "base", "swarmer"],
+            },
+            seed,
+          );
+          checkInvariants(st);
+          while (!st.result) {
+            const orders: Record<number, OrderSet> = {};
+            for (const p of st.players) orders[p.id] = randomOrderSet(st, p.id, "sys");
+            const r = resolveTurn(st, orders);
+            expect(r.events.filter((e) => e.type === "OrderRejected")).toEqual([]);
+            launched += r.events.filter((e) => e.type === "SporeLaunched").length;
+            st = r.state;
+            checkInvariants(st);
+          }
+        },
+      ),
+      { numRuns: 15 },
+    );
+    expect(launched).toBeGreaterThan(0);
   });
 
   it("junk orders are rejected without breaking invariants", () => {

@@ -18,7 +18,7 @@ import {
  * resolved state, so the replay can never drift from the sim.
  */
 
-export type FramePhase = "prep" | "growth" | "starve" | "income" | "final";
+export type FramePhase = "prep" | "growth" | "launch" | "starve" | "income" | "events" | "final";
 
 export type Effect =
   | { kind: "pulse"; body: number; cell: Hex; player: PlayerId }
@@ -35,7 +35,20 @@ export type Effect =
   | { kind: "flip"; body: number; cell: Hex; from: PlayerId; to: PlayerId }
   | { kind: "coreLost"; body: number; cell: Hex; player: PlayerId }
   | { kind: "fade"; body: number; cell: Hex; player: PlayerId; removed: boolean }
-  | { kind: "income"; body: number; cell: Hex; player: PlayerId; amount: number };
+  | { kind: "income"; body: number; cell: Hex; player: PlayerId; amount: number }
+  | { kind: "fruit"; body: number; cell: Hex; player: PlayerId }
+  | { kind: "launch"; body: number; cell: Hex; player: PlayerId; fizzled: boolean }
+  | {
+      kind: "land";
+      body: number;
+      cell: Hex;
+      player: PlayerId;
+      outcome: "newCore" | "captured" | "repelled" | "merged" | "collided";
+    }
+  | { kind: "flare"; body: number; cell: Hex }
+  | { kind: "comet"; body: number; cell: Hex; arrived: boolean }
+  /** A full-screen flash on every body (a solar flare). */
+  | { kind: "flash"; body: -1 };
 
 export interface Frame {
   phase: FramePhase;
@@ -50,8 +63,10 @@ export interface Frame {
 export const FRAME_MS: Record<FramePhase, number> = {
   prep: 450,
   growth: 650,
+  launch: 700,
   starve: 450,
   income: 600,
+  events: 700,
   final: 250,
 };
 
@@ -121,6 +136,7 @@ export function buildTimeline(
     return null;
   };
 
+  const phaseNow = (): FramePhase | null => (current as Frame | null)?.phase ?? null;
   let step = 0;
   for (const e of events) {
     switch (e.type) {
@@ -161,7 +177,13 @@ export function buildTimeline(
             player: e.player,
             outcome: "claim",
           });
-        set(e.cell, { owner: e.player, biomass: e.biomass, core: false, connected: true });
+        set(e.cell, {
+          owner: e.player,
+          biomass: e.biomass,
+          core: false,
+          connected: true,
+          fruiting: null,
+        });
         break;
       }
       case "CellCaptured": {
@@ -183,7 +205,13 @@ export function buildTimeline(
           from: e.from,
           to: e.player,
         });
-        set(e.cell, { owner: e.player, biomass: e.biomass, core: false, connected: true });
+        set(e.cell, {
+          owner: e.player,
+          biomass: e.biomass,
+          core: false,
+          connected: true,
+          fruiting: null,
+        });
         break;
       }
       case "AssaultRepelled": {
@@ -222,7 +250,8 @@ export function buildTimeline(
         break;
       }
       case "CoreDestroyed":
-        open("growth", step).effects.push({
+        // Cores fall to growth, or to a spore landing in the launch phase.
+        open(phaseNow() === "launch" ? "launch" : "growth", step).effects.push({
           kind: "coreLost",
           body: e.cell.body,
           cell: hex(e.cell),
@@ -241,6 +270,80 @@ export function buildTimeline(
         set(e.cell, e.biomass > 0 && c ? { ...c, biomass: e.biomass } : null);
         break;
       }
+      case "FruitStarted": {
+        open("prep").effects.push({
+          kind: "fruit",
+          body: e.cell.body,
+          cell: hex(e.cell),
+          player: e.player,
+        });
+        const c = get(e.cell);
+        if (c) set(e.cell, { ...c, fruiting: before.rules.fruitMatureTurns });
+        break;
+      }
+      case "SporeLaunched":
+      case "LaunchFizzled": {
+        open("launch").effects.push({
+          kind: "launch",
+          body: e.from.body,
+          cell: hex(e.from),
+          player: e.player,
+          fizzled: e.type === "LaunchFizzled",
+        });
+        const c = get(e.from);
+        if (c && c.owner === e.player) set(e.from, { ...c, biomass: 1, fruiting: null });
+        break;
+      }
+      case "SporeLanded": {
+        open("launch").effects.push({
+          kind: "land",
+          body: e.cell.body,
+          cell: hex(e.cell),
+          player: e.player,
+          outcome: e.outcome,
+        });
+        const c = get(e.cell);
+        if (e.outcome === "repelled") {
+          if (c) set(e.cell, { ...c, biomass: e.biomass });
+        } else if (e.outcome !== "collided") {
+          set(e.cell, {
+            owner: e.player,
+            biomass: e.biomass,
+            core: true,
+            connected: true,
+            fruiting: null,
+          });
+        }
+        break;
+      }
+      case "Flare":
+        open("events").effects.push({ kind: "flash", body: -1 });
+        break;
+      case "FlareStruck": {
+        open("events").effects.push({ kind: "flare", body: e.cell.body, cell: hex(e.cell) });
+        const c = get(e.cell);
+        if (c) set(e.cell, e.biomass > 0 ? { ...c, biomass: e.biomass } : null);
+        break;
+      }
+      case "CometArrived":
+      case "CometFaded":
+        open("events").effects.push({
+          kind: "comet",
+          body: e.cell.body,
+          cell: hex(e.cell),
+          arrived: e.type === "CometArrived",
+        });
+        break;
+      case "Irradiated":
+        open("events").effects.push({
+          kind: "fade",
+          body: e.cell.body,
+          cell: hex(e.cell),
+          player: e.player,
+          removed: true,
+        });
+        set(e.cell, null);
+        break;
       case "Income": {
         if (e.amount <= 0) break;
         const where = coreCell(e.player);
@@ -347,6 +450,70 @@ export function describeEvents(
       case "Income":
         if (e.player === viewer)
           out.push({ text: `+${e.amount} N income`, body: 0, cell: null, important: false });
+        break;
+      case "FruitMatured":
+        if (e.player === viewer)
+          out.push({ text: "Your fruiting body is ready to launch", ...at, important: true });
+        break;
+      case "SporeLaunched":
+        out.push({
+          text: `${who(e.player)} launched a spore toward body ${e.targetBody + 1} (lands turn ${e.arrivalTurn})`,
+          body: e.from.body,
+          cell: { q: e.from.q, r: e.from.r },
+          important: true,
+        });
+        break;
+      case "LaunchFizzled":
+        out.push({
+          text: `${e.player === viewer ? "Your" : `${names(e.player)}'s`} launch fizzled`,
+          body: e.from.body,
+          cell: { q: e.from.q, r: e.from.r },
+          important: e.player === viewer,
+        });
+        break;
+      case "SporeLanded": {
+        const text =
+          e.outcome === "newCore"
+            ? `${who(e.player)} seeded a new core on body ${e.cell.body + 1}`
+            : e.outcome === "captured"
+              ? `${who(e.player)} landed a spore and took a cell on body ${e.cell.body + 1}`
+              : e.outcome === "merged"
+                ? `${who(e.player)} landed a spore on ${e.player === viewer ? "your" : "their"} own cell`
+                : e.outcome === "repelled"
+                  ? `A spore from ${e.player === viewer ? "you" : names(e.player)} was repelled`
+                  : "Spores collided and died";
+        out.push({ text, ...at, important: true });
+        break;
+      }
+      case "FlareWarning":
+        out.push({
+          text: `Solar flare coming on turn ${e.impactTurn}: sun-facing cells lose biomass`,
+          body: 0,
+          cell: null,
+          important: true,
+        });
+        break;
+      case "Flare":
+        out.push({ text: "A solar flare struck", body: 0, cell: null, important: true });
+        break;
+      case "CometWarning":
+        out.push({
+          text: `A comet will strike body ${e.body + 1} on turn ${e.arrivalTurn}`,
+          body: e.body,
+          cell: null,
+          important: true,
+        });
+        break;
+      case "CometArrived":
+        out.push({
+          text: `A comet left a rich deposit (+${e.yield} N) on body ${e.cell.body + 1}`,
+          ...at,
+          important: true,
+        });
+        break;
+      case "Irradiated":
+        if (e.player === viewer)
+          out.push({ text: "Radiation burned away a thin cell", ...at, important: false });
         break;
       default:
         break;

@@ -9,8 +9,10 @@ import {
   type Texture,
 } from "pixi.js";
 import {
+  bodyPosition,
   getBoard,
   HEX_DIRECTIONS as HEX_DIRS,
+  type Body,
   type Colony,
   type GameState,
   type Hex,
@@ -22,8 +24,9 @@ import { PathPainter } from "../game/painter";
 import type { StepPreview } from "../game/planner";
 import type { Effect, Frame } from "../game/timeline";
 import { drawAsteroid, drawGrid, drawStars, drawTerrain } from "./art";
-import { desaturate, lighten, playerColor, SPACE } from "./palette";
+import { DEPOSIT_COLORS, desaturate, lighten, playerColor, SPACE } from "./palette";
 import { SpritePool } from "./pool";
+import { SystemLayer } from "./system";
 
 export interface ViewCallbacks {
   /** True if a drag starting on this cell should paint a Grow path. */
@@ -36,7 +39,13 @@ export interface ViewCallbacks {
   onPaintEnd(path: Hex[] | null): void;
   onTap(h: Hex | null, screen: Point): void;
   onCamera?(): void;
+  /** System view: a pickable body was tapped. */
+  onBodyTap?(body: number): void;
+  /** Pinch-out past the whole body (SPEC §10.2: switch to System view). */
+  onPinchOut?(): void;
 }
+
+export type ViewMode = "body" | "system";
 
 export interface PaintOverlay {
   path: Hex[];
@@ -56,7 +65,10 @@ export interface ReplayControl {
 const MIN_DRAG_PX = 8;
 const NUMBERS_ZOOM = 1.45;
 
-/** The match's Body view (SPEC §10.2): one asteroid, drawn and driven with PixiJS. */
+/**
+ * The match view (SPEC §10.2): Body view (one asteroid, drawn and driven with PixiJS) and
+ * System view (star, orbits, spores). Only the shown body is rendered (SPEC §10.7).
+ */
 export class MatchView {
   readonly app = new Application();
   private readonly stars: Graphics[] = [];
@@ -83,7 +95,17 @@ export class MatchView {
   private readonly fxLabels = new Container();
   private readonly cursor = new Graphics();
   private grid: Graphics | null = null;
+  private ground: Container | null = null;
   private dot: Texture | null = null;
+  private readonly stalks = new Graphics();
+  private readonly sun = new Graphics();
+  private readonly flash = new Graphics();
+  private readonly system = new SystemLayer();
+  private bodyId = 0;
+  private viewer: PlayerId = 0;
+  private mode: ViewMode = "body";
+  private readonly stalkGlow = new Graphics();
+  private systemInset = { top: 120, bottom: 170 };
 
   private state!: GameState;
   private colony: (Colony | null)[] = [];
@@ -128,32 +150,59 @@ export class MatchView {
     v.app.canvas.setAttribute("aria-label", "Asteroid surface. Drag from your colony to grow.");
     v.build(state);
     v.bindInput();
-    v.resizeObserver = new ResizeObserver(() => v.fit(false));
+    v.resizeObserver = new ResizeObserver(() => {
+      v.fit(false);
+      v.layoutSystem();
+      v.drawSun();
+    });
     v.resizeObserver.observe(parent);
     v.app.ticker.add((t) => v.tick(t.deltaMS));
     return v;
   }
 
+  /** The body Body view shows. */
+  private get body(): Body {
+    return (this.state.bodies[this.bodyId] ?? this.state.bodies[0]) as Body;
+  }
+
+  get shownBody(): number {
+    return this.bodyId;
+  }
+
+  get viewMode(): ViewMode {
+    return this.mode;
+  }
+
+  /** Static art is rendered once to a texture: each frame then draws one quad instead of
+   * re-rasterising thousands of vertices (SPEC §10.7, 60 fps on mid-range phones). */
+  private buildGround(): void {
+    const body = this.body;
+    if (this.ground) this.ground.destroy({ children: true });
+    if (this.grid) this.grid.destroy();
+    this.ground = new Container();
+    this.ground.addChild(
+      drawAsteroid(body, `${this.state.seed}:${body.id}`),
+      drawTerrain(body, `${this.state.seed}:${body.id}`),
+    );
+    this.world.addChildAt(this.ground, 0);
+    this.ground.cacheAsTexture({ resolution: this.cacheResolution });
+    this.grid = drawGrid(body);
+    this.grid.alpha = 0;
+    this.grid.visible = false;
+    this.world.addChildAt(this.grid, 1);
+    this.grid.cacheAsTexture({ resolution: this.cacheResolution });
+  }
+
   private build(state: GameState): void {
     this.state = state;
-    const body = state.bodies[0] as GameState["bodies"][number];
     for (const layer of [0, 1]) {
       const s = drawStars(state.seed, layer, 1400);
       this.stars.push(s);
       this.app.stage.addChild(s);
     }
-    this.app.stage.addChild(this.world);
-    // Static art is rendered once to a texture: each frame then draws one quad instead of
-    // re-rasterising thousands of vertices (SPEC §10.7, 60 fps on mid-range phones).
-    const ground = new Container();
-    ground.addChild(drawAsteroid(body, state.seed), drawTerrain(body, state.seed));
-    this.world.addChild(ground);
-    ground.cacheAsTexture({ resolution: this.cacheResolution });
-    this.grid = drawGrid(body);
-    this.grid.alpha = 0;
-    this.grid.visible = false;
-    this.world.addChild(this.grid);
-    this.grid.cacheAsTexture({ resolution: this.cacheResolution });
+    this.app.stage.addChild(this.world, this.system.root, this.sun, this.flash);
+    this.system.root.visible = false;
+    this.buildGround();
 
     // Colonies: thick round-capped veins and overlapping blobs merge into organic shapes
     // without a blur filter, which keeps phones at 60 fps (SPEC §10.4, §10.7).
@@ -169,6 +218,8 @@ export class MatchView {
       this.goo,
       this.flow,
       this.cores,
+      this.stalkGlow,
+      this.stalks,
       this.planG,
       this.paintG,
       this.fx,
@@ -223,8 +274,107 @@ export class MatchView {
       chars: [["0", "9"], "+-N? "],
       resolution: 2,
     });
-    this.setBoard(body.colony, state);
+    this.setBoard(this.body.colony, state);
     this.fit(true);
+  }
+
+  /** Opens another body in Body view (SPEC §10.2). */
+  showBody(id: number): void {
+    if (!this.state.bodies[id]) return;
+    const changed = id !== this.bodyId;
+    this.bodyId = id;
+    if (changed) {
+      this.buildGround();
+      // The colony texture is pinned to the body's extent: start it over for the new size.
+      if (this.goo.isCachedAsTexture) this.goo.cacheAsTexture(false);
+      this.gooG.clear();
+      this.planG.clear();
+      this.cancelPaint();
+      this.setBoard(this.body.colony);
+      this.fit(true);
+    }
+    this.setMode("body");
+  }
+
+  setMode(mode: ViewMode): void {
+    this.mode = mode;
+    const body = mode === "body";
+    this.world.visible = body;
+    this.sun.visible = body;
+    this.system.root.visible = !body;
+    this.cursor.clear();
+    if (!body) this.layoutSystem();
+    this.drawSun();
+  }
+
+  /** Who is looking: their spore targets are shown, nobody else's (SPEC §6). */
+  setViewer(p: PlayerId): void {
+    this.viewer = p;
+  }
+
+  /** System view options: launch-pick mode limits taps to bodies in range. */
+  private launchFrom: number | null = null;
+  private alerts: ReadonlySet<number> = new Set();
+  setSystemOptions(o: { launchFrom: number | null; alerts: ReadonlySet<number> }): void {
+    this.launchFrom = o.launchFrom;
+    this.alerts = o.alerts;
+    this.updateSystem();
+  }
+
+  /** In the Launch flow, only bodies in range can be picked. */
+  canPick(id: number): boolean {
+    return this.system.pickable(id);
+  }
+
+  setSystemInset(inset: { top: number; bottom: number }): void {
+    this.systemInset = inset;
+    this.layoutSystem();
+  }
+
+  private layoutSystem(): void {
+    const { w, h } = this.screen;
+    this.updateSystem();
+    this.system.layout(w, h, this.systemInset);
+  }
+
+  private updateSystem(): void {
+    this.system.set(this.state, {
+      viewer: this.viewer,
+      selected: this.bodyId,
+      launchFrom: this.launchFrom,
+      alerts: this.alerts,
+    });
+  }
+
+  /** Where the star is, from this body: a sun marker on the screen edge (flare side, SPEC §8). */
+  private drawSun(): void {
+    const g = this.sun;
+    g.clear();
+    if (this.mode !== "body" || !this.body.orbit || !this.state) return;
+    const p = bodyPosition(this.body, this.state.turn);
+    const len = Math.hypot(p.x, p.y) || 1;
+    const dx = -p.x / len;
+    const dy = -p.y / len;
+    const { w, h } = this.screen;
+    const top = 118;
+    // Clear of the bottom HUD and the body strip.
+    const bottom = h - 190;
+    const cx = w / 2;
+    const cy = (top + bottom) / 2;
+    const k = Math.min(
+      Math.abs(dx) > 1e-6 ? (w / 2 - 22) / Math.abs(dx) : Infinity,
+      Math.abs(dy) > 1e-6 ? (bottom - top) / 2 / Math.abs(dy) : Infinity,
+    );
+    const x = cx + dx * k;
+    const y = cy + dy * k;
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      g.moveTo(x + Math.cos(a) * 9, y + Math.sin(a) * 9)
+        .lineTo(x + Math.cos(a) * 14, y + Math.sin(a) * 14)
+        .stroke({ width: 2, color: 0xffd27a, alpha: 0.8 });
+    }
+    g.circle(x, y, 7).fill(0xfff0c2);
+    g.circle(x, y, 18).fill({ color: 0xffd27a, alpha: 0.12 });
   }
 
   // ---------------------------------------------------------------------------------------
@@ -236,13 +386,16 @@ export class MatchView {
 
   /** Recomputes the zoom range; on first fit, centres on the viewer's home core. */
   private fit(initial: boolean, home?: Hex): void {
-    const body = this.state.bodies[0] as GameState["bodies"][number];
+    const body = this.body;
     const span = (body.radius + 1.2) * HEX_SIZE * Math.sqrt(3) * 2;
     const { w, h } = this.screen;
     this.minZoom = Math.min(1, Math.min(w, h) / span);
     if (initial) {
       this.zoom = 1;
-      const me = this.state.players[0]?.home.cell ?? home ?? { q: 0, r: 0 };
+      // Frame the viewer's core on this body if there is one, else the body's centre.
+      const board = getBoard(body.radius);
+      const ci = body.colony.findIndex((c) => c?.owner === this.viewer && c.core);
+      const me = ci >= 0 ? (board.cells[ci] as Hex) : (home ?? { q: 0, r: 0 });
       const p = hexToPixel(me);
       // Frame the home core, nudged toward the centre of the body.
       this.centerWorld({ x: p.x * 0.55, y: p.y * 0.55 });
@@ -258,7 +411,7 @@ export class MatchView {
   }
 
   private clampCamera(): void {
-    const body = this.state.bodies[0] as GameState["bodies"][number];
+    const body = this.body;
     const extent = (body.radius + 1) * HEX_SIZE * Math.sqrt(3) * this.zoom;
     const { w, h } = this.screen;
     const clamp = (v: number, c: number) => Math.min(c + extent, Math.max(c - extent, v));
@@ -324,7 +477,7 @@ export class MatchView {
 
   hexAt(screen: Point): Hex | null {
     const h = pixelToHex(this.screenToWorld(screen));
-    const body = this.state.bodies[0] as GameState["bodies"][number];
+    const body = this.body;
     return getBoard(body.radius).indexOf(h.q, h.r) >= 0 ? h : null;
   }
 
@@ -349,6 +502,7 @@ export class MatchView {
     let lastPan: Point = { x: 0, y: 0 };
     let pinch: { dist: number; mid: Point } | null = null;
     let painter: PathPainter | null = null;
+    let pinchOut = 0;
 
     const local = (e: PointerEvent): Point => {
       const r = canvas.getBoundingClientRect();
@@ -370,6 +524,7 @@ export class MatchView {
       painter = null;
     };
 
+    let wheelOut = 0;
     canvas.addEventListener("contextmenu", (e) => e.preventDefault());
     canvas.addEventListener("pointerdown", (e) => {
       canvas.setPointerCapture(e.pointerId);
@@ -384,11 +539,12 @@ export class MatchView {
           mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
         };
         mode = "pinch";
+        pinchOut = 0;
         return;
       }
       downAt = p;
       lastPan = p;
-      downHex = this.hexAt(p);
+      downHex = this.mode === "body" ? this.hexAt(p) : null;
       mode = e.button === 2 ? "pan" : "pending";
       if (mode === "pending") {
         this.longPress = setTimeout(() => {
@@ -402,7 +558,7 @@ export class MatchView {
     canvas.addEventListener("pointermove", (e) => {
       const p = local(e);
       if (e.pointerType === "mouse" && pointers.size === 0) {
-        this.drawCursor(this.inputEnabled ? this.hexAt(p) : null);
+        this.drawCursor(this.inputEnabled && this.mode === "body" ? this.hexAt(p) : null);
         return;
       }
       if (!pointers.has(e.pointerId)) return;
@@ -415,13 +571,23 @@ export class MatchView {
           this.world.position.x + mid.x - pinch.mid.x,
           this.world.position.y + mid.y - pinch.mid.y,
         );
-        this.zoomAt(dist / Math.max(1, pinch.dist), mid);
+        const factor = dist / Math.max(1, pinch.dist);
+        if (this.mode === "body") {
+          if (factor < 1 && this.zoom <= this.minZoom * 1.001) pinchOut += 1 - factor;
+          if (pinchOut > 0.35) {
+            pinchOut = 0;
+            this.cb.onPinchOut?.();
+          }
+          this.zoomAt(factor, mid);
+        }
         pinch = { dist, mid };
         return;
       }
       if (mode === "pending" && Math.hypot(p.x - downAt.x, p.y - downAt.y) > MIN_DRAG_PX) {
         cancelLongPress();
-        if (this.inputEnabled && downHex && this.cb.canPaintFrom(downHex)) {
+        if (this.mode === "system") {
+          mode = "none";
+        } else if (this.inputEnabled && downHex && this.cb.canPaintFrom(downHex)) {
           mode = "paint";
           this.paintCancelled = false;
           painter = new PathPainter(downHex, (h) => this.cb.passable(h), this.cb.reach);
@@ -439,7 +605,7 @@ export class MatchView {
           if (added > 0 || painter.path.length !== before)
             this.cb.onPaintChange(painter.path.slice(), added);
         }
-      } else if (mode === "pan") {
+      } else if (mode === "pan" && this.mode === "body") {
         this.world.position.set(
           this.world.position.x + p.x - lastPan.x,
           this.world.position.y + p.y - lastPan.y,
@@ -463,7 +629,12 @@ export class MatchView {
         return;
       }
       if (mode === "pending" && e.type === "pointerup") {
-        this.cb.onTap(this.inputEnabled ? downHex : null, local(e));
+        if (this.mode === "system") {
+          const b = this.system.bodyAt(local(e));
+          if (b !== null) this.cb.onBodyTap?.(b);
+        } else {
+          this.cb.onTap(this.inputEnabled ? downHex : null, local(e));
+        }
       }
       if (mode === "paint") endPaint(e.type === "pointerup");
       if (e.pointerType !== "mouse") this.cursor.clear();
@@ -475,7 +646,15 @@ export class MatchView {
       "wheel",
       (e) => {
         e.preventDefault();
+        if (this.mode !== "body") return;
         const r = canvas.getBoundingClientRect();
+        if (e.deltaY > 0 && this.zoom <= this.minZoom * 1.001) {
+          wheelOut += e.deltaY;
+          if (wheelOut > 400) {
+            wheelOut = 0;
+            this.cb.onPinchOut?.();
+          }
+        } else wheelOut = 0;
         this.zoomAt(Math.exp(-e.deltaY * 0.0015), { x: e.clientX - r.left, y: e.clientY - r.top });
       },
       { passive: false },
@@ -502,13 +681,15 @@ export class MatchView {
 
   setState(state: GameState): void {
     this.state = state;
-    this.setBoard((state.bodies[0] as GameState["bodies"][number]).colony, state);
+    this.setBoard(this.body.colony, state);
+    this.updateSystem();
+    this.drawSun();
   }
 
   /** Redraws colonies from a colony array (the live state or a replay frame). */
   setBoard(colony: readonly (Colony | null)[], state = this.state): void {
     this.colony = colony.slice();
-    const body = state.bodies[0] as GameState["bodies"][number];
+    const body = (state.bodies[this.bodyId] ?? state.bodies[0]) as Body;
     const board = getBoard(body.radius);
     const g = this.gooG;
     if (g.context.instructions.length === 0) {
@@ -601,6 +782,7 @@ export class MatchView {
 
     this.rebuildFlow(colony, board);
     this.rebuildCores(colony, board);
+    this.rebuildStalks(colony, board, body, state);
     this.numbersDirty = true;
     if (this.numbers.visible) this.rebuildNumbers();
   }
@@ -678,12 +860,70 @@ export class MatchView {
     });
   }
 
+  /**
+   * Fruiting bodies are stalks that grow taller with maturity and glow when mature; comet
+   * deposits are bright shards; the viewer's spores in flight mark their landing cell
+   * (SPEC §10.4, §6).
+   */
+  private rebuildStalks(
+    colony: readonly (Colony | null)[],
+    board: ReturnType<typeof getBoard>,
+    body: Body,
+    state: GameState,
+  ): void {
+    const g = this.stalks;
+    g.clear();
+    this.stalkGlow.clear();
+    const full = Math.max(1, state.rules.fruitMatureTurns);
+    colony.forEach((c, i) => {
+      if (!c || c.fruiting === null) return;
+      const p = hexToPixel(board.cells[i] as Hex);
+      const grown = 1 - c.fruiting / full;
+      const height = 10 + 18 * grown;
+      const color = lighten(playerColor(c.owner), 0.35);
+      g.moveTo(p.x, p.y)
+        .quadraticCurveTo(p.x + 5, p.y - height * 0.5, p.x, p.y - height)
+        .stroke({ width: 4, color, alpha: 0.95, cap: "round" });
+      g.circle(p.x, p.y - height, 4 + 3 * grown).fill(lighten(color, 0.4));
+      if (c.fruiting === 0) {
+        for (let k = 4; k >= 1; k--)
+          this.stalkGlow.circle(p.x, p.y - height, 4 + k * 4).fill({ color: 0xffffff, alpha: 0.1 });
+      }
+    });
+    for (const comet of body.comets) {
+      const p = hexToPixel(board.cells[comet.cell] as Hex);
+      for (const [dx, dy, r] of [
+        [-5, 2, 6],
+        [4, -3, 7],
+        [1, 6, 4],
+      ] as const)
+        g.star(p.x + dx, p.y + dy, 4, r, r * 0.35).fill({ color: DEPOSIT_COLORS.ice, alpha: 0.95 });
+      g.circle(p.x, p.y, HEX_SIZE * 0.75).stroke({ width: 2, color: 0xcdefff, alpha: 0.6 });
+    }
+    for (const sp of state.spores) {
+      if (sp.owner !== this.viewer || sp.targetBody !== body.id) continue;
+      const p = hexToPixel(sp.targetCell);
+      const color = playerColor(sp.owner);
+      const d = HEX_SIZE * 0.7;
+      g.circle(p.x, p.y, d).stroke({ width: 2, color, alpha: 0.9 });
+      g.moveTo(p.x - d - 5, p.y)
+        .lineTo(p.x - d + 5, p.y)
+        .moveTo(p.x + d - 5, p.y)
+        .lineTo(p.x + d + 5, p.y)
+        .moveTo(p.x, p.y - d - 5)
+        .lineTo(p.x, p.y - d + 5)
+        .moveTo(p.x, p.y + d - 5)
+        .lineTo(p.x, p.y + d + 5)
+        .stroke({ width: 2, color, alpha: 0.9 });
+    }
+  }
+
   /** Biomass labels are only built while visible (zoomed in or long-press). */
   private rebuildNumbers(): void {
     if (!this.numbersDirty) return;
     this.numbersDirty = false;
     const colony = this.colony;
-    const board = getBoard((this.state.bodies[0] as GameState["bodies"][number]).radius);
+    const board = getBoard(this.body.radius);
     this.numbers.removeChildren().forEach((c) => c.destroy());
     colony.forEach((c, i) => {
       if (!c) return;
@@ -701,6 +941,10 @@ export class MatchView {
   private tick(dt: number): void {
     this.time += dt / 1000;
     const t = this.time;
+    if (this.mode === "system") {
+      if (!this.reduceMotion) this.system.tick(dt);
+      return;
+    }
     if (this.reduceMotion) {
       for (const f of this.flowSprites) f.sprite.alpha = f.connected ? 0.35 : 0.2;
       return;
@@ -716,6 +960,8 @@ export class MatchView {
     }
     const s = 1 + 0.07 * Math.sin(t * 3);
     for (const c of this.coreSprites) c.scale.set(s);
+    // Mature stalks glow (SPEC §10.4).
+    this.stalkGlow.alpha = 0.45 + 0.35 * Math.sin(t * 4);
   }
 
   // ---------------------------------------------------------------------------------------
@@ -727,6 +973,32 @@ export class MatchView {
     g.clear();
     const color = playerColor(player);
     orders.forEach((o, k) => {
+      if (o.type === "launch" && o.targetBody === this.bodyId) {
+        const p = hexToPixel(o.targetCell);
+        g.circle(p.x, p.y, HEX_SIZE * 0.7).stroke({ width: 2.5, color, alpha: 0.9 });
+        g.circle(p.x, p.y, 4).fill(color);
+      }
+      if (o.body !== this.bodyId) return;
+      if (o.type === "fruit") {
+        const p = hexToPixel(o.cell);
+        for (let y = 0; y < 22; y += 6)
+          g.moveTo(p.x, p.y - y)
+            .lineTo(p.x, p.y - y - 3)
+            .stroke({ width: 3, color: lighten(color, 0.4), alpha: 0.9 });
+        g.circle(p.x, p.y - 26, 5).stroke({ width: 2, color: 0xffffff, alpha: 0.9 });
+        return;
+      }
+      if (o.type === "launch") {
+        const p = hexToPixel(o.cell);
+        g.circle(p.x, p.y, HEX_SIZE * 0.8).stroke({ width: 3, color: 0xffffff, alpha: 0.9 });
+        g.moveTo(p.x, p.y - 4)
+          .lineTo(p.x, p.y - 30)
+          .moveTo(p.x - 7, p.y - 23)
+          .lineTo(p.x, p.y - 30)
+          .lineTo(p.x + 7, p.y - 23)
+          .stroke({ width: 3, color: lighten(color, 0.5), alpha: 0.95, cap: "round" });
+        return;
+      }
       if (o.type === "grow") {
         this.drawPath(g, o.path, previews[k] ?? [], color, 0.55);
       } else if (o.type === "reinforce") {
@@ -864,23 +1136,25 @@ export class MatchView {
     ctl: ReplayControl,
     onFrame?: (f: Frame) => void,
   ): Promise<void> {
-    const cells = frames.flatMap((f) => f.effects.flatMap(effectCells));
+    const here = (e: Effect) => e.body === this.bodyId || e.body === -1;
+    const cells = frames.flatMap((f) => f.effects.filter(here).flatMap(effectCells));
     if (cells.length > 0 && !ctl.skipped()) this.frameCells(cells);
     for (const frame of frames) {
       if (ctl.skipped()) break;
       onFrame?.(frame);
-      if (ctl.reduceMotion || frame.effects.length === 0) {
+      if (ctl.reduceMotion || !frame.effects.some(here)) {
         await this.wait(ctl.reduceMotion ? frame.duration * 0.6 : frame.duration * 0.4, ctl);
-        this.setBoard(frame.colony.get(0) ?? this.colony);
+        this.setBoard(frame.colony.get(this.bodyId) ?? this.colony);
         continue;
       }
       await this.animateFrame(frame, ctl);
-      this.setBoard(frame.colony.get(0) ?? this.colony);
+      this.setBoard(frame.colony.get(this.bodyId) ?? this.colony);
     }
     this.fx.clear();
+    this.flash.clear();
     this.fxLabels.removeChildren().forEach((c) => c.destroy());
     const last = frames[frames.length - 1];
-    if (last) this.setBoard(last.colony.get(0) ?? this.colony);
+    if (last) this.setBoard(last.colony.get(this.bodyId) ?? this.colony);
   }
 
   private wait(ms: number, ctl: ReplayControl): Promise<void> {
@@ -909,12 +1183,13 @@ export class MatchView {
         // Switch the board to this frame once tendrils have mostly arrived.
         if (!swapped && p >= 0.6) {
           swapped = true;
-          this.setBoard(frame.colony.get(0) ?? this.colony);
+          this.setBoard(frame.colony.get(this.bodyId) ?? this.colony);
         }
         if (p >= 1 || ctl.skipped()) {
           this.app.ticker.remove(step);
           for (const l of labels.values()) l.destroy();
           this.fx.clear();
+          this.flash.clear();
           resolve();
         }
       };
@@ -927,7 +1202,100 @@ export class MatchView {
     g.clear();
     const ease = 1 - (1 - p) ** 3;
     for (const e of effects) {
+      if (e.body !== this.bodyId && e.body !== -1) continue;
       switch (e.kind) {
+        case "flash": {
+          const { w, h } = this.screen;
+          this.flash.clear();
+          this.flash
+            .rect(0, 0, w, h)
+            .fill({ color: 0xffc46b, alpha: 0.35 * Math.sin(Math.PI * p) });
+          break;
+        }
+        case "flare": {
+          const c = hexToPixel(e.cell);
+          g.circle(c.x, c.y, HEX_SIZE * (0.4 + 0.5 * ease)).fill({
+            color: 0xffa040,
+            alpha: 0.5 * (1 - p),
+          });
+          break;
+        }
+        case "comet": {
+          const c = hexToPixel(e.cell);
+          if (e.arrived) {
+            const k = Math.min(1, p / 0.55);
+            const from = { x: c.x + 260, y: c.y - 320 };
+            const x = from.x + (c.x - from.x) * k;
+            const y = from.y + (c.y - from.y) * k;
+            g.moveTo(from.x + (x - from.x) * 0.6, from.y + (y - from.y) * 0.6)
+              .lineTo(x, y)
+              .stroke({ width: 5, color: 0xcdefff, alpha: 0.8 * (1 - p * 0.5), cap: "round" });
+            g.circle(x, y, 7).fill(0xffffff);
+            if (p > 0.55) {
+              const q = (p - 0.55) / 0.45;
+              g.circle(c.x, c.y, HEX_SIZE * (0.5 + 1.6 * q)).stroke({
+                width: 6 * (1 - q),
+                color: 0xcdefff,
+                alpha: 1 - q,
+              });
+            }
+          } else {
+            g.circle(c.x, c.y, HEX_SIZE * 0.6).fill({ color: 0xcdefff, alpha: 0.4 * (1 - p) });
+          }
+          break;
+        }
+        case "fruit": {
+          const c = hexToPixel(e.cell);
+          const color = lighten(playerColor(e.player), 0.4);
+          g.moveTo(c.x, c.y)
+            .lineTo(c.x, c.y - 14 * ease)
+            .stroke({ width: 4, color, alpha: 0.95, cap: "round" });
+          break;
+        }
+        case "launch": {
+          const c = hexToPixel(e.cell);
+          const color = lighten(playerColor(e.player), 0.5);
+          if (e.fizzled) {
+            g.circle(c.x, c.y - 10, 6 * (1 - p)).fill({ color: 0x9aa3ad, alpha: 1 - p });
+            break;
+          }
+          // The "thoom": a ring at the base, then the mote shoots up off the body.
+          g.circle(c.x, c.y, HEX_SIZE * (0.4 + 1.2 * ease)).stroke({
+            width: 5 * (1 - p),
+            color,
+            alpha: 1 - p,
+          });
+          const y = c.y - 20 - 420 * p * p;
+          g.moveTo(c.x, y + 40)
+            .lineTo(c.x, y)
+            .stroke({ width: 4, color, alpha: 0.6, cap: "round" });
+          g.circle(c.x, y, 6).fill(0xffffff);
+          break;
+        }
+        case "land": {
+          const c = hexToPixel(e.cell);
+          const color = lighten(playerColor(e.player), 0.5);
+          const k = Math.min(1, p / 0.5);
+          if (p < 0.5) {
+            const y = c.y - 360 * (1 - k) * (1 - k);
+            g.moveTo(c.x, y - 36)
+              .lineTo(c.x, y)
+              .stroke({ width: 4, color, alpha: 0.6, cap: "round" });
+            g.circle(c.x, y, 6).fill(0xffffff);
+          } else {
+            const q = (p - 0.5) / 0.5;
+            const ring =
+              e.outcome === "repelled" || e.outcome === "collided"
+                ? 0xffffff
+                : playerColor(e.player);
+            g.circle(c.x, c.y, HEX_SIZE * (0.5 + 1.8 * q)).stroke({
+              width: 7 * (1 - q),
+              color: ring,
+              alpha: 1 - q,
+            });
+          }
+          break;
+        }
         case "tendril": {
           const a = hexToPixel(e.from);
           const b = hexToPixel(e.to);
@@ -1045,6 +1413,7 @@ function effectCells(e: Effect): Hex[] {
     case "tendril":
       return [e.from, e.to];
     case "income":
+    case "flash":
       return [];
     default:
       return [e.cell];

@@ -2,17 +2,28 @@ import { useState } from "preact/hooks";
 import type { Difficulty } from "@swarm/bot";
 import type { Strain } from "@swarm/protocol";
 import { audio } from "../audio/sfx";
+import type { GameMode } from "@swarm/sim";
+import type { SkirmishSettings, SystemSize } from "../game/session";
 import { loadStrain, storeStrain, StrainPicker } from "./StrainPicker";
 
 interface Props {
   defaultSeed: string;
   onBack(): void;
-  onStart(seed: string, difficulty: Difficulty, strain: Strain, botStrain: Strain): void;
+  onStart(settings: SkirmishSettings): void;
 }
 
-/** Skirmish setup (SPEC §10.1): bot difficulty, strains and seed. Single Rock until M5. */
+const SIZES: { id: SystemSize; label: string }[] = [
+  { id: "compact", label: "Compact" },
+  { id: "standard", label: "Standard" },
+  { id: "wide", label: "Wide" },
+];
+
+/** Skirmish setup (SPEC §10.1): bot count and difficulty, strains, system size and seed. */
 export function Setup({ defaultSeed, onBack, onStart }: Props) {
   const [difficulty, setDifficulty] = useState<Difficulty>("easy");
+  const [map, setMap] = useState<GameMode>("system");
+  const [bots, setBots] = useState(1);
+  const [size, setSize] = useState<SystemSize>("standard");
   const [seed, setSeed] = useState(defaultSeed);
   const [strain, setStrain] = useState<Strain>(loadStrain);
   const [botStrain, setBotStrain] = useState<Strain>(() =>
@@ -37,7 +48,25 @@ export function Setup({ defaultSeed, onBack, onStart }: Props) {
         />
       </section>
       <section class="card">
-        <h3>Opponent</h3>
+        <h3>Opponents</h3>
+        {map === "system" && (
+          <div class="segmented" role="radiogroup" aria-label="Number of bots">
+            {[1, 2, 3].map((n) => (
+              <button
+                key={n}
+                role="radio"
+                aria-checked={bots === n}
+                class={bots === n ? "seg active" : "seg"}
+                onClick={() => {
+                  audio.click();
+                  setBots(n);
+                }}
+              >
+                {n} bot{n === 1 ? "" : "s"}
+              </button>
+            ))}
+          </div>
+        )}
         <div class="segmented" role="radiogroup" aria-label="Bot difficulty">
           {(["easy", "normal"] as const).map((d) => (
             <button
@@ -68,16 +97,54 @@ export function Setup({ defaultSeed, onBack, onStart }: Props) {
               class={botStrain === s ? "seg active" : "seg"}
               onClick={() => setBotStrain(s)}
             >
-              Bot plays {s === "swarmer" ? "Swarmer" : "Biofilm"}
+              {bots > 1 && map === "system" ? "Bots play" : "Bot plays"}{" "}
+              {s === "swarmer" ? "Swarmer" : "Biofilm"}
             </button>
           ))}
         </div>
       </section>
       <section class="card">
         <h3>System</h3>
-        <p class="option-fixed">
-          <strong>Single Rock</strong>: one large asteroid, two colonies on opposite edges.
-        </p>
+        <div class="segmented" role="radiogroup" aria-label="Map">
+          {(["system", "singleRock"] as const).map((m) => (
+            <button
+              key={m}
+              role="radio"
+              aria-checked={map === m}
+              class={map === m ? "seg active" : "seg"}
+              onClick={() => {
+                audio.click();
+                setMap(m);
+              }}
+            >
+              {m === "system" ? "Asteroid system" : "Single Rock"}
+            </button>
+          ))}
+        </div>
+        {map === "system" ? (
+          <>
+            <div class="segmented" role="radiogroup" aria-label="System size">
+              {SIZES.map((z) => (
+                <button
+                  key={z.id}
+                  role="radio"
+                  aria-checked={size === z.id}
+                  class={size === z.id ? "seg active" : "seg"}
+                  onClick={() => setSize(z.id)}
+                >
+                  {z.label}
+                </button>
+              ))}
+            </div>
+            <p class="hint">
+              A home asteroid each plus{" "}
+              {size === "compact" ? "one" : size === "standard" ? "two" : "three"} neutral bod
+              {size === "compact" ? "y" : "ies"} in orbit. Grow, fruit and launch spores to spread.
+            </p>
+          </>
+        ) : (
+          <p class="hint">Practice map: one large asteroid, two colonies on opposite edges.</p>
+        )}
         <label class="field">
           <span>Seed</span>
           <input
@@ -92,7 +159,15 @@ export function Setup({ defaultSeed, onBack, onStart }: Props) {
         class="btn btn-primary btn-wide"
         onClick={() => {
           audio.click();
-          onStart(seed.trim() || defaultSeed, difficulty, strain, botStrain);
+          onStart({
+            seed: seed.trim() || defaultSeed,
+            difficulty,
+            strain,
+            botStrain,
+            map,
+            bots: map === "system" ? bots : 1,
+            size,
+          });
         }}
       >
         Start

@@ -6,6 +6,7 @@ import type { MatchSession, SeatStatus, TurnRecord } from "../game/match-session
 import { previewPath } from "../game/planner";
 import { buildTimeline, describeEvents, type Frame, type LogEntry } from "../game/timeline";
 import { MatchView } from "../render/view";
+import { BodyStrip, ForecastStrip } from "./SystemHud";
 import { PLAYER_CSS } from "../render/palette";
 import { OrderDrawer } from "./OrderDrawer";
 import { RadialMenu } from "./RadialMenu";
@@ -45,6 +46,21 @@ export default function Match({ session, onSave, onExit, onFinished }: Props) {
   const [phase, setPhaseState] = useState<Phase>("planning");
   const phaseRef = useRef<Phase>("planning");
   const [radial, setRadial] = useState<{ cell: Hex; at: Point } | null>(null);
+  // Multi-body (SPEC §10.2): the body Body view shows, System view, and the Launch flow.
+  const home = session.state.players.find((p) => p.id === session.me)?.home.body ?? 0;
+  const [bodyId, setBodyIdState] = useState(home);
+  const bodyRef = useRef(home);
+  const [systemView, setSystemViewState] = useState(false);
+  const systemRef = useRef(false);
+  /** Launch flow: the launcher, then (once picked) the target body awaiting a cell. */
+  const [launch, setLaunchState] = useState<{
+    body: number;
+    cell: Hex;
+    target: number | null;
+  } | null>(null);
+  const launchRef = useRef<typeof launch>(null);
+  const [alerts, setAlerts] = useState<ReadonlySet<number>>(new Set());
+  const multi = session.state.bodies.filter((b) => b.orbit).length > 1;
   const [info, setInfo] = useState<{ text: string; at: Point } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [drawer, setDrawer] = useState(false);
@@ -73,7 +89,35 @@ export default function Match({ session, onSave, onExit, onFinished }: Props) {
     toastTimer.current = setTimeout(() => setToast(null), 2600);
   };
 
-  const body = () => session.state.bodies[0] as (typeof session.state.bodies)[number];
+  const setLaunch = (l: typeof launch) => {
+    launchRef.current = l;
+    setLaunchState(l);
+  };
+  const setSystemView = (on: boolean) => {
+    systemRef.current = on;
+    setSystemViewState(on);
+    setRadial(null);
+    setInfo(null);
+    view.current?.setMode(on ? "system" : "body");
+  };
+  const openBody = (id: number) => {
+    bodyRef.current = id;
+    setBodyIdState(id);
+    setRadial(null);
+    setInfo(null);
+    systemRef.current = false;
+    setSystemViewState(false);
+    view.current?.showBody(id);
+    setAlerts((a) => {
+      if (!a.has(id)) return a;
+      const next = new Set(a);
+      next.delete(id);
+      return next;
+    });
+  };
+  const body = () =>
+    (session.state.bodies[bodyRef.current] ??
+      session.state.bodies[0]) as (typeof session.state.bodies)[number];
   const cellOf = (h: Hex) => body().colony[getBoard(body().radius).indexOf(h.q, h.r)] ?? null;
 
   const refreshPlan = useCallback(() => {
@@ -124,11 +168,11 @@ export default function Match({ session, onSave, onExit, onFinished }: Props) {
         haptic("tick");
       },
       onPaintChange: (path, added) => {
-        const order: Order = { type: "grow", body: 0, path };
+        const order: Order = { type: "grow", body: bodyRef.current, path };
         const check = session.planner.check(order);
         view.current?.setPaint({
           path,
-          preview: previewPath(session.state, me, 0, path),
+          preview: previewPath(session.state, me, bodyRef.current, path),
           valid: check.ok,
           cost: check.ok ? check.cost : 0,
           player: me,
@@ -140,12 +184,30 @@ export default function Match({ session, onSave, onExit, onFinished }: Props) {
       },
       onPaintEnd: (path) => {
         view.current?.setPaint(null);
-        if (path && addOrder({ type: "grow", body: 0, path })) audio.squelch();
+        if (path && addOrder({ type: "grow", body: bodyRef.current, path })) audio.squelch();
       },
       onTap: (h, at) => {
         setInfo(null);
         if (!h || phaseRef.current === "replay") {
           setRadial(null);
+          return;
+        }
+        const l = launchRef.current;
+        if (l && l.target === bodyRef.current && planning()) {
+          // Launch flow, step 2: the landing cell.
+          if (
+            addOrder({
+              type: "launch",
+              body: l.body,
+              cell: l.cell,
+              targetBody: l.target,
+              targetCell: h,
+            })
+          ) {
+            audio.launch();
+            setLaunch(null);
+            openBody(l.body);
+          }
           return;
         }
         if (cellOf(h)?.owner === me && planning()) {
@@ -157,10 +219,26 @@ export default function Match({ session, onSave, onExit, onFinished }: Props) {
         }
       },
       onCamera: () => setRadial(null),
+      onBodyTap: (id) => {
+        const l = launchRef.current;
+        if (l && l.target === null) {
+          audio.click();
+          setLaunch({ ...l, target: id });
+          openBody(id);
+          return;
+        }
+        audio.click();
+        openBody(id);
+      },
+      onPinchOut: () => {
+        if (multi && !launchRef.current) setSystemView(true);
+      },
     }).then((v) => {
       if (disposed) return v.destroy();
       view.current = v;
       v.reduceMotion = getSettings().reduceMotion;
+      v.setViewer(me);
+      if (bodyRef.current !== 0) v.showBody(bodyRef.current);
       if (e2e && window.__swarm) window.__swarm.view = v;
       shown.current = session.state;
       v.setState(session.state);
@@ -176,6 +254,11 @@ export default function Match({ session, onSave, onExit, onFinished }: Props) {
   useEffect(() => {
     if (view.current) view.current.reduceMotion = settings.reduceMotion;
   }, [settings.reduceMotion]);
+
+  useEffect(() => {
+    const l = launchRef.current;
+    view.current?.setSystemOptions({ launchFrom: l && l.target === null ? l.body : null, alerts });
+  }, [alerts, launch]);
 
   const describeCell = (h: Hex): string => {
     const b = body();
@@ -198,7 +281,13 @@ export default function Match({ session, onSave, onExit, onFinished }: Props) {
       setRadial(null);
       setInfo(null);
       setDrawer(false);
+      if (launchRef.current) setLaunch(null);
       setPhase("replay");
+      // Off-screen action this turn lights the body strip (SPEC §10.5).
+      const touched = new Set<number>();
+      for (const e of record.events)
+        if ("cell" in e && e.cell.body !== bodyRef.current) touched.add(e.cell.body);
+      if (touched.size > 0) setAlerts(touched);
       view.current?.setInputEnabled(false);
       view.current?.setPlan([], me, []);
       view.current?.setState(record.before);
@@ -301,6 +390,12 @@ export default function Match({ session, onSave, onExit, onFinished }: Props) {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement) return;
       if (e.key === "Escape") {
+        if (launchRef.current) {
+          const l = launchRef.current;
+          setLaunch(null);
+          if (l.target !== null) openBody(l.body);
+          else setSystemView(false);
+        }
         view.current?.cancelPaint();
         setRadial(null);
         setInfo(null);
@@ -376,8 +471,54 @@ export default function Match({ session, onSave, onExit, onFinished }: Props) {
     session.deadline === null ? null : Math.max(0, Math.ceil((session.deadline - now) / 1000));
 
   return (
-    <main class="match" data-phase={phase}>
+    <main class={multi ? "match has-strip" : "match"} data-phase={phase}>
       <div class="viewport" ref={host} />
+      {multi && systemView && <ForecastStrip state={state} me={me} />}
+      {launch && (
+        <div class="launch-banner" role="status">
+          <span>
+            {launch.target === null
+              ? "Launch: pick a body in range"
+              : `Launch: tap a landing cell on body ${launch.target + 1}`}
+          </span>
+          <button
+            class="btn btn-ghost small-btn"
+            onClick={() => {
+              const l = launch;
+              setLaunch(null);
+              if (l.target !== null) openBody(l.body);
+              else setSystemView(false);
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+      {multi && (
+        <BodyStrip
+          state={state}
+          me={me}
+          shown={bodyId}
+          system={systemView}
+          alerts={alerts}
+          onPick={(id) => {
+            const l = launchRef.current;
+            if (l && l.target === null) {
+              if (!view.current?.canPick(id)) {
+                flash("That body is out of launch range");
+                return;
+              }
+              setLaunch({ ...l, target: id });
+            }
+            audio.click();
+            openBody(id);
+          }}
+          onSystem={() => {
+            audio.click();
+            setSystemView(!systemRef.current);
+          }}
+        />
+      )}
 
       <header class="hud-top">
         <div class="hud-stats" aria-label="Nutrients">
@@ -412,6 +553,12 @@ export default function Match({ session, onSave, onExit, onFinished }: Props) {
       {radial && phase === "planning" && (
         <RadialMenu
           session={session}
+          body={bodyId}
+          onLaunch={(cell) => {
+            setRadial(null);
+            setLaunch({ body: bodyRef.current, cell, target: null });
+            setSystemView(true);
+          }}
           cell={radial.cell}
           at={radial.at}
           onAdd={(o) => {
@@ -495,7 +642,11 @@ export default function Match({ session, onSave, onExit, onFinished }: Props) {
                 <button
                   class="link"
                   disabled={!l.cell}
-                  onClick={() => l.cell && view.current?.centerOn(l.cell)}
+                  onClick={() => {
+                    if (!l.cell) return;
+                    if (l.body !== bodyRef.current) openBody(l.body);
+                    view.current?.centerOn(l.cell);
+                  }}
                 >
                   {l.text}
                 </button>
@@ -510,7 +661,10 @@ export default function Match({ session, onSave, onExit, onFinished }: Props) {
         orders={planner.orders}
         session={session}
         onToggle={() => setDrawer((d) => !d)}
-        onFocus={(h) => view.current?.centerOn(h)}
+        onFocus={(h, b) => {
+          if (b !== bodyRef.current) openBody(b);
+          view.current?.centerOn(h);
+        }}
         onRemove={(i) => {
           if (session.submitted) return;
           planner.remove(i);
@@ -567,6 +721,15 @@ export default function Match({ session, onSave, onExit, onFinished }: Props) {
 }
 
 function frameSound(f: Frame): void {
+  if (f.phase === "launch") {
+    if (f.effects.some((e) => e.kind === "launch" && !e.fizzled)) audio.launch();
+    if (f.effects.some((e) => e.kind === "land")) setTimeout(() => audio.squelch(), 380);
+    return;
+  }
+  if (f.phase === "events" && f.effects.some((e) => e.kind === "flash")) {
+    audio.thud();
+    return;
+  }
   if (f.phase !== "growth") return;
   const kinds = new Set(f.effects.map((e) => (e.kind === "tendril" ? e.outcome : e.kind)));
   setTimeout(() => {
@@ -599,6 +762,19 @@ function ReadyMarkers({ seats }: { seats: SeatStatus[] }) {
 
 function DominanceBar({ dominance, names }: { dominance: number[]; names(seat: number): string }) {
   const parts = dominance.map((d, i) => `${names(i)} ${d / 10}%`).join(", ");
+  if (dominance.length > 2) {
+    // 3–4 players: one thin row each, all measured against the same goal line.
+    return (
+      <div class="dominance multi" aria-label={`Dominance: ${parts}`}>
+        {dominance.map((d, i) => (
+          <span key={i} class="dom-row">
+            <span style={{ width: `${d / 10}%`, background: PLAYER_CSS[i % PLAYER_CSS.length] }} />
+          </span>
+        ))}
+        <span class="dom-goal" />
+      </div>
+    );
+  }
   return (
     <div class="dominance" aria-label={`Dominance: ${parts}`}>
       <span style={{ width: `${(dominance[0] ?? 0) / 10}%`, background: PLAYER_CSS[0] }} />

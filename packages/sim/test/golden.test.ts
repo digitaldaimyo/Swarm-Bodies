@@ -12,8 +12,9 @@ import {
 // SPEC §9.3 / §15 M1: committed golden replays must reproduce their hashes exactly.
 // If a sim change moves these deliberately, run `pnpm golden:update` and explain why in the commit.
 describe("golden replays", () => {
-  it("has 20 replays", () => {
-    expect(golden.replays).toHaveLength(20);
+  it("has 50 replays: 20 Single Rock and 30 star systems (SPEC §15 M5)", () => {
+    expect(golden.replays).toHaveLength(50);
+    expect(golden.replays.filter((r) => r.config.mode === "system")).toHaveLength(30);
   });
 
   it.each(golden.replays.map((r) => [r.seed, r] as const))(

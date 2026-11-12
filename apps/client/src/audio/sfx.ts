@@ -107,6 +107,13 @@ class AudioEngine {
     this.noiseBurst(0.08, "lowpass", 900, 200, 0.25);
   }
 
+  /** The deep "thoom" of a spore launch (SPEC §10.6). */
+  launch(): void {
+    this.tone("sine", 70, 32, 0.6, 0.5);
+    this.tone("triangle", 140, 60, 0.35, 0.12);
+    this.noiseBurst(0.35, "lowpass", 600, 120, 0.3);
+  }
+
   /** UI click and the path-painting tick. */
   click(): void {
     this.tone("triangle", 1800, 900, 0.04, 0.12);

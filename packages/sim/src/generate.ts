@@ -1,9 +1,19 @@
-import { resolveRules, type DepositKind, type Rules } from "./config";
+import { resolveRules, type BodySize, type BodyType, type DepositKind, type Rules } from "./config";
 import { refreshConnectivity } from "./connectivity";
 import { getBoard, hexDistance, HEX_DIRECTIONS, type Board, type Hex } from "./hex";
-import { permille } from "./math";
+import { idiv, permille } from "./math";
+import { distanceScaled } from "./orbit";
 import { rngStream, type Rng } from "./rng";
-import type { Body, Colony, GameConfig, GameState, PlayerState, Terrain } from "./types";
+import type {
+  Body,
+  Colony,
+  GameConfig,
+  GameState,
+  Orbit,
+  PlayerState,
+  ScheduledEvent,
+  Terrain,
+} from "./types";
 
 const DEPOSIT_KINDS: readonly DepositKind[] = ["ice", "mineral", "organic"];
 
@@ -16,6 +26,8 @@ export function createGame(config: GameConfig, seed: string): GameState {
   switch (config.mode) {
     case "singleRock":
       return createSingleRock(config, rules, seed);
+    case "system":
+      return createSystem(config, rules, seed);
     default: {
       const mode: never = config.mode;
       throw new Error(`Unsupported game mode: ${String(mode)}`);
@@ -101,13 +113,20 @@ function createSingleRock(config: GameConfig, rules: Rules, seed: string): GameS
   for (let p = 0; p < 2; p++) {
     const flip = p === 1 ? mirror : (h: Hex) => h;
     const core = flip(start0);
-    colony[idx(core)] = { owner: p, biomass: rules.startCoreBiomass, core: true, connected: true };
+    colony[idx(core)] = {
+      owner: p,
+      biomass: rules.startCoreBiomass,
+      core: true,
+      connected: true,
+      fruiting: null,
+    };
     for (const a of adjacent0) {
       colony[idx(flip(a))] = {
         owner: p,
         biomass: rules.startAdjacentBiomass,
         core: false,
         connected: true,
+        fruiting: null,
       };
     }
     players.push({
@@ -121,7 +140,18 @@ function createSingleRock(config: GameConfig, rules: Rules, seed: string): GameS
     });
   }
 
-  const body: Body = { id: 0, size: "large", type: bodyType, radius, terrain, deposits, colony };
+  const body: Body = {
+    id: 0,
+    size: "large",
+    type: bodyType,
+    radius,
+    terrain,
+    deposits,
+    colony,
+    orbit: null,
+    home: null,
+    comets: [],
+  };
   refreshConnectivity(body);
   return {
     version: 1,
@@ -131,6 +161,9 @@ function createSingleRock(config: GameConfig, rules: Rules, seed: string): GameS
     turn: 1,
     bodies: [body],
     players,
+    spores: [],
+    nextSporeId: 1,
+    schedule: [],
     result: null,
   };
 }
@@ -145,6 +178,7 @@ function placeRock(
   rules: Rules,
   terrain: Terrain[],
   eligible: (i: number) => boolean,
+  mirrored = true,
 ): void {
   const n = board.cells.length;
   const target = permille(n, rules.rockPermille);
@@ -153,7 +187,7 @@ function placeRock(
     i >= 0 &&
     terrain[i] === "regolith" &&
     eligible(i) &&
-    eligible(board.indexOf(-(board.cells[i] as Hex).q, -(board.cells[i] as Hex).r));
+    (!mirrored || eligible(board.indexOf(-(board.cells[i] as Hex).q, -(board.cells[i] as Hex).r)));
   for (let attempt = 0; attempt < 400 && count < target; attempt++) {
     const seedCell = rng.int(n);
     if (!canRock(seedCell)) continue;
@@ -168,7 +202,7 @@ function placeRock(
     for (const i of cluster) {
       cells.add(i);
       const h = board.cells[i] as Hex;
-      cells.add(board.indexOf(-h.q, -h.r));
+      if (mirrored) cells.add(board.indexOf(-h.q, -h.r));
     }
     if (count + cells.size > target + 1) continue;
     for (const i of cells) terrain[i] = "rock";
@@ -196,4 +230,212 @@ export function isOneRegion(board: Board, terrain: readonly Terrain[]): boolean 
     }
   }
   return queue.length === open;
+}
+
+// ------------------------------------------------------------------------------------------
+// Star systems (SPEC §4.1–4.5)
+
+const SIZES: readonly BodySize[] = ["small", "medium", "large"];
+const TYPES: readonly BodyType[] = ["carbonaceous", "icy", "metallic", "irradiated"];
+const HOME_TYPES: readonly BodyType[] = ["carbonaceous", "icy"];
+
+function createSystem(config: GameConfig, rules: Rules, seed: string): GameState {
+  const players = config.playerCount;
+  if (!Number.isInteger(players) || players < 2 || players > 4) {
+    throw new Error(`A system supports 2–4 players, got ${players}`);
+  }
+  const rng = rngStream(seed, "system");
+  const count = Math.min(
+    rules.systemMaxBodies,
+    Math.max(rules.systemMinBodies, players + rules.systemExtraBodies),
+  );
+
+  // Orbits: distinct radii, inner bodies first; wider orbits have longer periods.
+  const radii: number[] = [];
+  for (let r = rules.orbitRadiusMin; r <= rules.orbitRadiusMax; r++) radii.push(r);
+  const chosen = rng
+    .shuffle(radii)
+    .slice(0, count)
+    .sort((a, b) => a - b);
+  const orbits: Orbit[] = chosen.map((radius) => {
+    const span = rules.orbitPeriodMax - rules.orbitPeriodMin;
+    const base =
+      rules.orbitPeriodMin +
+      idiv((radius - rules.orbitRadiusMin) * span, rules.orbitRadiusMax - rules.orbitRadiusMin);
+    const period = Math.min(
+      rules.orbitPeriodMax,
+      Math.max(rules.orbitPeriodMin, base + rng.range(-1, 1)),
+    );
+    return { radius, period, phase: rng.int(360) };
+  });
+
+  const homes = chooseHomes(orbits, players);
+  const bodies: Body[] = orbits.map((orbit, id) => {
+    const owner = homes.indexOf(id);
+    const isHome = owner >= 0;
+    const size: BodySize = isHome ? "medium" : (SIZES[rng.int(SIZES.length)] as BodySize);
+    const type: BodyType = isHome
+      ? (HOME_TYPES[rng.int(HOME_TYPES.length)] as BodyType)
+      : (TYPES[rng.int(TYPES.length)] as BodyType);
+    return buildBody(seed, rules, id, size, type, orbit, isHome ? owner : null);
+  });
+
+  const playerStates: PlayerState[] = homes.map((bodyId, p) => ({
+    id: p,
+    strain: config.strains?.[p] ?? "base",
+    nutrients: rules.startNutrients,
+    eliminated: false,
+    eliminatedOnTurn: null,
+    dominanceStreak: 0,
+    home: { body: bodyId, cell: { q: 0, r: 0 } },
+  }));
+
+  return {
+    version: 1,
+    seed,
+    mode: "system",
+    rules,
+    turn: 1,
+    bodies,
+    players: playerStates,
+    spores: [],
+    nextSporeId: 1,
+    schedule: scheduleEvents(seed, rules, bodies.length),
+    result: null,
+  };
+}
+
+/**
+ * Picks the home bodies so each player's distance (at turn 1) to its nearest neutral body is as
+ * equal as possible (SPEC §4.1). Every combination is tried; ties go to the first found.
+ */
+function chooseHomes(orbits: readonly Orbit[], players: number): number[] {
+  const probe = orbits.map((orbit, id): Body => ({
+    id,
+    size: "small",
+    type: "carbonaceous",
+    radius: 0,
+    terrain: [],
+    deposits: [],
+    colony: [],
+    orbit,
+    home: null,
+    comets: [],
+  }));
+  let best: number[] = [];
+  let bestSpread = Infinity;
+  const pick = (start: number, chosen: number[]): void => {
+    if (chosen.length === players) {
+      const nearest = chosen.map((h) => {
+        let d = Infinity;
+        for (const b of probe)
+          if (!chosen.includes(b.id)) d = Math.min(d, distanceScaled(probe[h] as Body, b, 1));
+        return d;
+      });
+      const spread = Math.max(...nearest) - Math.min(...nearest);
+      if (spread < bestSpread) {
+        bestSpread = spread;
+        best = chosen.slice();
+      }
+      return;
+    }
+    for (let i = start; i < probe.length; i++) pick(i + 1, [...chosen, i]);
+  };
+  pick(0, []);
+  return best;
+}
+
+/** One body's surface: rock clusters, deposits by type and, for a home, the start colony. */
+function buildBody(
+  seed: string,
+  rules: Rules,
+  id: number,
+  size: BodySize,
+  type: BodyType,
+  orbit: Orbit,
+  home: number | null,
+): Body {
+  const rng = rngStream(seed, `body:${id}`);
+  const radius = rules.bodyRadius[size];
+  const board = getBoard(radius);
+  const n = board.cells.length;
+  const terrain: Terrain[] = new Array<Terrain>(n).fill("regolith");
+  const deposits: (DepositKind | null)[] = new Array<DepositKind | null>(n).fill(null);
+  const colony: (Colony | null)[] = new Array<Colony | null>(n).fill(null);
+  const idx = (h: Hex): number => board.indexOf(h.q, h.r);
+  const origin: Hex = { q: 0, r: 0 };
+
+  let startCells = new Set<number>();
+  let protectedCell: (i: number) => boolean = () => false;
+  if (home !== null) {
+    const adjacent = rng
+      .shuffle(HEX_DIRECTIONS.map((d) => ({ q: d.q, r: d.r })))
+      .slice(0, rules.startAdjacentCells);
+    startCells = new Set([origin, ...adjacent].map(idx));
+    protectedCell = (i: number) => hexDistance(board.cells[i] as Hex, origin) <= 2;
+    const candidates = board.cells
+      .map((_, i) => i)
+      .filter((i) => {
+        const d = hexDistance(board.cells[i] as Hex, origin);
+        return d >= 2 && d <= rules.homeGuaranteedDepositRange && !startCells.has(i);
+      });
+    const [organic, ice] = rng.shuffle(candidates);
+    deposits[organic as number] = "organic";
+    deposits[ice as number] = "ice";
+    colony[idx(origin)] = {
+      owner: home,
+      biomass: rules.startCoreBiomass,
+      core: true,
+      connected: true,
+      fruiting: null,
+    };
+    for (const a of adjacent) {
+      colony[idx(a)] = {
+        owner: home,
+        biomass: rules.startAdjacentBiomass,
+        core: false,
+        connected: true,
+        fruiting: null,
+      };
+    }
+  }
+
+  placeRock(board, rng, rules, terrain, (i) => !protectedCell(i) && deposits[i] === null, false);
+
+  const mix = rules.depositMix[type];
+  const weights = DEPOSIT_KINDS.map((k) => mix[k]);
+  let target = permille(n, rules.depositPermille);
+  if (type === "irradiated") target += permille(target, rules.irradiatedDepositBonusPermille);
+  let placed = deposits.filter((d) => d !== null).length;
+  for (const i of rng.shuffle(board.cells.map((_, i) => i))) {
+    if (placed >= target) break;
+    if (terrain[i] !== "regolith" || deposits[i] !== null || protectedCell(i)) continue;
+    deposits[i] = DEPOSIT_KINDS[rng.weighted(weights)] as DepositKind;
+    placed++;
+  }
+
+  const body: Body = { id, size, type, radius, terrain, deposits, colony, orbit, home, comets: [] };
+  refreshConnectivity(body);
+  return body;
+}
+
+/** Flares every 7–10 turns and comets every 10–14, through the turn limit (SPEC §8). */
+function scheduleEvents(seed: string, rules: Rules, bodies: number): ScheduledEvent[] {
+  const rng = rngStream(seed, "events");
+  const out: ScheduledEvent[] = [];
+  for (
+    let t = rng.range(rules.flareEveryMin, rules.flareEveryMax);
+    t <= rules.turnLimit;
+    t += rng.range(rules.flareEveryMin, rules.flareEveryMax)
+  ) {
+    out.push({ kind: "flare", turn: t });
+  }
+  for (
+    let t = rng.range(rules.cometEveryMin, rules.cometEveryMax);
+    t <= rules.turnLimit;
+    t += rng.range(rules.cometEveryMin, rules.cometEveryMax)
+  ) {
+    out.push({ kind: "comet", turn: t, body: rng.int(bodies) });
+  }
+  return out.sort((a, b) => a.turn - b.turn || (a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0));
 }

@@ -36,6 +36,25 @@ export function randomOrderSet(state: GameState, player: PlayerId, seed: string)
         path.push({ q: h.q, r: h.r });
       }
       order = { type: "grow", body: s.body, path };
+    } else if (roll < 75 && legal.launchers.length > 0) {
+      // Launch a mature fruiting body at a random cell of a body in range, if any.
+      const l = rng.pick(legal.launchers);
+      if (l.targets.length === 0) continue;
+      const target = state.bodies.find((b) => b.id === rng.pick(l.targets));
+      if (!target) continue;
+      const cell = getBoard(target.radius).cells[
+        rng.int(getBoard(target.radius).cells.length)
+      ] as Hex;
+      order = {
+        type: "launch",
+        body: l.from.body,
+        cell: { q: l.from.q, r: l.from.r },
+        targetBody: target.id,
+        targetCell: { q: cell.q, r: cell.r },
+      };
+    } else if (roll < 80 && legal.fruitTargets.length > 0) {
+      const c = rng.pick(legal.fruitTargets);
+      order = { type: "fruit", body: c.body, cell: { q: c.q, r: c.r } };
     } else if (roll < 92) {
       if (legal.reinforceTargets.length === 0) continue;
       const c = rng.pick(legal.reinforceTargets);

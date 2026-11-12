@@ -22,10 +22,25 @@ export {
   filterOrderSet,
   isWellFormedOrder,
   newCellPositions,
+  fruitingCount,
   type OrderSetValidation,
   type FilteredOrders,
 } from "./validate";
 export { resolveTurn } from "./resolve";
+export { upgradeState } from "./upgrade";
+export {
+  bodyPosition,
+  distanceScaled,
+  forecast,
+  inLaunchRange,
+  launchRangeFor,
+  orbitAngle,
+  travelTime,
+  type ForecastTurn,
+  type LaunchWindow,
+  type Point,
+} from "./orbit";
+export { sinFx, cosFx, TRIG_SCALE } from "./trig";
 export { listLegalOrders, type LegalOrderIndex } from "./legal";
 export { serialize, deserialize, hashState, canonicalJson } from "./serialize";
 export { randomOrderSet } from "./random-player";
