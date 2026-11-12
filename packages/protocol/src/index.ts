@@ -28,6 +28,14 @@ export const OrderSchema = z.discriminatedUnion("type", [
     cell: HexSchema,
   }),
   z.object({ type: z.literal("retract"), body: z.number().int().min(0).max(16), cell: HexSchema }),
+  z.object({ type: z.literal("fruit"), body: z.number().int().min(0).max(16), cell: HexSchema }),
+  z.object({
+    type: z.literal("launch"),
+    body: z.number().int().min(0).max(16),
+    cell: HexSchema,
+    targetBody: z.number().int().min(0).max(16),
+    targetCell: HexSchema,
+  }),
 ]);
 /** The sim enforces the real order limit (12); this only bounds message size. */
 export const OrderSetSchema = z.array(OrderSchema).max(32);

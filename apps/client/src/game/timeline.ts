@@ -161,7 +161,13 @@ export function buildTimeline(
             player: e.player,
             outcome: "claim",
           });
-        set(e.cell, { owner: e.player, biomass: e.biomass, core: false, connected: true });
+        set(e.cell, {
+          owner: e.player,
+          biomass: e.biomass,
+          core: false,
+          connected: true,
+          fruiting: null,
+        });
         break;
       }
       case "CellCaptured": {
@@ -183,7 +189,13 @@ export function buildTimeline(
           from: e.from,
           to: e.player,
         });
-        set(e.cell, { owner: e.player, biomass: e.biomass, core: false, connected: true });
+        set(e.cell, {
+          owner: e.player,
+          biomass: e.biomass,
+          core: false,
+          connected: true,
+          fruiting: null,
+        });
         break;
       }
       case "AssaultRepelled": {

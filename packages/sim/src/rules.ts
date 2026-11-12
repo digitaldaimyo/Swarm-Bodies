@@ -14,6 +14,7 @@ export interface PlayerRules {
   coreMaxBiomass: number;
   defenseSupport: number;
   reinforceAmount: number;
+  launchRange: number;
 }
 
 export function strainOf(state: GameState, player: PlayerId): StrainId {
@@ -34,13 +35,22 @@ export function playerRules(state: GameState, player: PlayerId): PlayerRules {
     coreMaxBiomass: rules.coreMaxBiomass + (maxBiomass - rules.maxBiomass),
     defenseSupport: m.defenseSupport ?? rules.defenseSupport,
     reinforceAmount: m.reinforceAmount ?? rules.reinforceAmount,
+    launchRange: rules.launchRange + (m.launchRangeBonus ?? 0),
   };
 }
 
-/** Max biomass of a colony cell, by its owner's strain (SPEC §5.5). */
-export function maxBiomassFor(state: GameState, colony: Pick<Colony, "core" | "owner">): number {
+/**
+ * Max biomass of a colony cell: the owner's strain (SPEC §5.5, §7.1) plus the body's type
+ * (Metallic: +2, SPEC §4.3).
+ */
+export function maxBiomassFor(
+  state: GameState,
+  colony: Pick<Colony, "core" | "owner">,
+  body: Pick<Body, "type">,
+): number {
   const r = playerRules(state, colony.owner);
-  return colony.core ? r.coreMaxBiomass : r.maxBiomass;
+  const bonus = body.type === "metallic" ? state.rules.metallicMaxBiomassBonus : 0;
+  return (colony.core ? r.coreMaxBiomass : r.maxBiomass) + bonus;
 }
 
 /** Entry cost of one new cell for `player` (SPEC §5.2). */

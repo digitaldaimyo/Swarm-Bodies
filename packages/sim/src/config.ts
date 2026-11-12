@@ -24,6 +24,8 @@ export interface StrainModifiers {
   maxBiomass?: number;
   defenseSupport?: number;
   reinforceAmount?: number;
+  /** Added to the launch range (Sporer: +2, M6). */
+  launchRangeBonus?: number;
 }
 
 export interface Rules {
@@ -77,6 +79,37 @@ export interface Rules {
 
   /** SPEC §7.1 */
   strains: Record<StrainId, StrainModifiers>;
+
+  /** SPEC §4.1: bodies = playerCount + extra, clamped. */
+  systemExtraBodies: number;
+  systemMinBodies: number;
+  systemMaxBodies: number;
+  /** SPEC §4.5 orbits, in distance units and turns. */
+  orbitRadiusMin: number;
+  orbitRadiusMax: number;
+  orbitPeriodMin: number;
+  orbitPeriodMax: number;
+  launchRange: number;
+  sporeSpeed: number;
+  /** SPEC §6 */
+  landingBiomass: number;
+  /** SPEC §5.1 Fruit */
+  fruitCost: number;
+  fruitMinBiomass: number;
+  fruitMatureTurns: number;
+  maxFruiting: number;
+  /** SPEC §4.3 body types */
+  metallicMaxBiomassBonus: number;
+  irradiatedDepositBonusPermille: number;
+  /** SPEC §8 events: an inclusive range of turns between occurrences. */
+  flareEveryMin: number;
+  flareEveryMax: number;
+  flareLoss: number;
+  cometEveryMin: number;
+  cometEveryMax: number;
+  cometYield: number;
+  cometDuration: number;
+  cometWarning: number;
 }
 
 export const BASE_RULES: Rules = {
@@ -130,6 +163,31 @@ export const BASE_RULES: Rules = {
     // Slow, dense, immovable.
     biofilm: { growReach: 2, maxBiomass: 12, defenseSupport: 2, reinforceAmount: 4 },
   },
+
+  systemExtraBodies: 2,
+  systemMinBodies: 4,
+  systemMaxBodies: 7,
+  orbitRadiusMin: 3,
+  orbitRadiusMax: 12,
+  orbitPeriodMin: 8,
+  orbitPeriodMax: 24,
+  launchRange: 6,
+  sporeSpeed: 3,
+  landingBiomass: 3,
+  fruitCost: 10,
+  fruitMinBiomass: 5,
+  fruitMatureTurns: 2,
+  maxFruiting: 2,
+  metallicMaxBiomassBonus: 2,
+  irradiatedDepositBonusPermille: 500,
+  flareEveryMin: 7,
+  flareEveryMax: 10,
+  flareLoss: 2,
+  cometEveryMin: 10,
+  cometEveryMax: 14,
+  cometYield: 5,
+  cometDuration: 6,
+  cometWarning: 2,
 };
 
 /** Shallow-merges overrides onto BASE_RULES (nested records are replaced, not merged). */

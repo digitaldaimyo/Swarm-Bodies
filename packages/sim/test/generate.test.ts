@@ -63,14 +63,26 @@ describe("SPEC §4.1–4.4 Single Rock generation", () => {
     for (const p of s.players) {
       expect(p.nutrients).toBe(10);
       const core = body.colony[board.indexOf(p.home.cell.q, p.home.cell.r)];
-      expect(core).toEqual({ owner: p.id, biomass: 5, core: true, connected: true });
+      expect(core).toEqual({
+        owner: p.id,
+        biomass: 5,
+        core: true,
+        connected: true,
+        fruiting: null,
+      });
       const own = body.colony
         .map((c, i) => ({ c, h: board.cells[i] as Hex }))
         .filter((x) => x.c?.owner === p.id);
       expect(own).toHaveLength(3);
       for (const { c, h } of own) {
         if (c!.core) continue;
-        expect(c).toEqual({ owner: p.id, biomass: 2, core: false, connected: true });
+        expect(c).toEqual({
+          owner: p.id,
+          biomass: 2,
+          core: false,
+          connected: true,
+          fruiting: null,
+        });
         expect(hexDistance(h, p.home.cell)).toBe(1);
       }
       // Guaranteed Organic and Ice within 3 cells of the core.

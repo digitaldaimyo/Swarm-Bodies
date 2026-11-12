@@ -138,7 +138,10 @@ function analyseBody(
       const canReinforce =
         (nutrients.get(e.owner) ?? 0) >= rules.reinforceCost + rules.minEntryCost;
       const boost = canReinforce
-        ? Math.min(playerRules(state, e.owner).reinforceAmount, maxBiomassFor(state, e) - e.biomass)
+        ? Math.min(
+            playerRules(state, e.owner).reinforceAmount,
+            maxBiomassFor(state, e, body) - e.biomass,
+          )
         : 0;
       if (attack > (threat[i] as number)) threat[i] = attack;
       if (attack + boost > (threatReinforced[i] as number)) threatReinforced[i] = attack + boost;

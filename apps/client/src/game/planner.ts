@@ -186,5 +186,5 @@ export function canReinforceMore(state: GameState, body: number, h: Hex): boolea
   const b = state.bodies.find((x) => x.id === body);
   if (!b) return false;
   const c = b.colony[getBoard(b.radius).indexOf(h.q, h.r)];
-  return !!c && c.biomass < maxBiomassFor(state, c);
+  return !!c && c.biomass < maxBiomassFor(state, c, b);
 }

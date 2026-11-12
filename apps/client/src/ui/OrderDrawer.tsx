@@ -26,6 +26,10 @@ function describe(state: GameState, me: number, o: Order): { title: string; cell
       return { title: "Reinforce", cell: o.cell };
     case "retract":
       return { title: "Retract", cell: o.cell };
+    case "fruit":
+      return { title: "Fruit (spore launcher)", cell: o.cell };
+    case "launch":
+      return { title: `Launch to body ${o.targetBody + 1}`, cell: o.cell };
   }
 }
 

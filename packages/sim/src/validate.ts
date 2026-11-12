@@ -1,4 +1,5 @@
 import { areAdjacent, getBoard, type Hex } from "./hex";
+import { inLaunchRange } from "./orbit";
 import { cellIndexOf, entryCost, maxBiomassFor, playerRules } from "./rules";
 import type { Body, GameState, Order, PlayerId, RejectReason, ValidationResult } from "./types";
 
@@ -17,6 +18,9 @@ interface PlanContext {
   growAllCells: Set<string>;
   reinforced: Set<string>;
   retracted: Set<string>;
+  fruiting: Set<string>;
+  launchFrom: Set<string>;
+  launchTo: Set<string>;
 }
 
 function emptyContext(): PlanContext {
@@ -28,6 +32,9 @@ function emptyContext(): PlanContext {
     growAllCells: new Set(),
     reinforced: new Set(),
     retracted: new Set(),
+    fruiting: new Set(),
+    launchFrom: new Set(),
+    launchTo: new Set(),
   };
 }
 
@@ -57,7 +64,10 @@ export function isWellFormedOrder(order: unknown): order is Order {
       return Array.isArray(o["path"]) && o["path"].length <= 64 && o["path"].every(isHex);
     case "reinforce":
     case "retract":
+    case "fruit":
       return isHex(o["cell"]);
+    case "launch":
+      return isHex(o["cell"]) && isInt(o["targetBody"]) && isHex(o["targetCell"]);
     default:
       return false;
   }
@@ -150,7 +160,7 @@ function checkOne(
       if (ctx.retracted.has(key(body.id, i))) {
         return fail("conflictsWithOrder", "That cell is being retracted.");
       }
-      if (c.biomass >= maxBiomassFor(state, c))
+      if (c.biomass >= maxBiomassFor(state, c, body))
         return fail("atMaxBiomass", "That cell is already at max biomass.");
       cost = state.rules.reinforceCost;
       break;
@@ -164,9 +174,70 @@ function checkOne(
       const k = key(body.id, i);
       if (ctx.retracted.has(k))
         return fail("duplicateRetract", "That cell is already being retracted.");
-      if (ctx.growAllCells.has(k) || ctx.reinforced.has(k)) {
+      if (
+        ctx.growAllCells.has(k) ||
+        ctx.reinforced.has(k) ||
+        ctx.fruiting.has(k) ||
+        ctx.launchFrom.has(k)
+      ) {
         return fail("conflictsWithOrder", "Another of your orders uses that cell.");
       }
+      cost = 0;
+      break;
+    }
+    case "fruit": {
+      if (!hasOtherBodies(state))
+        return fail("noLaunches", "There is nowhere to launch spores to on this map.");
+      const i = locate(order.cell);
+      if (i < 0) return fail("offBoard", "No such cell.");
+      const c = body.colony[i];
+      const k = key(body.id, i);
+      if (!c || c.owner !== player) return fail("notOwn", "You can only fruit your own cells.");
+      if (!c.connected) return fail("notConnected", "Only connected cells can fruit.");
+      if (c.core) return fail("isCore", "Cores cannot fruit.");
+      if (c.fruiting !== null || ctx.fruiting.has(k))
+        return fail("alreadyFruiting", "That cell is already fruiting.");
+      if (c.biomass < state.rules.fruitMinBiomass) {
+        return fail("tooLittleBiomass", `Fruiting needs biomass ${state.rules.fruitMinBiomass}.`);
+      }
+      if (ctx.retracted.has(k)) return fail("conflictsWithOrder", "That cell is being retracted.");
+      if (fruitingCount(state, player) + ctx.fruiting.size >= state.rules.maxFruiting) {
+        return fail(
+          "tooManyFruiting",
+          `At most ${state.rules.maxFruiting} fruiting bodies at once.`,
+        );
+      }
+      cost = state.rules.fruitCost;
+      break;
+    }
+    case "launch": {
+      if (!hasOtherBodies(state))
+        return fail("noLaunches", "There is nowhere to launch spores to on this map.");
+      const i = locate(order.cell);
+      if (i < 0) return fail("offBoard", "No such cell.");
+      const c = body.colony[i];
+      const k = key(body.id, i);
+      if (!c || c.owner !== player)
+        return fail("notOwn", "You can only launch from your own fruiting bodies.");
+      if (c.fruiting === null) return fail("notFruiting", "That cell is not a fruiting body.");
+      if (c.fruiting > 0)
+        return fail(
+          "notMature",
+          `That fruiting body matures in ${c.fruiting} turn${c.fruiting === 1 ? "" : "s"}.`,
+        );
+      if (ctx.launchFrom.has(k))
+        return fail("duplicateLaunch", "That fruiting body is already launching.");
+      if (ctx.retracted.has(k)) return fail("conflictsWithOrder", "That cell is being retracted.");
+      const target = state.bodies.find((b) => b.id === order.targetBody);
+      if (!target) return fail("noSuchBody", "No such target body.");
+      if (target.id === body.id) return fail("sameBody", "Spores must fly to another body.");
+      if (!inLaunchRange(state, body, target, state.turn, player))
+        return fail("outOfRange", "That body is out of launch range this turn.");
+      const t = getBoard(target.radius).indexOf(order.targetCell.q, order.targetCell.r);
+      if (t < 0) return fail("offBoard", "The target cell is not on that body.");
+      if (target.terrain[t] === "rock") return fail("rock", "Spores cannot land on rock.");
+      if (ctx.launchTo.has(key(target.id, t)))
+        return fail("duplicateLaunch", "You are already launching at that cell.");
       cost = 0;
       break;
     }
@@ -204,7 +275,28 @@ function commit(
     case "retract":
       ctx.retracted.add(key(body.id, cellIndexOf(body, order.cell)));
       break;
+    case "fruit":
+      ctx.fruiting.add(key(body.id, cellIndexOf(body, order.cell)));
+      break;
+    case "launch": {
+      ctx.launchFrom.add(key(body.id, cellIndexOf(body, order.cell)));
+      const target = state.bodies.find((b) => b.id === order.targetBody) as Body;
+      ctx.launchTo.add(key(target.id, cellIndexOf(target, order.targetCell)));
+      break;
+    }
   }
+}
+
+/** Fruit and Launch need somewhere to fly: Single Rock has no orbits (SPEC §4.1). */
+function hasOtherBodies(state: GameState): boolean {
+  return state.bodies.filter((b) => b.orbit !== null).length > 1;
+}
+
+export function fruitingCount(state: GameState, player: PlayerId): number {
+  let n = 0;
+  for (const b of state.bodies)
+    for (const c of b.colony) if (c && c.owner === player && c.fruiting !== null) n++;
+  return n;
 }
 
 /**
