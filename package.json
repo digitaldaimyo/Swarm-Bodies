@@ -1,0 +1,41 @@
+{
+  "name": "swarm-bodies",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel --if-present dev",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "pnpm --filter @swarm/sim build:browser && playwright test",
+    "typecheck": "tsc -p tsconfig.json && pnpm -r --if-present typecheck",
+    "lint": "eslint . && prettier --check .",
+    "format": "prettier --write .",
+    "build": "pnpm -r --if-present build",
+    "balance": "pnpm --filter @swarm/balance start",
+    "golden:update": "pnpm --filter @swarm/balance golden"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "1.63.0",
+    "@types/node": "^22.20.5",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.14.0",
+    "eslint-config-prettier": "^10.1.8",
+    "fast-check": "^4.10.2",
+    "globals": "^17.14.0",
+    "prettier": "^3.10.0",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.72.2",
+    "vitest": "^5.1.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

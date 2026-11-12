@@ -7,7 +7,19 @@ A simultaneous-turn strategy game for web and mobile web. Rival colonies of slim
 
 ## Status
 
-Pre-development. The build follows the milestones in [SPEC §15](docs/SPEC.md#15-milestones-and-acceptance-criteria), starting with the deterministic simulation core.
+Milestone 1 (the deterministic simulation core) is complete. Next is M2, the bot. See [docs/PROGRESS.md](docs/PROGRESS.md) for details, and [docs/DECISIONS.md](docs/DECISIONS.md) for rulings on ambiguous spec points.
+
+## Getting started
+
+```
+pnpm install
+pnpm test                    # Vitest: sim rules, property tests, golden replays
+pnpm test:e2e                # Playwright: golden replays in the browser
+pnpm typecheck && pnpm lint
+pnpm balance -- --games 200  # headless random-legal batch on Single Rock
+```
+
+Requires Node 22+ and pnpm 10.
 
 ## Stack
 
