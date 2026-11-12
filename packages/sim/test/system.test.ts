@@ -772,16 +772,13 @@ describe("stored states from before M6", () => {
   it("keep their rules and gain no drafts", () => {
     const fresh = createGame({ mode: "system", playerCount: 2 }, "upgrade-m6");
     const old = JSON.parse(JSON.stringify(fresh)) as GameState;
-    const rules = old.rules as unknown as Record<string, unknown>;
-    for (const k of [
-      "draftThresholds",
-      "draftOptions",
-      "mutationPool",
-      "mutations",
-      "flareMinBiomass",
-      "minDepositYield",
-    ])
-      delete rules[k];
+    const rules = old.rules as Partial<GameState["rules"]>;
+    delete rules.draftThresholds;
+    delete rules.draftOptions;
+    delete rules.mutationPool;
+    delete rules.mutations;
+    delete rules.flareMinBiomass;
+    delete rules.minDepositYield;
     for (const p of old.players) {
       delete (p as Partial<typeof p>).mutations;
       delete (p as Partial<typeof p>).draft;
