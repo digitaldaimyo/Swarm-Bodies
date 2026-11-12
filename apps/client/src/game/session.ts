@@ -1,5 +1,6 @@
 import type { Difficulty } from "@swarm/bot";
 import {
+  BASE_RULES,
   createGame,
   type GameConfig,
   type GameMode,
@@ -30,7 +31,21 @@ export interface SkirmishSettings {
 }
 
 export type SystemSize = "compact" | "standard" | "wide";
-export const SYSTEM_EXTRA_BODIES: Record<SystemSize, number> = { compact: 1, standard: 2, wide: 3 };
+/** Standard is the tuned default (BASE_RULES.systemExtraBodies); the others are one either side. */
+export const SYSTEM_EXTRA_BODIES: Record<SystemSize, number> = {
+  compact: BASE_RULES.systemExtraBodies - 1,
+  standard: BASE_RULES.systemExtraBodies,
+  wide: BASE_RULES.systemExtraBodies + 1,
+};
+
+/** Neutral bodies a skirmish system will have (body count is clamped by the rules). */
+export function neutralBodies(players: number, size: SystemSize): number {
+  const total = Math.min(
+    BASE_RULES.systemMaxBodies,
+    Math.max(BASE_RULES.systemMinBodies, players + SYSTEM_EXTRA_BODIES[size]),
+  );
+  return total - players;
+}
 
 /** The sim config for a skirmish: you in seat 0, bots after you (SPEC §3). */
 export function skirmishConfig(s: SkirmishSettings): GameConfig {

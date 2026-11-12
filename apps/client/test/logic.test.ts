@@ -6,7 +6,7 @@ import { hexToPixel, pixelToHex } from "../src/game/layout";
 import { PathPainter } from "../src/game/painter";
 import { Planner, previewPath } from "../src/game/planner";
 import { buildTimeline, describeEvents, timelineDuration } from "../src/game/timeline";
-import { SkirmishSession, type SavedSkirmish } from "../src/game/session";
+import { neutralBodies, SkirmishSession, type SavedSkirmish } from "../src/game/session";
 import type { BotRunner } from "../src/game/bot-client";
 
 const syncBot: BotRunner = {
@@ -217,7 +217,7 @@ describe("replay timeline (SPEC §10.5)", () => {
       syncBot,
     );
     expect(s.state.players).toHaveLength(4);
-    expect(s.state.bodies).toHaveLength(Math.max(s.state.rules.systemMinBodies, 5));
+    expect(s.state.bodies).toHaveLength(4 + neutralBodies(4, "compact"));
     await s.submitAndWait();
     expect(s.state.turn).toBe(2);
     expect(s.seats().map((x) => x.name)).toEqual(["You", "Bot 1", "Bot 2", "Bot 3"]);

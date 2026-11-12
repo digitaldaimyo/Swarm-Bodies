@@ -3,7 +3,7 @@ import type { Difficulty } from "@swarm/bot";
 import type { Strain } from "@swarm/protocol";
 import { audio } from "../audio/sfx";
 import type { GameMode } from "@swarm/sim";
-import type { SkirmishSettings, SystemSize } from "../game/session";
+import { neutralBodies, type SkirmishSettings, type SystemSize } from "../game/session";
 import { strainInfo } from "@swarm/content";
 import { loadStrain, storeStrain, STRAINS, StrainPicker } from "./StrainPicker";
 
@@ -25,6 +25,7 @@ export function Setup({ defaultSeed, onBack, onStart }: Props) {
   const [map, setMap] = useState<GameMode>("system");
   const [bots, setBots] = useState(1);
   const [size, setSize] = useState<SystemSize>("standard");
+  const neutral = neutralBodies(bots + 1, size);
   const [seed, setSeed] = useState(defaultSeed);
   const [strain, setStrain] = useState<Strain>(loadStrain);
   const [botStrain, setBotStrain] = useState<Strain>(() =>
@@ -139,9 +140,8 @@ export function Setup({ defaultSeed, onBack, onStart }: Props) {
               ))}
             </div>
             <p class="hint">
-              A home asteroid each plus{" "}
-              {size === "compact" ? "one" : size === "standard" ? "two" : "three"} neutral bod
-              {size === "compact" ? "y" : "ies"} in orbit. Grow, fruit and launch spores to spread.
+              A home asteroid each plus {neutral} neutral bod{neutral === 1 ? "y" : "ies"} in orbit.
+              Grow, fruit and launch spores to spread.
             </p>
           </>
         ) : (
