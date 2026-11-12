@@ -21,7 +21,7 @@ import { localCosmetics } from "./Cosmetics";
 import { OrderDrawer } from "./OrderDrawer";
 import { RadialMenu } from "./RadialMenu";
 import { getSettings, haptic, updateSettings, useSettings } from "./settings";
-import type { TutorialStep } from "@swarm/content";
+import { tutorialReady, type TutorialStep } from "@swarm/content";
 
 interface Props {
   session: MatchSession;
@@ -505,9 +505,14 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
 
   // Advances the tutorial when its step's trigger has happened; anything else is forgotten so a
   // stale submit or capture never completes a later step.
-  const step = tutorial?.[tutorialStep];
+  // A step waits, hidden, until the player can do what it asks (M8 pacing).
+  const pending = tutorial?.[tutorialStep];
+  const step = pending && tutorialReady(session.state, me, pending.when) ? pending : undefined;
   useEffect(() => {
-    if (!step) return;
+    if (!step) {
+      tutorialSignals.current.clear();
+      return;
+    }
     const u = step.until;
     const signals = tutorialSignals.current;
     const hit =
@@ -779,17 +784,18 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
             >
               Skip tutorial
             </button>
-            {step.until.kind === "next" && (
-              <button
-                class="btn btn-primary small-btn"
-                onClick={() => {
-                  audio.click();
-                  setTutorialStep((i) => i + 1);
-                }}
-              >
-                Got it
-              </button>
-            )}
+            {/* Action steps can be skipped one at a time, so none can block the game. */}
+            <button
+              class={
+                step.until.kind === "next" ? "btn btn-primary small-btn" : "btn btn-ghost small-btn"
+              }
+              onClick={() => {
+                audio.click();
+                setTutorialStep((i) => i + 1);
+              }}
+            >
+              {step.until.kind === "next" ? "Got it" : "Skip step"}
+            </button>
           </div>
         </aside>
       )}
