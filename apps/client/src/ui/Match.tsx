@@ -36,6 +36,8 @@ declare global {
   interface Window {
     __swarm?: {
       autoplay: boolean;
+      /** e2e: the scripted player stops by itself when a draft is pending for the viewer. */
+      stopAtDraft?: boolean;
       phase: Phase;
       turn: number;
       finished: boolean;
@@ -452,6 +454,12 @@ export default function Match({ session, onSave, onExit, onFinished }: Props) {
       session.finished
     )
       return;
+    // Stopping here (not from the test, after the fact) leaves the offer for the test to see:
+    // otherwise the scripted player can pick it while the test is still switching autoplay off.
+    if (window.__swarm.stopAtDraft && session.state.players.find((p) => p.id === me)?.draft) {
+      window.__swarm.autoplay = false;
+      return;
+    }
     let cancelled = false;
     const turn = session.state.turn;
     void import("@swarm/bot").then(({ chooseOrders }) => {
@@ -459,6 +467,10 @@ export default function Match({ session, onSave, onExit, onFinished }: Props) {
       // Without this, the scripted player submits one more turn after being stopped.
       if (cancelled || !window.__swarm?.autoplay || !planning() || session.state.turn !== turn)
         return;
+      if (window.__swarm.stopAtDraft && session.state.players.find((p) => p.id === me)?.draft) {
+        window.__swarm.autoplay = false;
+        return;
+      }
       session.planner.clear();
       for (const o of chooseOrders(session.state, me, "normal", "e2e")) session.planner.add(o);
       refreshPlan();

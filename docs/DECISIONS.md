@@ -158,3 +158,10 @@ Rulings on ambiguous or unspecified points in `docs/SPEC.md`, as CLAUDE.md requi
 75. **Stored rules from before M6.** `upgradeState` fills rule fields added in M6 with today's defaults, except that old games get no drafts and keep the spec's flares, so they play on as they started.
 76. **Mutation glyphs** are text characters, so the HUD needs no bitmap icons (CLAUDE.md).
 77. **Skirmish sizes** are Standard (the tuned default), Wide and Vast: +0, +1 and +2 bodies over it. M5 saves that say "compact" load as Standard.
+78. **Perf measurement on starved CI hosts (PR #6 CI, refines #33).**
+    - **What happened:** one Chromium run drew 4.7 fps where its retry drew 18.7. The replay sample, a fixed 2.5 s window, then held 12 frames, 4–6 of them board swaps, so the "typical frame" median landed on a swap (7.2 ms against 5 ms).
+    - **Swap frames excluded:** the replay statistic now leaves out frames in which a board swap ran (the view counts swaps); swaps are timed on their own.
+    - **Whole replays:** the sample runs to the end of each replay instead of a fixed window.
+    - **Best of several:** idle and view windows are best of 3, replays best of 2, and swap timing is the second-fastest of 9. Contention only ever adds time, so the best measurement estimates the work, while a real regression slows every run.
+    - **Verification:** the tests pass three times without retries with four busy loops on a 4-core host, and an injected 10 ms swap regression still fails (15.1 ms against 11.7). Budgets are unchanged.
+79. **e2e hook `stopAtDraft`.** The scripted player stops by itself when a draft is pending for the viewer. Before, the draft test turned autoplay off after seeing the turn change. On a slower engine (WebKit on CI) the scripted player had already planned the next turn by then, and took draft 1 with it. This is reproduced in Chromium by slowing the test's polling.

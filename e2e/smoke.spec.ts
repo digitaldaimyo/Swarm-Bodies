@@ -186,34 +186,28 @@ test("mutation draft: the modal offers three cards, inspect then pick (M6)", asy
   await page.getByRole("button", { name: "Start" }).click();
   type Hook = {
     autoplay: boolean;
+    stopAtDraft?: boolean;
     phase: string;
-    turn: number;
     session: { state: { players: { draft: unknown }[] }; planner: { orders: { type: string }[] } };
   };
-  const hook = () => (window as unknown as { __swarm: Hook }).__swarm;
   await page.waitForFunction(
     () => (window as unknown as { __swarm?: { view?: unknown } }).__swarm?.view,
   );
-  // The scripted player grows until our first draft (40 total biomass) is offered.
-  for (let i = 0; i < 40; i++) {
-    if (
-      await page.evaluate(
-        () => !!(window as unknown as { __swarm: Hook }).__swarm.session.state.players[0]!.draft,
-      )
-    )
-      break;
-    const turn = await page.evaluate(() => (window as unknown as { __swarm: Hook }).__swarm.turn);
-    await page.evaluate(() => ((window as unknown as { __swarm: Hook }).__swarm.autoplay = true));
-    await page.waitForFunction(
-      (t) => (window as unknown as { __swarm: Hook }).__swarm.turn > t,
-      turn,
-    );
-    await page.evaluate(() => ((window as unknown as { __swarm: Hook }).__swarm.autoplay = false));
-    await page.waitForFunction(
-      () => (window as unknown as { __swarm: Hook }).__swarm.phase === "planning",
-    );
-  }
-  void hook;
+  // The scripted player grows until our first draft (40 total biomass) is offered, then stops
+  // by itself so the offer is still pending when we look (race-free on slower engines).
+  await page.evaluate(() => {
+    const h = (window as unknown as { __swarm: Hook }).__swarm;
+    h.stopAtDraft = true;
+    h.autoplay = true;
+  });
+  await page.waitForFunction(
+    () => {
+      const h = (window as unknown as { __swarm: Hook }).__swarm;
+      return !h.autoplay && h.phase === "planning" && !!h.session.state.players[0]!.draft;
+    },
+    null,
+    { timeout: 120_000 },
+  );
   const dialog = page.getByRole("dialog", { name: /Mutation draft 1 of 3/ });
   await expect(dialog).toBeVisible();
   const cards = dialog.locator(".draft-card");
