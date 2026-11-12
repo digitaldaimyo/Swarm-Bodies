@@ -30,3 +30,32 @@ Rulings on ambiguous or unspecified points in `docs/SPEC.md`, as CLAUDE.md requi
 21. **Threat model.** The bot estimates step-1 assaults only: an adjacent connected enemy cell's biomass plus that enemy's other cells adjacent to the target. It treats an attack that already beats the defense as a 50% loss risk, and one that needs the enemy to reinforce first as 20%. It values a reinforce by the expected loss it avoids. The bot never retracts in M2; Fruit and Launch arrive with M5.
 22. **Easy's "random top-3 per slot".** Each greedy slot is filled by a uniform pick among the top three candidates that still fit the plan. On each turn, a coin flip (from the bot's seeded stream) decides whether Easy ignores threats: no reinforce candidates and no contest risk. Easy never adds sever value.
 23. **Balance CLI seats.** `--players a,b` sets the two policies, and seats alternate every game, so neither side is always player 0. The default is `normal,normal`, the configuration future strain balance runs use.
+
+## 2026-11-12 — M3 playable client
+
+24. **Skirmish is untimed (§3, §10.2).** The turn timers are for online play. In an offline skirmish the turn ring shows progress toward the turn limit instead of a countdown, and the bot's ready marker lights when its worker has chosen orders.
+25. **Seats in skirmish.** The human is always player 0 (cyan) and the bot player 1 (magenta). Single Rock is point-symmetric, so the seat doesn't change the position.
+26. **Radial menu before M5 (§10.2).** It offers Reinforce and Retract, each greyed out with the sim's own reason when illegal, plus "Cancel order here" when an order uses the cell. Fruit and Launch are left out until the sim has them (M5), rather than shown permanently disabled.
+27. **Starting a paint.** A drag paints only when it starts on an own, connected cell during planning. Any other drag pans. The painted path follows the finger by breadth-first search within the remaining reach, so it routes around rock. If the finger is out of reach, the path walks straight toward it.
+28. **Colony art without filters (§10.4, §10.7).** The spec suggests a metaball or blur-threshold filter. Colonies are instead overlapping discs, straight bands between neighbours, and filled triangles between any three mutually adjacent own cells, with a soft halo. That reads as slime and avoids a full-screen filter pass every frame on phones. Static art (asteroid, terrain) and the colony layer are cached as textures; the colony's cache bounds are pinned to the body so redraws reuse one texture.
+29. **"60 fps on a mid-range phone profile" (§15 M3).** `e2e/perf.spec.ts` emulates the phone with Chromium's 4× CPU throttle at a 390×844 phone viewport. It asserts the main-thread cost per frame: median under 5 ms, and p95 (replay board swaps) inside one 16.7 ms frame. It does not assert raw requestAnimationFrame rates. GPU-less hosts (CI runners, this repo's dev containers) render WebGL in software (SwiftShader), so raw frame rates there measure the host CPU's fill rate rather than a phone GPU. For the same reason the test defaults to device pixel ratio 1; set `PERF_DPR=2.75` on a machine with a GPU. A real-device check is still listed as an open item in PROGRESS.md.
+30. **Saving a skirmish.** The game in progress is saved to `localStorage` as seed plus every turn's orders plus the current draft, and rebuilt by replaying through the sim (§9.4's "reconstructable from the seed plus the orders"). IndexedDB drafts keyed by `(gameId, turn)` arrive with online play in M4.
+31. **E2E hook.** With `?e2e` in the URL, the match screen exposes `window.__swarm`: phase, turn, the view, and an `autoplay` flag that plays the human's turns with the Normal bot policy and skips replays. This is the "accelerated scripted player" of §14. The service worker is not registered in that mode.
+32. **Fonts.** Fredoka (display) and Inter (UI, tabular figures) load from Google Fonts. The service worker caches them at runtime so the installed app still works offline.
+
+## 2026-11-12 — Performance validation (PR #3 CI failure)
+
+33. **CI regression checks versus real-device validation (§10.7, §15 M3).** The perf test failed on PR #3's first CI run (frame-time p95 19.1 ms against 16.7 ms). Investigation found three causes:
+    - **A real cost.** Replay board swaps re-tessellated every vein and gap-triangle polygon (444 on the test board). That is 11–13 ms of CPU per swap at 4× throttle here, and about 18 ms on the slower CI runner, which matches the failing replay p95. It is fixed by drawing those shapes as pooled sprites (backported from M4); a swap now costs 1–7 ms at 4× throttle.
+    - **A harness bug.** The e2e scripted player could submit one more turn after being switched off, so a replay animated inside the "idle" window (CI attempt 1: idle median 4.0 ms, p95 23 ms). It now re-checks the flag. The test also waits for real idleness: planning phase, a stable turn, and the bot's worker done.
+    - **Unsound statistics.** CI renders WebGL in software at ~10 fps, so the fixed 3 s windows held 25–47 frames, and their "p95" was the second-worst frame. Idle is now sampled by count (120 frames).
+
+    **What CI asserts** (a regression check of the code, at a 4× throttle relative to the runner):
+    - idle and replay frame medians under 5 ms;
+    - idle p95 within one 16.7 ms frame;
+    - a board swap (redraw plus render, median of 7) under 16.7 − 5 = 11.7 ms, so a swap frame plus a typical frame's other work fits in one frame;
+    - a hardware-independent structural guard: a swap rebuilds no per-cell geometry. This catches the original regression on any machine, which the timing budget alone does not on a fast host.
+
+    Replay p95 is logged, not asserted: it is the swap frames (measured directly above) plus software-rasteriser stalls.
+
+    **Real-device validation is separate**, because throttled timings are relative to the runner and CI has no GPU. Before each release candidate, and after any rendering change, run the M3/M5 benchmark scene on a physical mid-range Android phone and an iPhone 12. Attach Chrome or Safari remote devtools, or run `PERF_DPR=2.75` on a GPU-equipped machine as a first pass. Pass: a sustained 60 fps (no frame over 16.7 ms outside the replay's board swaps, none over 33 ms at all) mid-game on a Large body. Record the results in `docs/PROGRESS.md`. A device-farm job (real devices, not emulators) can automate this later; it should not gate pull requests.

@@ -8,7 +8,17 @@ const withWebkit = Boolean(process.env.CI) || process.env.PW_WEBKIT === "1";
 export default defineConfig({
   testDir: "e2e",
   reporter: "list",
-  use: { trace: "off" },
+  // One worker: the frame-timing test must not share the CPU with another browser.
+  workers: 1,
+  timeout: 180_000,
+  use: { trace: "off", baseURL: "http://localhost:4173" },
+  // The client is tested as it ships: the production build behind `vite preview`.
+  webServer: {
+    command: "pnpm --filter @swarm/client preview",
+    url: "http://localhost:4173",
+    reuseExistingServer: !process.env.CI,
+    timeout: 60_000,
+  },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
     ...(withWebkit ? [{ name: "webkit", use: { ...devices["Desktop Safari"] } }] : []),
