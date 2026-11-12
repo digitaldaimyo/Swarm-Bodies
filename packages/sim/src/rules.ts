@@ -1,17 +1,57 @@
 import { getBoard, type Hex } from "./hex";
+import type { StrainId } from "./config";
 import { idiv } from "./math";
 import type { Body, Colony, GameState, PlayerId } from "./types";
 
-/** Shared rule helpers used by validation, resolution and the UI. */
+/** Shared rule helpers used by validation, resolution, the bot and the UI. */
 
-export function maxBiomassFor(state: GameState, colony: Pick<Colony, "core">): number {
-  return colony.core ? state.rules.coreMaxBiomass : state.rules.maxBiomass;
+/** The numbers that differ per player because of their strain (SPEC §7.1). */
+export interface PlayerRules {
+  strain: StrainId;
+  growReach: number;
+  entryCostDelta: number;
+  maxBiomass: number;
+  coreMaxBiomass: number;
+  defenseSupport: number;
+  reinforceAmount: number;
 }
 
-/** Entry cost of one new cell (SPEC §5.2). */
-export function entryCost(state: GameState, body: Body, cellIndex: number): number {
+export function strainOf(state: GameState, player: PlayerId): StrainId {
+  return state.players.find((p) => p.id === player)?.strain ?? "base";
+}
+
+export function playerRules(state: GameState, player: PlayerId): PlayerRules {
   const { rules } = state;
-  let cost = rules.baseEntryCost;
+  const strain = strainOf(state, player);
+  const m = rules.strains[strain] ?? {};
+  const maxBiomass = m.maxBiomass ?? rules.maxBiomass;
+  return {
+    strain,
+    growReach: m.growReach ?? rules.growReach,
+    entryCostDelta: m.entryCostDelta ?? 0,
+    maxBiomass,
+    // Cores keep their margin over normal cells (12 vs 9 in the base rules).
+    coreMaxBiomass: rules.coreMaxBiomass + (maxBiomass - rules.maxBiomass),
+    defenseSupport: m.defenseSupport ?? rules.defenseSupport,
+    reinforceAmount: m.reinforceAmount ?? rules.reinforceAmount,
+  };
+}
+
+/** Max biomass of a colony cell, by its owner's strain (SPEC §5.5). */
+export function maxBiomassFor(state: GameState, colony: Pick<Colony, "core" | "owner">): number {
+  const r = playerRules(state, colony.owner);
+  return colony.core ? r.coreMaxBiomass : r.maxBiomass;
+}
+
+/** Entry cost of one new cell for `player` (SPEC §5.2). */
+export function entryCost(
+  state: GameState,
+  body: Body,
+  cellIndex: number,
+  player: PlayerId,
+): number {
+  const { rules } = state;
+  let cost = rules.baseEntryCost + playerRules(state, player).entryCostDelta;
   if (body.deposits[cellIndex] === "mineral") cost += rules.mineralEntryExtra;
   if (body.type === "metallic") cost += rules.metallicEntryExtra;
   return cost < rules.minEntryCost ? rules.minEntryCost : cost;

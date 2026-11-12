@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
-import { getBoard, type Hex, type Order } from "@swarm/sim";
+import { getBoard, playerRules, type Hex, type Order } from "@swarm/sim";
 import { audio } from "../audio/sfx";
 import type { Point } from "../game/layout";
 import { previewPath } from "../game/planner";
@@ -106,7 +106,7 @@ export default function Match({ session, onExit, onFinished }: Props) {
         const i = getBoard(b.radius).indexOf(h.q, h.r);
         return i >= 0 && b.terrain[i] !== "rock";
       },
-      reach: session.state.rules.growReach,
+      reach: playerRules(session.state, HUMAN).growReach,
       onPaintStart: () => {
         setRadial(null);
         setInfo(null);

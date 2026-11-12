@@ -2,7 +2,7 @@
  * Test fixtures shared by the sim, bot and tool test suites (import from "@swarm/sim/testing").
  * Pure like the rest of the sim, but not part of the game API.
  */
-import type { DepositKind, Rules } from "./config";
+import type { DepositKind, Rules, StrainId } from "./config";
 import { refreshConnectivity } from "./connectivity";
 import { createGame } from "./generate";
 import { getBoard, type Hex } from "./hex";
@@ -24,6 +24,7 @@ export interface ScenarioSpec {
   rules?: Partial<Rules>;
   bodyType?: GameState["bodies"][number]["type"];
   turn?: number;
+  strains?: [StrainId, StrainId];
 }
 
 /**
@@ -57,7 +58,11 @@ export function scenario(spec: ScenarioSpec): GameState {
     ...base,
     turn: spec.turn ?? 1,
     bodies: [newBody],
-    players: base.players.map((p, i) => ({ ...p, nutrients: spec.nutrients?.[i] ?? 50 })),
+    players: base.players.map((p, i) => ({
+      ...p,
+      nutrients: spec.nutrients?.[i] ?? 50,
+      strain: spec.strains?.[i] ?? "base",
+    })),
   };
 }
 

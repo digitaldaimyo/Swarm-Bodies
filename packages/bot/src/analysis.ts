@@ -1,6 +1,7 @@
 import {
   getBoard,
   maxBiomassFor,
+  playerRules,
   type Body,
   type Board,
   type Colony,
@@ -110,6 +111,7 @@ function analyseBody(
     }
   }
 
+  const mine = playerRules(state, me);
   const defense = new Array<number>(n).fill(0);
   const threat = new Array<number>(n).fill(0);
   const threatReinforced = new Array<number>(n).fill(0);
@@ -123,7 +125,7 @@ function analyseBody(
       const o = colony[nb];
       if (!o) continue;
       if (o.owner === me) {
-        if (o.connected) def += rules.defenseSupport;
+        if (o.connected) def += mine.defenseSupport;
       } else {
         adjByOwner.set(o.owner, (adjByOwner.get(o.owner) ?? 0) + 1);
       }
@@ -136,7 +138,7 @@ function analyseBody(
       const canReinforce =
         (nutrients.get(e.owner) ?? 0) >= rules.reinforceCost + rules.minEntryCost;
       const boost = canReinforce
-        ? Math.min(rules.reinforceAmount, maxBiomassFor(state, e) - e.biomass)
+        ? Math.min(playerRules(state, e.owner).reinforceAmount, maxBiomassFor(state, e) - e.biomass)
         : 0;
       if (attack > (threat[i] as number)) threat[i] = attack;
       if (attack + boost > (threatReinforced[i] as number)) threatReinforced[i] = attack + boost;
