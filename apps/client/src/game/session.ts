@@ -1,9 +1,11 @@
-import type { Difficulty } from "@swarm/bot";
+import type { Difficulty, Personality } from "@swarm/bot";
+import { campaignNode, dailySetup, nodeConfig, type PlayMode } from "@swarm/content";
 import {
   BASE_RULES,
   createGame,
   type GameConfig,
   type GameMode,
+  type MutationId,
   type Order,
   type OrderSet,
   type PlayerId,
@@ -28,6 +30,12 @@ export interface SkirmishSettings {
   bots?: number;
   /** System size (SPEC §10.1): extra bodies beyond one per player. */
   size?: SystemSize;
+  /** M7: the draft pool unlocked so far (SPEC §11.1); absent means all twelve. */
+  mutationPool?: MutationId[];
+  /** M7: a campaign node (its config, bots and seed replace the fields above). */
+  campaign?: string;
+  /** M7: a Daily Seed date (its setup replaces the fields above). */
+  daily?: string;
 }
 
 export type SystemSize = "standard" | "wide" | "vast";
@@ -54,13 +62,53 @@ function extraBodies(size: string | undefined): number {
 
 /** The sim config for a skirmish: you in seat 0, bots after you (SPEC §3). */
 export function skirmishConfig(s: SkirmishSettings): GameConfig {
+  const node = s.campaign ? campaignNode(s.campaign) : undefined;
+  if (node) return nodeConfig(node, s.strain, s.mutationPool);
+  if (s.daily) return dailySetup(s.daily).config;
+  const pool = s.mutationPool ? { mutationPool: [...s.mutationPool] } : {};
   const bots = s.map === "system" ? Math.max(1, Math.min(3, s.bots ?? 1)) : 1;
   return {
     mode: s.map ?? "singleRock",
     playerCount: bots + 1,
     strains: [s.strain, ...Array.from({ length: bots }, () => s.botStrain)],
-    ...(s.map === "system" ? { rules: { systemExtraBodies: extraBodies(s.size) } } : {}),
+    ...(s.map === "system"
+      ? { rules: { systemExtraBodies: extraBodies(s.size), ...pool } }
+      : s.mutationPool
+        ? { rules: pool }
+        : {}),
   };
+}
+
+/** The game's seed: the node's or the day's for campaign and daily games. */
+export function offlineSeed(s: SkirmishSettings): string {
+  const node = s.campaign ? campaignNode(s.campaign) : undefined;
+  if (node) return node.seed;
+  if (s.daily) return dailySetup(s.daily).seed;
+  return s.seed;
+}
+
+/** How the bot in `seat` plays: the node's opponent, the Daily's Normal bot, or the setup's. */
+export function botFor(
+  s: SkirmishSettings,
+  seat: PlayerId,
+): { difficulty: Difficulty; seed: string; personality?: Personality } {
+  const node = s.campaign ? campaignNode(s.campaign) : undefined;
+  if (node)
+    return {
+      difficulty: node.opponent.difficulty,
+      seed: `${node.seed}:bot${seat}`,
+      personality: node.opponent.personality,
+    };
+  // The server replays the Daily with exactly this bot to validate a score (SPEC §9.5).
+  if (s.daily) return { difficulty: "normal", seed: dailySetup(s.daily).botSeed };
+  return {
+    difficulty: s.difficulty,
+    seed: seat === BOT ? `${s.seed}:bot` : `${s.seed}:bot${seat}`,
+  };
+}
+
+export function playMode(s: SkirmishSettings): PlayMode {
+  return s.campaign ? "campaign" : s.daily ? "daily" : "skirmish";
 }
 
 /** The saved form of a skirmish: the seed plus every turn's orders (SPEC §9.4: reconstructable). */
@@ -88,7 +136,7 @@ export class SkirmishSession extends SessionBase implements MatchSession {
     private readonly bot: BotRunner,
     startBot = true,
   ) {
-    super(createGame(skirmishConfig(settings), settings.seed), HUMAN);
+    super(createGame(skirmishConfig(settings), offlineSeed(settings)), HUMAN);
     if (startBot) this.startBot();
   }
 
@@ -102,6 +150,9 @@ export class SkirmishSession extends SessionBase implements MatchSession {
   }
 
   get description(): string {
+    const node = this.settings.campaign ? campaignNode(this.settings.campaign) : undefined;
+    if (node) return `Campaign ${node.index} · ${node.name}`;
+    if (this.settings.daily) return `Daily Seed · ${this.settings.daily}`;
     const n = this.state.players.length - 1;
     const map = this.state.mode === "system" ? "System" : "Single Rock";
     return `${map} · ${n} ${{ easy: "Easy", normal: "Normal", hard: "Hard" }[this.settings.difficulty]} bot${n === 1 ? "" : "s"} · seed ${this.settings.seed}`;
@@ -146,14 +197,10 @@ export class SkirmishSession extends SessionBase implements MatchSession {
     const state = this.state;
     const seats = state.players.filter((p) => p.id !== HUMAN && !p.eliminated).map((p) => p.id);
     const promise = Promise.all(
-      seats.map((seat) =>
-        this.bot.choose(
-          state,
-          seat,
-          this.settings.difficulty,
-          seat === BOT ? `${this.settings.seed}:bot` : `${this.settings.seed}:bot${seat}`,
-        ),
-      ),
+      seats.map((seat) => {
+        const b = botFor(this.settings, seat);
+        return this.bot.choose(state, seat, b.difficulty, b.seed, b.personality);
+      }),
     ).then((sets) => Object.fromEntries(seats.map((seat, i) => [seat, sets[i] ?? []])));
     this.botOrders = promise;
     void promise.then(() => {

@@ -7,6 +7,7 @@ import { parseServerMessage, type ClientMessage, type ServerMessage } from "@swa
 import { buildApp } from "../src/app";
 import { openDatabase, type Database } from "../src/db";
 import { GameEngine, type Scheduler } from "../src/engine";
+import { Progression } from "../src/progression";
 import type { PushPayload, PushSender, PushTarget } from "../src/push";
 
 /**
@@ -95,6 +96,7 @@ export interface Harness {
   url: string;
   database: Database;
   engine: GameEngine;
+  progression: Progression;
   app: FastifyInstance;
   clock: ManualClock;
   scheduler: ManualScheduler;
@@ -109,8 +111,9 @@ export async function startServer(url: string, clock = new ManualClock()): Promi
   const scheduler = new ManualScheduler();
   const push = new RecordingPush();
   const silent = { info: () => undefined, warn: () => undefined, error: () => undefined };
-  const engine = new GameEngine(database.db, { clock, scheduler, push, log: silent });
-  const app = await buildApp({ engine });
+  const progression = new Progression(database.db, { clock, log: silent });
+  const engine = new GameEngine(database.db, { clock, scheduler, push, log: silent, progression });
+  const app = await buildApp({ engine, progression });
   await app.listen({ port: 0, host: "127.0.0.1" });
   const address = app.server.address();
   const port = typeof address === "object" && address ? address.port : 0;
@@ -118,6 +121,7 @@ export async function startServer(url: string, clock = new ManualClock()): Promi
     url,
     database,
     engine,
+    progression,
     app,
     clock,
     scheduler,
@@ -133,7 +137,7 @@ export async function startServer(url: string, clock = new ManualClock()): Promi
 
 export async function api<T = unknown>(
   h: Harness,
-  method: "GET" | "POST" | "DELETE",
+  method: "GET" | "POST" | "PUT" | "DELETE",
   path: string,
   token?: string,
   body?: unknown,

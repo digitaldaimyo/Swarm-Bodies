@@ -7,7 +7,15 @@ A simultaneous-turn strategy game for web and mobile web. Rival colonies of slim
 
 ## Status
 
-Milestones 1–6 are complete: the deterministic simulation core, the Easy, Normal and Hard bots, a playable client (a PWA) with offline skirmish, online multiplayer, the multi-body star system, and four strains with 12 drafted mutations, balanced to the spec's targets. Next is M7: progression and replayability. See [docs/PROGRESS.md](docs/PROGRESS.md) for details, and [docs/DECISIONS.md](docs/DECISIONS.md) for rulings on ambiguous spec points.
+Milestones 1–7 are complete:
+
+- the deterministic simulation core, and the Easy, Normal and Hard bots;
+- a playable client (a PWA) with offline skirmish and online multiplayer;
+- the multi-body star system;
+- four strains with 12 drafted mutations, balanced to the spec's targets;
+- progression: a 12-node campaign with a tutorial, the codex and achievements, cosmetics, the Daily Seed with a server-validated leaderboard, a Glicko-2 ranked ladder with seasons, and shareable replays.
+
+Next is M8: polish. See [docs/PROGRESS.md](docs/PROGRESS.md) for details, and [docs/DECISIONS.md](docs/DECISIONS.md) for rulings on ambiguous spec points.
 
 ## Getting started
 
@@ -18,6 +26,8 @@ pnpm test                    # Vitest: sim rules, property tests, golden replays
 pnpm test:e2e                # Playwright: golden replays, client smoke, frame budget, online play
 pnpm typecheck && pnpm lint
 pnpm balance -- --games 200 --players normal,random  # headless batch on Single Rock
+pnpm balance -- --matrix --games 960 --map system --jobs 4   # strain matrix vs the §12.4 targets
+pnpm --filter @swarm/balance exec tsx src/campaign-play.ts   # play the campaign with stand-in bots
 ```
 
 Requires Node 22+, pnpm 10 and, for online play and the server tests, Postgres 16:

@@ -9,7 +9,7 @@ import {
   type PlayerId,
 } from "@swarm/sim";
 import type { Point } from "../game/layout";
-import { BODY_TINT, lighten, playerColor } from "./palette";
+import { BODY_TINT, lighten, playerColor, trailColor } from "./palette";
 
 /**
  * System view (SPEC §10.2): the star, orbits, bodies with ownership rings, launch range and
@@ -173,7 +173,7 @@ export class SystemLayer {
         to: b,
         t0: sp.launchedTurn,
         t1: sp.arrivalTurn,
-        color: playerColor(sp.owner),
+        color: trailColor(sp.owner),
       });
     }
 

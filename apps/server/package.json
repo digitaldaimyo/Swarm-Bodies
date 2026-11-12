@@ -13,6 +13,7 @@
   "dependencies": {
     "@fastify/websocket": "11.3.4",
     "@swarm/bot": "workspace:*",
+    "@swarm/content": "workspace:*",
     "@swarm/protocol": "workspace:*",
     "@swarm/sim": "workspace:*",
     "drizzle-orm": "0.45.4",

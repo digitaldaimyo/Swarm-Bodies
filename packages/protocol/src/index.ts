@@ -94,6 +94,9 @@ export const GameMetaSchema = z.object({
   turn: z.number().int(),
   /** ISO time the current turn resolves at the latest, or null when not running. */
   deadline: z.string().nullable(),
+  /** M7: a ranked ladder game, and the season sector's name when it changes the map. */
+  ranked: z.boolean().optional(),
+  sector: z.string().nullable().optional(),
 });
 export type GameMeta = z.infer<typeof GameMetaSchema>;
 
@@ -212,6 +215,10 @@ export const GameListResponseSchema = z.object({ games: z.array(GameSummarySchem
 export const QueueRequestSchema = z.object({
   pace: z.enum(["live", "async"]),
   strain: StrainSchema,
+  /** M7: a ranked ladder game (SPEC §11.2). */
+  ranked: z.boolean().optional(),
+  /** M7: 2 for a duel, 3 or 4 for a free-for-all. */
+  players: z.number().int().min(2).max(4).optional(),
 });
 export const QueueResponseSchema = z.object({
   status: z.enum(["queued", "matched"]),
@@ -227,6 +234,10 @@ export const ReplayResponseSchema = z.object({
   seed: z.string(),
   map: z.enum(["singleRock", "system"]),
   strains: z.array(StrainSchema),
+  /** M7: rule overrides the game was created with (a ranked sector), if any. */
+  rules: z.record(z.string(), z.unknown()).nullable().optional(),
+  names: z.array(z.string()).optional(),
+  ranked: z.boolean().optional(),
   turns: z.array(z.record(z.string(), OrderSetSchema)),
   result: GameResultSchema.nullable(),
 });
@@ -259,3 +270,76 @@ export function parseServerMessage(raw: string): ServerMessage | null {
     return null;
   }
 }
+
+// ------------------------------------------------------------------------------------------
+// M7: progress sync, Daily Seed, ranked ladder (SPEC §11)
+
+const Id = z.string().min(1).max(32);
+
+/** Player progress (content's Progress): every list only grows, so the server merges by union. */
+export const ProgressSchema = z.object({
+  version: z.literal(1),
+  completedNodes: z.array(Id).max(64),
+  drafted: z.array(z.enum(MUTATION_IDS as [MutationId, ...MutationId[]])).max(32),
+  achievements: z.array(Id).max(128),
+  rewards: z.array(Id).max(64),
+  selected: z.object({ palette: Id, vein: Id, trail: Id }),
+});
+export type ProgressJson = z.infer<typeof ProgressSchema>;
+export const ProgressResponseSchema = z.object({ progress: ProgressSchema });
+
+/** Daily Seed (SPEC §3): your orders for every turn, replayed by the server against its bot. */
+export const DailySubmitRequestSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  turns: z.array(OrderSetSchema).min(1).max(200),
+});
+export const DailyEntrySchema = z.object({
+  rank: z.number().int(),
+  name: z.string(),
+  score: z.number().int(),
+  outcome: z.enum(["win", "loss", "draw"]),
+  turns: z.number().int(),
+  you: z.boolean(),
+});
+export type DailyEntry = z.infer<typeof DailyEntrySchema>;
+export const DailyResponseSchema = z.object({
+  date: z.string(),
+  entries: z.array(DailyEntrySchema),
+  me: DailyEntrySchema.nullable(),
+  /** Consecutive days with a submission, ending today or yesterday. */
+  streak: z.number().int(),
+  players: z.number().int(),
+});
+export type DailyResponse = z.infer<typeof DailyResponseSchema>;
+export const DailySubmitResponseSchema = z.object({
+  score: z.number().int(),
+  /** False when an earlier run today scored higher (the best one is kept). */
+  best: z.boolean(),
+  rank: z.number().int(),
+  streak: z.number().int(),
+});
+export type DailySubmitResponse = z.infer<typeof DailySubmitResponseSchema>;
+
+/** Ranked ladder (SPEC §11.2): 1v1 duels and 3–4 player free-for-alls, per season. */
+export const LadderModeSchema = z.enum(["duel", "ffa"]);
+export type LadderMode = z.infer<typeof LadderModeSchema>;
+export const LadderEntrySchema = z.object({
+  rank: z.number().int(),
+  name: z.string(),
+  rating: z.number().int(),
+  deviation: z.number().int(),
+  games: z.number().int(),
+  wins: z.number().int(),
+  you: z.boolean(),
+});
+export type LadderEntry = z.infer<typeof LadderEntrySchema>;
+export const LadderResponseSchema = z.object({
+  mode: LadderModeSchema,
+  season: z.number().int(),
+  sector: z.object({ id: z.string(), name: z.string(), description: z.string() }),
+  endsAt: z.string(),
+  entries: z.array(LadderEntrySchema),
+  /** Your standing, ranked or provisional (rank 0 until placed). */
+  me: LadderEntrySchema.nullable(),
+});
+export type LadderResponse = z.infer<typeof LadderResponseSchema>;

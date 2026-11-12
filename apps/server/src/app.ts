@@ -3,6 +3,9 @@ import websocket from "@fastify/websocket";
 import type { ZodType } from "zod";
 import {
   CreateGameRequestSchema,
+  DailySubmitRequestSchema,
+  LadderModeSchema,
+  ProgressSchema,
   JoinGameRequestSchema,
   parseClientMessage,
   PushSubscribeRequestSchema,
@@ -10,17 +13,24 @@ import {
   StrainChangeRequestSchema,
   type ServerMessage,
 } from "@swarm/protocol";
+import { z } from "zod";
 import { GameEngine, GameError, type Account, type Connection } from "./engine";
+import type { Progression } from "./progression";
 
 const MAX_WS_MESSAGE = 64 * 1024;
 
 export interface AppOptions {
   engine: GameEngine;
+  progression: Progression;
   logger?: boolean;
 }
 
 /** HTTP and WebSocket front end (SPEC §9.4). All game logic lives in GameEngine. */
-export async function buildApp({ engine, logger = false }: AppOptions): Promise<FastifyInstance> {
+export async function buildApp({
+  engine,
+  progression,
+  logger = false,
+}: AppOptions): Promise<FastifyInstance> {
   const app = Fastify({ logger, bodyLimit: 64 * 1024 });
   await app.register(websocket, { options: { maxPayload: MAX_WS_MESSAGE } });
 
@@ -88,7 +98,13 @@ export async function buildApp({ engine, logger = false }: AppOptions): Promise<
   app.post("/api/queue", async (req, reply) => {
     const account = await auth(req);
     const body = parse(QueueRequestSchema, req.body);
-    return ok(reply, await engine.enqueue(account, body.pace, body.strain));
+    return ok(
+      reply,
+      await engine.enqueue(account, body.pace, body.strain, {
+        ...(body.ranked !== undefined ? { ranked: body.ranked } : {}),
+        ...(body.players !== undefined ? { players: body.players } : {}),
+      }),
+    );
   });
   app.delete("/api/queue", async (req, reply) => {
     engine.dequeue(await auth(req));
@@ -101,6 +117,36 @@ export async function buildApp({ engine, logger = false }: AppOptions): Promise<
     await engine.subscribePush(account, body.endpoint, body.keys.p256dh, body.keys.auth);
     return ok(reply, { ok: true });
   });
+  // M7 progression (SPEC §11): progress sync, Daily Seed, ranked ladder.
+  app.get("/api/progress", async (req, reply) =>
+    ok(reply, { progress: await progression.syncProgress(await auth(req), null) }),
+  );
+  app.put("/api/progress", async (req, reply) => {
+    const account = await auth(req);
+    const body = parse(z.object({ progress: ProgressSchema }), req.body);
+    return ok(reply, { progress: await progression.syncProgress(account, body.progress) });
+  });
+  app.get<{ Querystring: { date?: string } }>("/api/daily", async (req, reply) =>
+    ok(reply, await progression.daily(await auth(req), req.query.date)),
+  );
+  app.post("/api/daily", async (req, reply) => {
+    const account = await auth(req);
+    const body = parse(DailySubmitRequestSchema, req.body);
+    return ok(reply, await progression.submitDaily(account, body.date, body.turns));
+  });
+  app.get<{ Querystring: { mode?: string; season?: string } }>(
+    "/api/ladder",
+    async (req, reply) => {
+      const account = await auth(req);
+      const mode = parse(LadderModeSchema, req.query.mode ?? "duel");
+      const season =
+        req.query.season === undefined
+          ? undefined
+          : parse(z.coerce.number().int().min(0).max(10_000), req.query.season);
+      return ok(reply, await progression.ladder(account, mode, season));
+    },
+  );
+
   app.get<{ Params: { id: string } }>("/api/replays/:id", async (req, reply) => {
     const r = await engine.replay(req.params.id);
     return ok(reply, { gameId: req.params.id, ...r });

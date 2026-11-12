@@ -155,6 +155,10 @@ export interface Rules {
   systemExtraBodies: number;
   systemMinBodies: number;
   systemMaxBodies: number;
+  /** Bodies beyond the homes that a system always has (0: every body is a home, tutorials). */
+  systemMinNeutrals: number;
+  /** Types neutral bodies are drawn from, uniformly (campaign and sector modifiers). */
+  neutralBodyTypes: BodyType[];
   /** SPEC §4.5 orbits, in distance units and turns. */
   orbitRadiusMin: number;
   orbitRadiusMax: number;
@@ -246,16 +250,16 @@ export const BASE_RULES: Rules = {
 
   strains: {
     base: {},
-    // Numbers from M6 balance runs, see DECISIONS (SPEC §7.1 lists the launch values).
+    // Numbers from M6/M7 balance runs, see DECISIONS #71, #82 (SPEC §7.1 lists the launch values).
     // Fast, thin, everywhere.
     swarmer: { growReach: 4, maxBiomass: 7 },
     // Slow, dense, immovable.
-    biofilm: { growReach: 2, maxBiomass: 12, defenseSupport: 1, reinforceAmount: 4, fruitCost: 14 },
+    biofilm: { growReach: 2, maxBiomass: 11, defenseSupport: 1, reinforceAmount: 4, fruitCost: 14 },
     // Eats the enemy.
     predator: { assaultBonus: 1, captureFeeds: true, depositYieldDelta: -1, growReach: 4 },
     // Spreads across the system.
     sporer: {
-      fruitCost: 7,
+      fruitCost: 9,
       fruitMatureTurns: 1,
       maxFruiting: 3,
       launchRangeBonus: 2,
@@ -267,6 +271,8 @@ export const BASE_RULES: Rules = {
   // neutral instead of each taking their own (DECISIONS).
   systemExtraBodies: 1,
   systemMinBodies: 3,
+  systemMinNeutrals: 1,
+  neutralBodyTypes: ["carbonaceous", "icy", "metallic", "irradiated"],
   systemMaxBodies: 7,
   orbitRadiusMin: 3,
   orbitRadiusMax: 12,
@@ -274,7 +280,7 @@ export const BASE_RULES: Rules = {
   orbitPeriodMax: 24,
   launchRange: 6,
   sporeSpeed: 3,
-  orbitAttempts: 32,
+  orbitAttempts: 160,
   homeFirstWindowMax: 4,
   homeWindowTurnsMin: 8,
   windowHorizon: 20,
@@ -306,7 +312,7 @@ export const BASE_RULES: Rules = {
     chemotaxisReach: 1,
     cryophileIceBonus: 2,
     lithotrophMineralBonus: 2,
-    hardenedLandingBonus: 2,
+    hardenedLandingBonus: 1,
     rapidFruitingTurns: 1,
     quorumNeighbours: 3,
     quorumAttack: 1,
@@ -324,3 +330,19 @@ export const BASE_RULES: Rules = {
 export function resolveRules(overrides: Partial<Rules> = {}): Rules {
   return { ...BASE_RULES, ...overrides };
 }
+
+/**
+ * Ranked ladder tunables (SPEC §11.2). Not game rules: the server's Glicko-2 uses them. Each
+ * finished ranked game is one rating period.
+ */
+export const RATING = {
+  initialRating: 1500,
+  initialDeviation: 350,
+  initialVolatility: 0.06,
+  /** System constant τ: how fast volatility may change (Glickman suggests 0.3–1.2). */
+  tau: 0.5,
+  /** Floor on the deviation, so ratings never freeze. */
+  minDeviation: 30,
+  /** Placed on the leaderboard after this many games. */
+  provisionalGames: 3,
+} as const;

@@ -137,9 +137,10 @@ test("system skirmish: body strip, System view, launches, and a finished game (M
   await page.getByRole("radio", { name: "Asteroid system" }).click();
   await page.getByRole("radio", { name: "2 bots" }).click();
   await page.getByRole("radio", { name: "Easy bot" }).click();
-  // A seed whose game is decided by dominance at turn 20 (most seeds run to the turn limit):
+  // A seed whose game is decided by dominance at turn 19 (most seeds run longer; re-picked in
+  // M7 when fair orbit layouts changed the map, DECISIONS #80):
   // the test's wall time scales with the runner, and a starved CI runner draws ~5 fps.
-  await page.getByRole("textbox").fill("smoke-sys-4");
+  await page.getByRole("textbox").fill("smoke-sys-47");
   await page.getByRole("button", { name: "Start" }).click();
   await page.waitForFunction(
     () => (window as unknown as { __swarm?: { view?: unknown } }).__swarm?.view,
@@ -189,6 +190,15 @@ test("mutation draft: the modal offers three cards, inspect then pick (M6)", asy
   await page.goto("/?e2e");
   await page.evaluate(() => localStorage.clear());
   await page.reload();
+  // Predator is a campaign unlock (SPEC §11.1): finish the campaign through the test hook.
+  await page.waitForFunction(() => "__swarmProgress" in window);
+  await page.evaluate(() =>
+    (
+      window as unknown as { __swarmProgress: { completeNodes(ids: string[]): Promise<unknown> } }
+    ).__swarmProgress.completeNodes(
+      Array.from({ length: 12 }, (_, i) => `c${String(i + 1).padStart(2, "0")}`),
+    ),
+  );
   await page.getByRole("button", { name: "Play skirmish" }).click();
   await page.getByRole("radio", { name: /^Predator/ }).click();
   await page.getByRole("radio", { name: "Hard bot" }).click();

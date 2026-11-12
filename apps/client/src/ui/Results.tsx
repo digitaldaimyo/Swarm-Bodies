@@ -1,4 +1,8 @@
+import { achievementInfo, campaignNode, mutationInfo, strainInfo } from "@swarm/content";
+import type { MutationId } from "@swarm/sim";
 import type { MatchSession } from "../game/match-session";
+import type { GameRewards } from "./progress";
+import { useState } from "preact/hooks";
 import { matchSummary } from "../game/match-session";
 import { PLAYER_CSS } from "../render/palette";
 
@@ -6,6 +10,9 @@ interface Props {
   session: MatchSession;
   /** "Rematch" for a skirmish, "Play again" online. */
   againLabel: string;
+  rewards?: GameRewards | undefined;
+  /** Campaign games return to the map. */
+  onCampaign?: (() => void) | undefined;
   onTitle(): void;
   onRematch(): void;
   onWatch(): void;
@@ -19,7 +26,15 @@ const REASONS: Record<string, string> = {
 };
 
 /** Results (SPEC §10.1 screen 6): winner, dominance graph, stats, replay and rematch. */
-export default function Results({ session, againLabel, onTitle, onRematch, onWatch }: Props) {
+export default function Results({
+  session,
+  againLabel,
+  rewards,
+  onCampaign,
+  onTitle,
+  onRematch,
+  onWatch,
+}: Props) {
   const result = session.state.result;
   const won = result?.winner === session.me;
   const title = result?.winner === null ? "Draw" : won ? "Victory" : "Defeat";
@@ -33,6 +48,7 @@ export default function Results({ session, againLabel, onTitle, onRematch, onWat
       <p class="muted">
         {reason} {session.description}
       </p>
+      {rewards && <Rewards rewards={rewards} />}
       <section class="card">
         <h3>Dominance</h3>
         <DominanceGraph session={session} />
@@ -64,6 +80,7 @@ export default function Results({ session, againLabel, onTitle, onRematch, onWat
           </tbody>
         </table>
       </section>
+      <ShareReplay session={session} />
       <div class="button-row">
         <button class="btn" onClick={onWatch} disabled={session.history.length === 0}>
           Watch replay
@@ -72,6 +89,11 @@ export default function Results({ session, againLabel, onTitle, onRematch, onWat
           {againLabel}
         </button>
       </div>
+      {onCampaign && (
+        <button class="btn btn-wide" onClick={onCampaign}>
+          Campaign map
+        </button>
+      )}
       <button class="btn btn-ghost btn-wide" onClick={onTitle}>
         Back to title
       </button>
@@ -128,5 +150,84 @@ function DominanceGraph({ session }: { session: MatchSession }) {
         {seats.map((p) => `${session.name(p)} ${(final?.dominance[p] ?? 0) / 10}%`).join(", ")}
       </figcaption>
     </figure>
+  );
+}
+
+/** What the game earned: campaign progress, unlocks, achievements, codex entries. */
+function Rewards({ rewards }: { rewards: GameRewards }) {
+  const node = rewards.completedNode ? campaignNode(rewards.completedNode) : undefined;
+  const unlocks =
+    node && rewards.firstCompletion
+      ? [
+          ...(node.unlocks.strains ?? []).map((s) => `${strainInfo(s).name} strain unlocked`),
+          ...(node.unlocks.mutations ?? []).map((m) => `${mutationInfo(m).name} joins your drafts`),
+        ]
+      : [];
+  const d = rewards.daily;
+  const lines = [
+    ...(d
+      ? [
+          d.submitted
+            ? `Daily score ${d.score}${d.best ? "" : " (your best run still counts)"} · rank #${d.rank} · streak ${d.streak}`
+            : `Daily run not submitted: ${d.error}`,
+        ]
+      : []),
+    ...(node ? [`System ${node.index} complete: ${node.name}`] : []),
+    ...unlocks,
+    ...(rewards.twistMissed ? ["A win, but the objective was missed. Try again."] : []),
+    ...rewards.achievements.map((a) => `Achievement: ${achievementInfo(a)?.name ?? a}`),
+    ...rewards.mutationsDiscovered.map((m) => `Codex entry: ${mutationInfo(m as MutationId).name}`),
+  ];
+  if (lines.length === 0) return null;
+  return (
+    <section class="card rewards" aria-label="Rewards" role="status">
+      <ul>
+        {lines.map((l) => (
+          <li key={l}>{l}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** Share an online game's replay link, or save any game as a replay file (SPEC §12). */
+function ShareReplay({ session }: { session: MatchSession }) {
+  const [note, setNote] = useState<string | null>(null);
+  const gameId = session.kind === "online" ? (session as { gameId?: string }).gameId : undefined;
+  if (session.history.length === 0) return null;
+  const share = async () => {
+    const { replayLink } = await import("../game/replay");
+    const url = replayLink(gameId as string);
+    try {
+      if (typeof navigator.share === "function") {
+        await navigator.share({ title: "Swarm Bodies replay", url });
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      setNote("Link copied");
+    } catch {
+      setNote(url);
+    }
+  };
+  const save = async () => {
+    const { downloadReplay, replayFromSession } = await import("../game/replay");
+    downloadReplay(replayFromSession(session, session.description));
+  };
+  return (
+    <div class="button-row share-row">
+      {gameId && (
+        <button class="btn btn-ghost" onClick={() => void share()}>
+          Share replay link
+        </button>
+      )}
+      <button class="btn btn-ghost" onClick={() => void save()}>
+        Save replay file
+      </button>
+      {note && (
+        <p class="muted share-note" role="status">
+          {note}
+        </p>
+      )}
+    </div>
   );
 }

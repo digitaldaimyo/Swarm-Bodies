@@ -1,4 +1,5 @@
 import type { ZodType } from "zod";
+import type { OrderSet } from "@swarm/sim";
 import {
   CreateGameResponseSchema,
   ErrorResponseSchema,
@@ -6,6 +7,10 @@ import {
   GameMetaSchema,
   GuestResponseSchema,
   JoinGameResponseSchema,
+  ProgressResponseSchema,
+  DailyResponseSchema,
+  DailySubmitResponseSchema,
+  LadderResponseSchema,
   OkResponseSchema,
   PushKeyResponseSchema,
   QueueResponseSchema,
@@ -13,6 +18,11 @@ import {
   type GameMeta,
   type GameSettings,
   type GameSummary,
+  type ProgressJson,
+  type DailyResponse,
+  type DailySubmitResponse,
+  type LadderMode,
+  type LadderResponse,
   type ReplayResponse,
   type Strain,
 } from "@swarm/protocol";
@@ -99,6 +109,12 @@ async function request<T>(
 
 let creating: Promise<Guest> | null = null;
 
+/** Whether this device already has an account (progress sync never creates one). */
+export function hasGuest(): boolean {
+  guest ??= loadGuest();
+  return guest !== null;
+}
+
 /**
  * The guest account for this device, created on first use. Concurrent callers (the socket and
  * the first REST call) share one request, so a device never ends up as two guests.
@@ -135,12 +151,23 @@ export const api = {
     (await request("GET", "/games", GameListResponseSchema)).games,
   getGame: (gameId: string): Promise<GameMeta> =>
     request("GET", `/games/${gameId}`, GameMetaSchema),
-  queue: (pace: GameSettings["pace"], strain: Strain) =>
-    request("POST", "/queue", QueueResponseSchema, { pace, strain }),
+  queue: (pace: GameSettings["pace"], strain: Strain, ranked?: { players: number }) =>
+    request("POST", "/queue", QueueResponseSchema, {
+      pace,
+      strain,
+      ...(ranked ? { ranked: true, players: ranked.players } : {}),
+    }),
   leaveQueue: () => request("DELETE", "/queue", OkResponseSchema),
   pushKey: () => request("GET", "/push/key", PushKeyResponseSchema, undefined, false),
   pushSubscribe: (sub: PushSubscriptionJSON) =>
     request("POST", "/push/subscribe", OkResponseSchema, sub),
+  daily: (): Promise<DailyResponse> => request("GET", "/daily", DailyResponseSchema),
+  submitDaily: (date: string, turns: OrderSet[]): Promise<DailySubmitResponse> =>
+    request("POST", "/daily", DailySubmitResponseSchema, { date, turns }),
+  ladder: (mode: LadderMode): Promise<LadderResponse> =>
+    request("GET", `/ladder?mode=${mode}`, LadderResponseSchema),
+  putProgress: async (progress: ProgressJson): Promise<ProgressJson> =>
+    (await request("PUT", "/progress", ProgressResponseSchema, { progress })).progress,
   replay: (gameId: string): Promise<ReplayResponse> =>
     request("GET", `/replays/${gameId}`, ReplayResponseSchema),
 };

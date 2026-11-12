@@ -801,3 +801,38 @@ describe("stored states from before M6", () => {
     expect(s.players.every((p) => p.draft === null)).toBe(true);
   });
 });
+
+describe("M7 map modifiers", () => {
+  it("restricts neutral body types (e.g. Metallic only)", () => {
+    for (const seed of ["m1", "m2", "m3"]) {
+      const s = createGame(
+        {
+          mode: "system",
+          playerCount: 2,
+          rules: { neutralBodyTypes: ["metallic"], systemExtraBodies: 3 },
+        },
+        seed,
+      );
+      const neutrals = s.bodies.filter((b) => b.home === null);
+      expect(neutrals.length).toBeGreaterThan(0);
+      expect(neutrals.every((b) => b.type === "metallic")).toBe(true);
+    }
+  });
+
+  it("builds a two-body system with no neutral for tutorials", () => {
+    const s = createGame(
+      {
+        mode: "system",
+        playerCount: 2,
+        rules: { systemMinNeutrals: 0, systemExtraBodies: 0, systemMinBodies: 2 },
+      },
+      "two-body",
+    );
+    expect(s.bodies).toHaveLength(2);
+    expect(s.bodies.map((b) => b.home)).toEqual(expect.arrayContaining([0, 1]));
+    expect(s.players.map((p) => p.home.body).sort()).toEqual([0, 1]);
+    // The two homes still come into launch range in the opening turns.
+    const turns = forecast(s, 19, 0).filter((f) => f.windows.length > 0).length;
+    expect(turns).toBeGreaterThan(0);
+  });
+});

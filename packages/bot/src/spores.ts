@@ -65,10 +65,16 @@ function bestLanding(a: Analysis, target: Body): Landing | null {
   const yieldOf = (i: number) => {
     return cellYield(state, target, i, me);
   };
+  // Our spores already in flight to this body claim their landing area: a second spore there
+  // would only merge into the first.
+  const incoming = state.spores
+    .filter((sp) => sp.owner === me && sp.targetBody === target.id)
+    .map((sp) => sp.targetCell);
   for (let i = 0; i < target.colony.length; i++) {
     if (target.terrain[i] === "rock") continue;
     const c = target.colony[i] ?? null;
     const h = board.cells[i] as Hex;
+    if (incoming.some((t) => hexDistance(t, h) <= 2)) continue;
     let enemyNear = 0;
     let depositNear = yieldOf(i) * 2;
     // Only cells within distance 4 matter: walk those offsets instead of the whole board.

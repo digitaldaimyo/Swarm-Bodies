@@ -1,6 +1,56 @@
 # Progress
 
-**Current milestone:** M6, Strains, mutations, and balance: complete (branch `m6-balance`, PR pending review). **Next:** M7, Progression and replayability (SPEC §15).
+**Current milestone:** M7, Progression and replayability: complete (branch `m7-progression`, PR pending review). **Next:** M8, Polish (SPEC §15).
+
+## M7: Progression and replayability: done
+
+Scope (§15): campaign (12 nodes with tutorial), codex, achievements, Daily Seed with server validation, ranked ladder with Glicko-2 and seasons/sectors, shareable replays, cosmetics.
+
+- [x] **Content (`packages/content`):**
+  - **Campaign:** 12 nodes on a branching graph, with modifiers, twists and unlocks.
+  - **Achievements:** 32, as predicates over a game summary, which `summarizeGame` builds by replaying the game.
+  - **Also:** modifiers and ranked sectors, seasons, cosmetics, Daily setup and scoring, and progress with a union merge (DECISIONS #83–#91).
+- [x] **Client:**
+  - **Campaign map:** a node graph with briefings; it is lazy-loaded.
+  - **Tutorial:** scripted overlays on nodes 1–3.
+  - **Codex:** strains, mutations (filled by drafting), and achievements.
+  - **Gating:** campaign unlocks gate the offline strains and the draft pool.
+  - **After a game:** rewards are shown on the results screen.
+  - **Cosmetics:** chosen in Settings.
+  - **Daily Seed:** its own screen with a leaderboard.
+  - **Ranked:** the queue and ladder are in Online.
+  - **Replays:** `/replay/:id` links, and replay files saved from results and opened in Settings.
+  - Every screen was checked at 390×844 first.
+- [x] **Server:**
+  - **Migration `0001`:** adds the progress, Daily score and rating tables, plus the ranked fields on games.
+  - **Endpoints:** `GET/PUT /api/progress`, `GET/POST /api/daily` (replayed against the deterministic Normal bot), `GET /api/ladder`, and ranked queues with sector rules.
+  - **Ratings:** Glicko-2 matches Glickman's worked example, with pairwise FFA.
+- [x] **Generation fairness and bot fix** (found through the campaign test, DECISIONS #80, #81). Every home now gets an early launch window: 2- and 3-player systems 60/60 seeds by turn 4, 4-player 48/60 (was 32, 19 and 8/60).
+- [x] **Retune** (DECISIONS #82): Sporer Fruit 7 → 9 N, Hardened Spores +2 → +1, Biofilm max biomass 12 → 11. 960-game matrix, 2-player systems, default seeds:
+
+  | Pair                | Side A wins |
+  | ------------------- | ----------- |
+  | Biofilm vs Predator | 58.1%       |
+  | Biofilm vs Sporer   | 45.0%       |
+  | Predator vs Sporer  | 51.9%       |
+  | Swarmer vs Biofilm  | 50.6%       |
+  | Swarmer vs Predator | 48.1%       |
+  | Swarmer vs Sporer   | 49.4%       |
+  - Average length: 23.8 turns. Stalls: 0.9%.
+  - Highest mutation pick win rate: 56.9% (Acid Tendrils).
+  - CI gate (200 games): passes. Its worst pair is 67.6% against the 70% limit, from small-batch noise.
+
+- [x] **Acceptance: the campaign is completable.** `tools/balance/test/campaign.test.ts` plays every node in order, using only what is unlocked so far. The e2e test plays node 1 through the UI, and the win opens node 2.
+- [x] **Acceptance: the daily leaderboard works.** Server tests cover replay validation, rejections, the best run and streaks. The e2e test plays the Daily, and the score appears on the leaderboard.
+- [x] **Acceptance: a replay link plays back a finished online game.** The e2e test has two browsers finish a game, and a third opens `/replay/:id`.
+- [x] **Golden replays** regenerated deliberately: 27 of 50 replays changed orders (all system replays; Single Rock unchanged), from the generation and tuning changes.
+
+**Open items for the user:**
+
+- **Please review the retune** (DECISIONS #82) and the campaign twist change: node 8 is "launch at most 2" instead of "win without launching" (DECISIONS #83).
+- **Achievements are trusted from the client.** They only grant cosmetics, so a cheater gains nothing (DECISIONS #86).
+- **Campaign difficulty for real players** is untested. Completability is shown by Hard-bot stand-ins.
+- Still open from earlier milestones: 3–4 player balance, Hard's speed on phones, real-device 60 fps, and WebKit e2e (CI only).
 
 ## M6: Strains, mutations, and balance: done
 

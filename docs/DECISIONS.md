@@ -165,3 +165,43 @@ Rulings on ambiguous or unspecified points in `docs/SPEC.md`, as CLAUDE.md requi
     - **Best of several:** idle and view windows are best of 3, replays best of 2, and swap timing is the second-fastest of 9. Contention only ever adds time, so the best measurement estimates the work, while a real regression slows every run.
     - **Verification:** the tests pass three times without retries with four busy loops on a 4-core host, and an injected 10 ms swap regression still fails (15.1 ms against 11.7). Budgets are unchanged.
 79. **e2e hook `stopAtDraft`.** The scripted player stops by itself when a draft is pending for the viewer. Before, the draft test turned autoplay off after seeing the turn change. On a slower engine (WebKit on CI) the scripted player had already planned the next turn by then, and took draft 1 with it. This is reproduced in Chromium by slowing the test's polling.
+
+## 2026-11-12 — M7 progression and replayability
+
+80. **Fair orbit layouts (§4.2, §6).** Generation now tries 160 orbit layouts (was 32) and scores each by when every home first gets a launch window, then by the old spread. A layout where some home waits beyond the window horizon loses to any layout where none does. Measured on 60 seeds, every home has a window by turn 4 in 60/60 2-player and 3-player systems (was 32/60 and 19/60) and 48/60 4-player systems (was 8/60). Found because campaign games were lost to layouts where one side could not launch for 10+ turns.
+81. **Bot spore targeting.** The bot no longer lands a spore within 2 cells of a landing it already has in flight. Before, it often sent two or three spores to the same cell, and an idle bot with a full home kept doing so.
+82. **M7 retune (§12.4).** With fair layouts (#80) and better spore play (#81), Sporer won 61–63% against Swarmer and Biofilm and Hardened Spores reached a 59.2% pick win rate. Changes: **Sporer Fruit 7 → 9 N**, **Hardened Spores landing bonus +2 → +1**, and **Biofilm max biomass 12 → 11**. Results are in PROGRESS. The rules are stored in each game's state, so games that are already running keep their numbers.
+83. **Campaign (§11.1).** There are 12 nodes on a branching graph. A node opens when any node before it is complete.
+    - Nodes 1–3 are the tutorial: Single Rock twice, then a two-body system (no neutral body, via `systemMinNeutrals: 0`).
+    - Modifiers are Flare Storm, Rich Comets and Metallic Only. Twists are "hold 3 bodies", "launch at most 2", "keep every core" and "win by turn 30".
+    - **"Win without launching" is not a node twist.** On a system you cannot reach a dominance win without launching, so the node would be impossible. Node 8 is "launch at most 2 spores" instead, and the "Homebody" achievement keeps the spec's wording on any map.
+    - Node 4 unlocks Predator, so it cannot need Predator: its bot is Easy.
+    - **Completability is tested.** `tools/balance/test/campaign.test.ts` plays the nodes in order, using only the strains and mutations unlocked so far, with the Hard bot (and its personalities) standing in for the player. Every node is completed.
+84. **Unlocks.** Swarmer and Biofilm are the starter strains. Predator unlocks at node 4 and Sporer at node 7 (the spec's nodes). Radiation Shielding (5), Quorum (6), Hardened Spores (8) and Deep Reserves (10) are the 4 campaign mutations. Gating applies offline (the skirmish strain pickers, including the bot's strain, and the draft pool through the `mutationPool` rule). Online and the Daily Seed have everything, so a Daily is the same game for everyone.
+85. **Tutorial overlays.** The steps are data in `content`. Each step's trigger is one of: "next", placing an order of a kind, submitting, an event of yours (for example capturing a cell), or opening the System view. Anything that happened while another step was showing is forgotten, so an early submit never completes a later step. The player can skip the tutorial.
+86. **Progress storage and sync.**
+    - **Storage:** progress lives in IndexedDB.
+    - **Sync:** it syncs with `PUT /api/progress` only once the device has an account. Campaign play alone never creates one.
+    - **Merging:** every list merges by union, so no copy can roll another back. Selected cosmetics are per device.
+    - **Trust:** achievements and campaign progress are client-reported and trusted, since the rewards are cosmetic only. The server grants the season rewards itself.
+87. **Achievements.** There are 32, as predicates over a game summary that `content` builds by replaying the game. Online games are summarized too (online and ranked wins).
+88. **Daily Seed (§3).**
+    - **The game:** one 2-player system per UTC day. Strains rotate by day number, and you face the Normal bot with a seed fixed per day. The client runs the bot in its worker and the server runs it again; the bot is deterministic, so both get the same game.
+    - **Validation:** you submit your orders for every turn. The server replays them and rejects any illegal order, an unfinished game, or turns after the end.
+    - **Score:** a win scores 1000 plus 20 per turn under the limit, and everyone scores half their final dominance in ‰.
+    - **Runs:** your best run of the day is kept. Today's and yesterday's seeds are accepted, so a run that crosses midnight UTC still counts.
+    - **Streaks:** consecutive days with a run, ending today or yesterday.
+89. **Ranked ladder (§11.2).**
+    - **Ratings:** Glicko-2 (tested against Glickman's worked example), per mode (duel; free-for-all with 3–4 players) and season. Each finished game is one rating period.
+    - **Free-for-all:** results are pairwise by place. The winner is first, then the others by final dominance; equal places draw.
+    - **Placement:** players appear on the board after 3 games. The constants are `RATING` in `sim/config.ts`.
+    - **Queues:** ranked and casual queues are separate per pace and player count. Ranked games store their season and the sector's rule overrides, which the replay includes.
+    - **Seasons:** 42 days from 2026-01-05, rotating 4 sectors (Open Belt, Irradiated Reach, Comet Tail, Wide Systems).
+    - **Season reward:** 5 ranked games in a season that has ended earns the season trail.
+90. **Shareable replays (§12).**
+    - **Links:** `/replay/:id` serves the app shell and plays a finished online game for any guest; only finished games are served. The replay carries seed, map, strains, rules and names.
+    - **Files:** any game can be saved as a small JSON file (`swarm-bodies-replay` v1: seed, config, orders), which is validated with zod when it is opened in Settings.
+91. **Cosmetics.**
+    - **Kinds:** palette (your colony colour), vein thickness (×0.75 or ×1.35) and spore trail colour. All are earned from achievements, plus the season trail.
+    - **Who sees them:** they apply to your own seat on your own screen, board and HUD alike. Everyone else sees the standard seat colours, and gameplay never changes.
+92. **Stored states from M6** gain the two M7 rule fields when loaded (`upgradeState`). Those fields only affect generation, but they change the hash of a replayed turn, so a reloaded M6 game logs a hash difference for turns stored before the upgrade. Play is unaffected: client and server both work from the upgraded state.

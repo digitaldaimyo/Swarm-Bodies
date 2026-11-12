@@ -10,6 +10,7 @@ import {
   type GameState,
   type Order,
   type OrderSet,
+  type Rules,
 } from "@swarm/sim";
 import type {
   GameMeta,
@@ -20,8 +21,10 @@ import type {
   Strain,
 } from "@swarm/protocol";
 import { DEFAULT_SETTINGS } from "@swarm/protocol";
+import { sectorFor } from "@swarm/content";
 import type { Db } from "./db";
 import type { PushSender } from "./push";
+import type { Progression } from "./progression";
 import {
   accounts,
   gamePlayers,
@@ -106,6 +109,16 @@ interface LoadedGame {
   submissions: Map<number, Order[]>;
   deadline: number | null;
   reminderSentTurn: number;
+  /** M7 ranked ladder (SPEC §11.2): the season, and the sector's rule overrides. */
+  ranked: boolean;
+  season: number | null;
+  rules: Partial<Rules> | null;
+}
+
+/** Ranked games are created by the queue with the season's sector applied. */
+interface RankedOptions {
+  season: number;
+  rules: Partial<Rules>;
 }
 
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -141,15 +154,20 @@ export class GameEngine {
   private readonly cache = new Map<string, LoadedGame>();
   private readonly locks = new Map<string, Promise<unknown>>();
   private readonly subscribers = new Map<string, Set<Connection>>();
-  private readonly queue: Record<GameSettings["pace"], { accountId: string; strain: Strain }[]> = {
-    live: [],
-    async: [],
-  };
+  /** Waiting players by queue: pace, ranked or not, and player count. */
+  private readonly queue = new Map<string, { accountId: string; strain: Strain }[]>();
   private readonly matched = new Map<string, string>();
 
   constructor(
     private readonly db: Db,
-    private readonly deps: { clock: Clock; scheduler: Scheduler; push: PushSender; log: Logger },
+    private readonly deps: {
+      clock: Clock;
+      scheduler: Scheduler;
+      push: PushSender;
+      log: Logger;
+      /** Rates ranked games when they end (M7). */
+      progression?: Progression;
+    },
   ) {}
 
   // ----------------------------------------------------------------------------------------
@@ -180,6 +198,7 @@ export class GameEngine {
     account: Account,
     settings: GameSettings,
     strain: Strain,
+    ranked?: RankedOptions,
   ): Promise<{ gameId: string; code: string }> {
     for (let attempt = 0; attempt < 5; attempt++) {
       const code = Array.from(
@@ -195,6 +214,13 @@ export class GameEngine {
               settings,
               seed: randomBytes(12).toString("base64url"),
               hostAccount: account.id,
+              ...(ranked
+                ? {
+                    ranked: true,
+                    season: ranked.season,
+                    rules: Object.keys(ranked.rules).length > 0 ? ranked.rules : null,
+                  }
+                : {}),
             })
             .returning();
           const gameId = (g as typeof games.$inferSelect).id;
@@ -269,6 +295,7 @@ export class GameEngine {
         mode: g.settings.map,
         playerCount: g.settings.players,
         strains: g.seats.map((s) => s.strain),
+        ...(g.rules ? { rules: g.rules } : {}),
       },
       g.seed,
     );
@@ -333,6 +360,9 @@ export class GameEngine {
     seed: string;
     map: GameSettings["map"];
     strains: Strain[];
+    rules: Partial<Rules> | null;
+    names: string[];
+    ranked: boolean;
     turns: Record<string, Order[]>[];
     result: GameState["result"];
   }> {
@@ -348,6 +378,9 @@ export class GameEngine {
       seed: g.seed,
       map: g.settings.map,
       strains: g.seats.map((s) => s.strain),
+      rules: g.rules,
+      names: g.seats.map((s) => s.name),
+      ranked: g.ranked,
       turns: rows.map((r) => r.orders),
       result: g.state?.result ?? null,
     };
@@ -360,40 +393,68 @@ export class GameEngine {
     account: Account,
     pace: GameSettings["pace"],
     strain: Strain,
+    options: { ranked?: boolean; players?: number } = {},
   ): Promise<{ status: "queued" | "matched"; gameId: string | null }> {
     const done = this.matched.get(account.id);
     if (done) {
       this.matched.delete(account.id);
       return { status: "matched", gameId: done };
     }
-    const q = this.queue[pace];
-    const other = q.find((e) => e.accountId !== account.id);
-    if (!other) {
+    const ranked = options.ranked === true;
+    if (ranked && !this.deps.progression)
+      throw new GameError("noLadder", "Ranked play is not available", 503);
+    const players = Math.max(2, Math.min(4, options.players ?? 2));
+    const key = `${pace}:${ranked ? "ranked" : "casual"}:${players}`;
+    // One queue at a time: joining one leaves the others.
+    for (const [k, q] of this.queue)
+      if (k !== key)
+        this.queue.set(
+          k,
+          q.filter((e) => e.accountId !== account.id),
+        );
+    const q = this.queue.get(key) ?? [];
+    this.queue.set(key, q);
+    const others = q.filter((e) => e.accountId !== account.id);
+    if (others.length < players - 1) {
       if (!q.some((e) => e.accountId === account.id)) q.push({ accountId: account.id, strain });
       return { status: "queued", gameId: null };
     }
-    q.splice(q.indexOf(other), 1);
+    const group = others.slice(0, players - 1);
+    this.queue.set(
+      key,
+      q.filter((e) => e.accountId !== account.id && !group.includes(e)),
+    );
+    const [first, ...rest] = group as [(typeof group)[number], ...typeof group];
     const host = await this.db.query.accounts.findFirst({
-      where: eq(accounts.id, other.accountId),
+      where: eq(accounts.id, first.accountId),
     });
-    if (!host) return this.enqueue(account, pace, strain);
-    // Quick match plays the real game: a 2-player system (SPEC §4; Single Rock is a test map).
-    const settings: GameSettings = { ...DEFAULT_SETTINGS[pace] };
+    if (!host) return this.enqueue(account, pace, strain, options);
+    // Quick match plays the real game: a system (SPEC §4; Single Rock is a test map). Ranked
+    // games use the season's sector (SPEC §11.2).
+    const settings: GameSettings = { ...DEFAULT_SETTINGS[pace], players };
+    const season = ranked ? this.deps.progression?.currentSeason() : undefined;
     const { gameId, code } = await this.createGame(
       { id: host.id, name: host.name },
       settings,
-      other.strain,
+      first.strain,
+      season ? { season: season.season, rules: season.sector.rules } : undefined,
     );
+    for (const e of rest) {
+      const acc = await this.db.query.accounts.findFirst({ where: eq(accounts.id, e.accountId) });
+      if (acc) await this.joinGame({ id: acc.id, name: acc.name }, code, e.strain);
+    }
     await this.joinGame(account, code, strain);
     await this.withGame(gameId, (g) => this.start(g));
-    this.matched.set(other.accountId, gameId);
+    for (const e of group) this.matched.set(e.accountId, gameId);
     return { status: "matched", gameId };
   }
 
   dequeue(account: Account): void {
-    for (const pace of ["live", "async"] as const) {
-      this.queue[pace] = this.queue[pace].filter((e) => e.accountId !== account.id);
-    }
+    for (const [k, q] of this.queue)
+      this.queue.set(
+        k,
+        q.filter((e) => e.accountId !== account.id),
+      );
     this.matched.delete(account.id);
   }
 
@@ -575,6 +636,12 @@ export class GameEngine {
     });
     if (after.result)
       this.broadcast(g.id, { type: "gameOver", gameId: g.id, result: after.result });
+    if (finished && g.ranked && g.season !== null && this.deps.progression) {
+      // Only the process that wrote the final turn rates it, so a game is rated once.
+      await this.deps.progression
+        .rateFinished(g.season, g.seats, after)
+        .catch((err: unknown) => this.deps.log.error({ err, gameId: g.id }, "rating failed"));
+    }
     this.schedule(g);
     if (!finished) void this.notifyTurn(g);
   }
@@ -790,6 +857,9 @@ export class GameEngine {
       hostSeat: g.seats.find((s) => s.accountId === g.hostAccount)?.seat ?? 0,
       turn: g.state?.turn ?? 0,
       deadline: g.deadline === null ? null : new Date(g.deadline).toISOString(),
+      ...(g.ranked
+        ? { ranked: true, sector: g.season === null ? null : sectorFor(g.season).name }
+        : {}),
     };
   }
 
@@ -879,6 +949,9 @@ export class GameEngine {
       submissions,
       deadline: row.deadline ? row.deadline.getTime() : null,
       reminderSentTurn: row.reminderSentTurn,
+      ranked: row.ranked,
+      season: row.season,
+      rules: row.rules ?? null,
     };
     this.cache.set(gameId, g);
     return g;

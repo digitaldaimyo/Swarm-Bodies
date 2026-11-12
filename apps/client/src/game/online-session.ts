@@ -1,4 +1,4 @@
-import { hashState, type GameState, type Order, type PlayerId } from "@swarm/sim";
+import { hashState, type GameState, type Order, type PlayerId, type Rules } from "@swarm/sim";
 import { ordersBySeat, type GameMeta, type ServerMessage } from "@swarm/protocol";
 import { api } from "../net/api";
 import type { GameSocket } from "../net/socket";
@@ -56,10 +56,18 @@ export class OnlineSession extends SessionBase implements MatchSession {
     return this.meta.gameId;
   }
 
+  /** A ranked ladder game (SPEC §11.2). */
+  get ranked(): boolean {
+    return this.meta.ranked === true;
+  }
+
   get description(): string {
     const s = this.meta.settings;
     const pace = s.pace === "live" ? `live ${s.turnSeconds} s` : `async ${s.turnSeconds / 3600} h`;
-    return `Online · ${pace} · code ${this.meta.code}`;
+    const kind = this.ranked
+      ? `Ranked${this.meta.sector ? ` · ${this.meta.sector}` : ""}`
+      : "Online";
+    return `${kind} · ${pace} · code ${this.meta.code}`;
   }
 
   get deadline(): number | null {
@@ -234,7 +242,12 @@ export class OnlineSession extends SessionBase implements MatchSession {
     const replay = await api.replay(this.gameId);
     const { createGame, resolveTurn } = await import("@swarm/sim");
     let state = createGame(
-      { mode: replay.map, playerCount: replay.strains.length, strains: replay.strains },
+      {
+        mode: replay.map,
+        playerCount: replay.strains.length,
+        strains: replay.strains,
+        ...(replay.rules ? { rules: replay.rules as Partial<Rules> } : {}),
+      },
       replay.seed,
     );
     this.history.length = 0;

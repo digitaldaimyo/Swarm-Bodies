@@ -1,15 +1,20 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import type { MatchSession } from "../game/match-session";
+import type { TurnRecord } from "../game/match-session";
 import { buildTimeline } from "../game/timeline";
 import { MatchView } from "../render/view";
 import { getSettings } from "./settings";
 
-/** Watch the whole match again, turn by turn (SPEC §10.1 results → "watch replay"). */
+/**
+ * Watch a whole match turn by turn (SPEC §10.1 results → "watch replay", and shared replays at
+ * /replay/:id or from a file, SPEC §12).
+ */
 export default function ReplayViewer({
-  session,
+  history,
+  title,
   onClose,
 }: {
-  session: MatchSession;
+  history: readonly TurnRecord[];
+  title?: string | undefined;
   onClose(): void;
 }) {
   const host = useRef<HTMLDivElement>(null);
@@ -19,7 +24,7 @@ export default function ReplayViewer({
 
   useEffect(() => {
     const el = host.current;
-    const first = session.history[0];
+    const first = history[0];
     if (!el || !first) return;
     let view: MatchView | null = null;
     void MatchView.create(el, first.before, {
@@ -35,7 +40,7 @@ export default function ReplayViewer({
       if (ctl.current.closed) return v.destroy();
       v.setInputEnabled(false);
       v.showWholeBody();
-      for (const [i, h] of session.history.entries()) {
+      for (const [i, h] of history.entries()) {
         if (ctl.current.closed) return;
         setTurn(i + 1);
         v.setState(h.before);
@@ -52,19 +57,20 @@ export default function ReplayViewer({
       ctl.current.closed = true;
       view?.destroy();
     };
-  }, [session]);
+  }, [history]);
 
   return (
-    <main class="match replay-viewer">
+    <main class="match replay-viewer" data-turns={history.length} data-turn={turn}>
       <div class="viewport" ref={host} />
       <header class="hud-top">
         <div class="hud-stats">
           <span class="stat">
             <span class="stat-label">turn</span>
             <span class="num">
-              {turn}/{session.history.length}
+              {turn}/{history.length}
             </span>
           </span>
+          {title && <span class="replay-title">{title}</span>}
         </div>
         <button class="btn btn-icon menu-btn" aria-label="Close replay" onClick={onClose}>
           ✕

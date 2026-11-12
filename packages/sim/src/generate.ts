@@ -242,7 +242,6 @@ export function isOneRegion(board: Board, terrain: readonly Terrain[]): boolean 
 // Star systems (SPEC §4.1–4.5)
 
 const SIZES: readonly BodySize[] = ["small", "medium", "large"];
-const TYPES: readonly BodyType[] = ["carbonaceous", "icy", "metallic", "irradiated"];
 const HOME_TYPES: readonly BodyType[] = ["carbonaceous", "icy"];
 
 function createSystem(config: GameConfig, rules: Rules, seed: string): GameState {
@@ -251,9 +250,9 @@ function createSystem(config: GameConfig, rules: Rules, seed: string): GameState
     throw new Error(`A system supports 2–4 players, got ${players}`);
   }
   const rng = rngStream(seed, "system");
-  // At least one neutral body: homes are placed by their distance to the nearest one.
+  // Normally at least one neutral body (homes are placed by their distance to the nearest one).
   const count = Math.max(
-    players + 1,
+    players + rules.systemMinNeutrals,
     Math.min(
       rules.systemMaxBodies,
       Math.max(rules.systemMinBodies, players + rules.systemExtraBodies),
@@ -284,7 +283,7 @@ function createSystem(config: GameConfig, rules: Rules, seed: string): GameState
   };
   let orbits: Orbit[] = [];
   let homes: number[] = [];
-  let bestScore = -1;
+  let bestScore = -Infinity;
   for (let attempt = 0; attempt < rules.orbitAttempts; attempt++) {
     const candidate = drawOrbits();
     const candidateHomes = chooseHomes(candidate, players);
@@ -302,7 +301,7 @@ function createSystem(config: GameConfig, rules: Rules, seed: string): GameState
     const size: BodySize = isHome ? "medium" : (SIZES[rng.int(SIZES.length)] as BodySize);
     const type: BodyType = isHome
       ? (HOME_TYPES[rng.int(HOME_TYPES.length)] as BodyType)
-      : (TYPES[rng.int(TYPES.length)] as BodyType);
+      : (rules.neutralBodyTypes[rng.int(rules.neutralBodyTypes.length)] as BodyType);
     return buildBody(seed, rules, id, size, type, orbit, isHome ? owner : null);
   });
 
@@ -349,12 +348,18 @@ function reachability(
   const range = rules.launchRange * TRIG_SCALE;
   let ok = true;
   let worst = Infinity;
+  let latest = 0;
   for (const h of homes) {
     let first = Infinity;
     let turns = 0;
     for (let t = 1; t <= rules.windowHorizon; t++) {
+      // Windows to a neutral body; with no neutrals (all homes), to any other body.
+      const allHomes = homes.length === probe.length;
       const open = probe.some(
-        (b) => !homes.includes(b.id) && distanceSquared(probe[h] as Body, b, t) <= range * range,
+        (b) =>
+          b.id !== h &&
+          (allHomes || !homes.includes(b.id)) &&
+          distanceSquared(probe[h] as Body, b, t) <= range * range,
       );
       if (open) {
         turns++;
@@ -363,8 +368,10 @@ function reachability(
     }
     if (first > rules.homeFirstWindowMax || turns < rules.homeWindowTurnsMin) ok = false;
     worst = Math.min(worst, turns);
+    latest = Math.max(latest, first);
   }
-  return { ok, score: worst };
+  // Fairest fallback first: the home that waits longest for a window, then the scarcest windows.
+  return { ok, score: -Math.min(latest, rules.windowHorizon + 1) * 100 + worst };
 }
 
 function probeBody(orbit: Orbit, id: number): Body {
@@ -387,6 +394,8 @@ function probeBody(orbit: Orbit, id: number): Body {
  * equal as possible (SPEC §4.1). Every combination is tried; ties go to the first found.
  */
 function chooseHomes(orbits: readonly Orbit[], players: number): number[] {
+  // Every body a home (a tutorial two-body system): nothing to balance.
+  if (orbits.length === players) return orbits.map((_, i) => i);
   const probe = orbits.map(probeBody);
   let best: number[] = [];
   let bestSpread = Infinity;

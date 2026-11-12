@@ -4,6 +4,7 @@ import {
   LIVE_TIMERS,
   type GameSettings,
   type GameSummary,
+  type LadderResponse,
   type Strain,
 } from "@swarm/protocol";
 import { audio } from "../audio/sfx";
@@ -30,7 +31,11 @@ export function Online({ onBack, onOpen }: Props) {
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [queued, setQueued] = useState(false);
+  const [queued, setQueued] = useState<"casual" | "ranked" | false>(false);
+  // Ranked (SPEC §11.2): a duel, or a 3- or 4-player free-for-all.
+  const [rankedPlayers, setRankedPlayers] = useState(2);
+  const [ladder, setLadder] = useState<LadderResponse | null>(null);
+  const ladderMode = rankedPlayers === 2 ? "duel" : "ffa";
   const [status, setStatus] = useState(gameSocket().status);
   const [push, setPush] = useState(pushState());
   const queueTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -55,6 +60,17 @@ export function Online({ onBack, onOpen }: Props) {
       if (queueTimer.current) clearInterval(queueTimer.current);
     };
   }, []);
+
+  useEffect(() => {
+    let live = true;
+    void api
+      .ladder(ladderMode)
+      .then((l) => live && setLadder(l))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [ladderMode]);
 
   const run = async (fn: () => Promise<void>) => {
     audio.click();
@@ -89,13 +105,15 @@ export function Online({ onBack, onOpen }: Props) {
       onOpen(gameId);
     });
 
-  const quickMatch = () =>
+  /** Quick match, or a ranked match with the season's sector (SPEC §11.2). */
+  const quickMatch = (ranked: boolean) =>
     run(async () => {
-      const r = await api.queue(pace, strain);
+      const opts = ranked ? { players: rankedPlayers } : undefined;
+      const r = await api.queue(pace, strain, opts);
       if (r.status === "matched" && r.gameId) return onOpen(r.gameId);
-      setQueued(true);
+      setQueued(ranked ? "ranked" : "casual");
       queueTimer.current = setInterval(() => {
-        void api.queue(pace, strain).then((q) => {
+        void api.queue(pace, strain, opts).then((q) => {
           if (q.status === "matched" && q.gameId) {
             if (queueTimer.current) clearInterval(queueTimer.current);
             setQueued(false);
@@ -214,19 +232,86 @@ export function Online({ onBack, onOpen }: Props) {
         </div>
         <p class="hint">Create game uses this; quick match is always 2 players.</p>
         <div class="button-row">
-          <button class="btn btn-primary" disabled={busy || queued} onClick={() => void create()}>
+          <button
+            class="btn btn-primary"
+            disabled={busy || queued !== false}
+            onClick={() => void create()}
+          >
             Create game
           </button>
-          {queued ? (
+          {queued === "casual" ? (
             <button class="btn" onClick={cancelQueue}>
               Searching… cancel
             </button>
           ) : (
-            <button class="btn" disabled={busy} onClick={() => void quickMatch()}>
+            <button
+              class="btn"
+              disabled={busy || queued !== false}
+              onClick={() => void quickMatch(false)}
+            >
               Quick match
             </button>
           )}
         </div>
+      </section>
+
+      <section class="card ranked">
+        <h3>Ranked</h3>
+        {ladder && (
+          <p class="muted">
+            Season {ladder.season + 1} · {ladder.sector.name}: {ladder.sector.description} Ends{" "}
+            {new Date(ladder.endsAt).toLocaleDateString()}.
+          </p>
+        )}
+        <div class="segmented" role="radiogroup" aria-label="Ranked mode">
+          {[2, 3, 4].map((n) => (
+            <button
+              key={n}
+              role="radio"
+              aria-checked={rankedPlayers === n}
+              class={rankedPlayers === n ? "seg active" : "seg"}
+              onClick={() => setRankedPlayers(n)}
+            >
+              {n === 2 ? "Duel" : `FFA ${n}`}
+            </button>
+          ))}
+        </div>
+        {ladder?.me && (
+          <p>
+            Your rating: <strong>{ladder.me.rating}</strong> ±{ladder.me.deviation * 2} ·{" "}
+            {ladder.me.rank > 0
+              ? `#${ladder.me.rank}`
+              : `provisional (${ladder.me.games} game${ladder.me.games === 1 ? "" : "s"})`}
+          </p>
+        )}
+        {ladder && ladder.entries.length > 0 ? (
+          <table class="stats leaderboard" aria-label="Ranked leaderboard">
+            <tbody>
+              {ladder.entries.slice(0, 10).map((e) => (
+                <tr key={e.rank} class={e.you ? "you" : undefined}>
+                  <td class="num">{e.rank}</td>
+                  <td>{e.name}</td>
+                  <td class="num">{e.rating}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p class="hint">Nobody is placed yet this season: three games puts you on the board.</p>
+        )}
+        {queued === "ranked" ? (
+          <button class="btn btn-wide" onClick={cancelQueue}>
+            Searching… cancel
+          </button>
+        ) : (
+          <button
+            class="btn btn-primary btn-wide"
+            disabled={busy || queued !== false}
+            onClick={() => void quickMatch(true)}
+          >
+            Find ranked match ({pace})
+          </button>
+        )}
       </section>
 
       <section class="card">

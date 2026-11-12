@@ -8,6 +8,13 @@
       "when": 1794442931687,
       "tag": "0000_bizarre_kylun",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794475356889,
+      "tag": "0001_m7_progression",
+      "breakpoints": true
     }
   ]
 }

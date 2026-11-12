@@ -16,20 +16,20 @@ const LAUNCH_RULES = {
   },
 };
 
-describe("M6 tuned strain defaults (DECISIONS)", () => {
+describe("M6/M7 tuned strain defaults (DECISIONS #71, #82)", () => {
   it("ships the balanced numbers", () => {
     const s = scenario({ cells: [P1], strains: ["swarmer", "biofilm"] });
     expect(playerRules(s, 0)).toMatchObject({ growReach: 4, entryCostDelta: 0, maxBiomass: 7 });
     expect(playerRules(s, 1)).toMatchObject({
       growReach: 2,
-      maxBiomass: 12,
+      maxBiomass: 11,
       defenseSupport: 1,
       reinforceAmount: 4,
       fruitCost: 14,
     });
     const t = scenario({ cells: [P1], strains: ["predator", "sporer"] });
     expect(playerRules(t, 0)).toMatchObject({ growReach: 4, assaultBonus: 1, captureFeeds: true });
-    expect(playerRules(t, 1)).toMatchObject({ fruitCost: 7, fruitMatureTurns: 1, maxFruiting: 3 });
+    expect(playerRules(t, 1)).toMatchObject({ fruitCost: 9, fruitMatureTurns: 1, maxFruiting: 3 });
   });
 });
 
