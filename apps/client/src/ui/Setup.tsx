@@ -14,9 +14,9 @@ interface Props {
 }
 
 const SIZES: { id: SystemSize; label: string }[] = [
-  { id: "compact", label: "Compact" },
   { id: "standard", label: "Standard" },
   { id: "wide", label: "Wide" },
+  { id: "vast", label: "Vast" },
 ];
 
 /** Skirmish setup (SPEC §10.1): bot count and difficulty, strains, system size and seed. */

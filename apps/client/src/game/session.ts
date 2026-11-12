@@ -30,21 +30,26 @@ export interface SkirmishSettings {
   size?: SystemSize;
 }
 
-export type SystemSize = "compact" | "standard" | "wide";
-/** Standard is the tuned default (BASE_RULES.systemExtraBodies); the others are one either side. */
+export type SystemSize = "standard" | "wide" | "vast";
+/** Standard is the tuned default (BASE_RULES.systemExtraBodies); bigger systems add bodies. */
 export const SYSTEM_EXTRA_BODIES: Record<SystemSize, number> = {
-  compact: BASE_RULES.systemExtraBodies - 1,
   standard: BASE_RULES.systemExtraBodies,
   wide: BASE_RULES.systemExtraBodies + 1,
+  vast: BASE_RULES.systemExtraBodies + 2,
 };
 
 /** Neutral bodies a skirmish system will have (body count is clamped by the rules). */
 export function neutralBodies(players: number, size: SystemSize): number {
   const total = Math.min(
     BASE_RULES.systemMaxBodies,
-    Math.max(BASE_RULES.systemMinBodies, players + SYSTEM_EXTRA_BODIES[size]),
+    Math.max(BASE_RULES.systemMinBodies, players + extraBodies(size)),
   );
-  return total - players;
+  return Math.max(1, total - players);
+}
+
+/** Saves from M5 may say "compact": it maps to the standard size. */
+function extraBodies(size: string | undefined): number {
+  return SYSTEM_EXTRA_BODIES[(size ?? "standard") as SystemSize] ?? SYSTEM_EXTRA_BODIES.standard;
 }
 
 /** The sim config for a skirmish: you in seat 0, bots after you (SPEC §3). */
@@ -54,9 +59,7 @@ export function skirmishConfig(s: SkirmishSettings): GameConfig {
     mode: s.map ?? "singleRock",
     playerCount: bots + 1,
     strains: [s.strain, ...Array.from({ length: bots }, () => s.botStrain)],
-    ...(s.map === "system"
-      ? { rules: { systemExtraBodies: SYSTEM_EXTRA_BODIES[s.size ?? "standard"] } }
-      : {}),
+    ...(s.map === "system" ? { rules: { systemExtraBodies: extraBodies(s.size) } } : {}),
   };
 }
 

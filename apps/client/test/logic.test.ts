@@ -212,12 +212,12 @@ describe("replay timeline (SPEC §10.5)", () => {
         botStrain: "biofilm",
         map: "system",
         bots: 3,
-        size: "compact",
+        size: "wide",
       },
       syncBot,
     );
     expect(s.state.players).toHaveLength(4);
-    expect(s.state.bodies).toHaveLength(4 + neutralBodies(4, "compact"));
+    expect(s.state.bodies).toHaveLength(4 + neutralBodies(4, "wide"));
     await s.submitAndWait();
     expect(s.state.turn).toBe(2);
     expect(s.seats().map((x) => x.name)).toEqual(["You", "Bot 1", "Bot 2", "Bot 3"]);

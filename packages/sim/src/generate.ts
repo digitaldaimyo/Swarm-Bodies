@@ -251,9 +251,13 @@ function createSystem(config: GameConfig, rules: Rules, seed: string): GameState
     throw new Error(`A system supports 2–4 players, got ${players}`);
   }
   const rng = rngStream(seed, "system");
-  const count = Math.min(
-    rules.systemMaxBodies,
-    Math.max(rules.systemMinBodies, players + rules.systemExtraBodies),
+  // At least one neutral body: homes are placed by their distance to the nearest one.
+  const count = Math.max(
+    players + 1,
+    Math.min(
+      rules.systemMaxBodies,
+      Math.max(rules.systemMinBodies, players + rules.systemExtraBodies),
+    ),
   );
 
   // Orbits: distinct radii, inner bodies first; wider orbits have longer periods. Layouts are

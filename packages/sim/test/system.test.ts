@@ -96,6 +96,13 @@ describe("SPEC §4.1–4.4 system generation", () => {
       createGame({ mode: "system", playerCount: 2, rules: { systemExtraBodies: 0 } }, "x").bodies,
     ).toHaveLength(BASE_RULES.systemMinBodies);
     expect(() => createGame({ mode: "system", playerCount: 5 }, "x")).toThrow();
+    // Never zero neutral bodies: homes are placed by distance to the nearest one.
+    const tight = createGame(
+      { mode: "system", playerCount: 4, rules: { systemExtraBodies: 0, systemMinBodies: 3 } },
+      "x",
+    );
+    expect(tight.bodies).toHaveLength(5);
+    expect(tight.players).toHaveLength(4);
   });
 
   it.each(Array.from({ length: 12 }, (_, i) => `sys-${i}`))(
