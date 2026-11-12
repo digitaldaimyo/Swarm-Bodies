@@ -1,6 +1,49 @@
 # Progress
 
-**Current milestone:** M5, The system: complete (branch `m5-system`, PR pending review). **Next:** M6, Strains, mutations, and balance (SPEC §15).
+**Current milestone:** M6, Strains, mutations, and balance: complete (branch `m6-balance`, PR pending review). **Next:** M7, Progression and replayability (SPEC §15).
+
+## M6: Strains, mutations, and balance: done
+
+Scope (§15): Predator and Sporer; the draft system and all 12 mutations; the `content` package; balance tooling and the CI gate.
+
+- [x] **Strains:** Predator and Sporer as strain modifiers (DECISIONS #67, #71).
+- [x] **Mutations and drafts:**
+  - All 12 mutations are data plus hooks (`packages/sim/src/mutations.ts`).
+  - Drafts trigger at 40, 90 and 160 total biomass, offer 3 options, and are picked by a Draft order or assigned.
+  - Every mutation and the draft flow have unit tests (`mutations.test.ts`).
+- [x] **Content:** strain and mutation text, with rule lines generated from the sim's numbers, plus flavour and microbiology notes for the codex.
+- [x] **Balance tooling:**
+  - `pnpm balance -- --matrix` checks every §12.4 target; `--jobs N` runs in parallel and `--rules` overrides tunables.
+  - The CI gate runs a 200-game deterministic batch (DECISIONS #74).
+- [x] **Acceptance: §12.4 targets met at Normal.** 960-game matrix on 2-player systems with the default seeds:
+
+  | Pair                | Side A wins |
+  | ------------------- | ----------- |
+  | Biofilm vs Predator | 56.3%       |
+  | Biofilm vs Sporer   | 42.5%       |
+  | Predator vs Sporer  | 53.1%       |
+  | Swarmer vs Biofilm  | 51.9%       |
+  | Swarmer vs Predator | 45.6%       |
+  | Swarmer vs Sporer   | 50.0%       |
+  - Average length: 24.2 turns (target 18–28).
+  - Stalls: 0.8% (target under 5%).
+  - Highest mutation pick win rate: 57.1%, Radiation Shielding (target at most 58%).
+  - Pooled with a second seed set, every target still holds; the second set alone has Swarmer vs Biofilm at 60.6% (noise is about ±4% a pair).
+
+- [x] **Acceptance: Hard bot shipped.** It beats Normal 85% on Single Rock and 60% on systems, and is tested for legality, determinism and budget (DECISIONS #73).
+- [x] **Acceptance: draft UI complete.**
+  - A modal with three cards: tap to inspect, tap again to pick, or decide later and reopen from the HUD.
+  - Glyphs show every player's mutations.
+  - Four strains in every picker; Hard bot in skirmish; e2e coverage.
+- [x] **Found while balancing:** unreachable launch windows, unclaimable Irradiated bodies, bots that never fruited ahead or spent surplus N, and systems with no neutral body. All fixed and tested (DECISIONS #68, #69, #72).
+- [x] **Golden replays** regenerated deliberately. The 50 replays include 73 draft picks covering all 12 mutations.
+
+**Open items for the user:**
+
+- **Spec deviations from balancing:** DECISIONS #71 lists every number changed against the spec's tables. Please review: Swarmer's entry discount, Biofilm's support 2, the 60% dominance and the flare rule are the big ones.
+- **3–4 player balance** has not been measured; the targets are 1v1. Single Rock (a test map) is not balanced either.
+- **Hard's speed:** Hard averages about 55 ms a turn here, but reaches about 200 ms on 4-player systems. That needs checking on phones (the budget is 200 ms).
+- Real-device 60 fps and WebKit e2e (CI only) are still open from earlier milestones.
 
 ## M5: The system: done
 
@@ -81,9 +124,9 @@ Scope (§15): `protocol`, server, guest accounts, create/join by code, live and 
 
 Running locally: Postgres 16 (`postgres://swarm:swarm@localhost:5432`). Set `TEST_DATABASE_URL=postgres://swarm:swarm@localhost:5432/postgres` for the server tests; `pnpm test:e2e` starts the server on `swarm_e2e` (created if missing; override with `E2E_DATABASE_URL`). `pnpm dev` runs the client (Vite proxies `/api` and `/ws`) and the server (`DATABASE_URL`, default `postgres://swarm:swarm@localhost:5432/swarm`).
 
-## Next: M6, Strains, mutations, and balance
+## Next: M7, Progression and replayability
 
-See SPEC §15 M6: Predator and Sporer, mutations and drafts, achievements data, the Hard bot, and balance passes with `pnpm balance` (including `--map system`).
+SPEC §15 M7: the campaign (12 nodes, with a tutorial), codex, achievements, the Daily Seed with server validation, a ranked ladder (Glicko-2, seasons and sectors), shareable replays and cosmetics.
 
 ## M3: Playable client vs bot: done
 
