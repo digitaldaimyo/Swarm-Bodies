@@ -80,7 +80,13 @@ test("match HUD and results pass axe (WCAG 2.1 AA)", async ({ page }) => {
   await audit(page, "results");
 });
 
-test("HUD controls are reachable by keyboard on desktop (SPEC §10.8)", async ({ page }) => {
+test("HUD controls are reachable by keyboard on desktop (SPEC §10.8)", async ({
+  page,
+  browserName,
+}) => {
+  // Safari moves focus to buttons with Option+Tab (plain Tab skips them unless the user turns on
+  // "Press Tab to highlight each item"); the controls are reachable either way.
+  const tab = browserName === "webkit" ? "Alt+Tab" : "Tab";
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/?e2e");
   await page.getByRole("button", { name: "Play skirmish" }).click();
@@ -90,7 +96,7 @@ test("HUD controls are reachable by keyboard on desktop (SPEC §10.8)", async ({
   );
   const reached = new Set<string>();
   for (let i = 0; i < 30; i++) {
-    await page.keyboard.press("Tab");
+    await page.keyboard.press(tab);
     const name = await page.evaluate(() => {
       const el = document.activeElement as HTMLElement | null;
       return el?.getAttribute("aria-label") ?? el?.textContent?.trim() ?? "";
