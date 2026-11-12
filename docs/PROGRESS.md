@@ -17,7 +17,7 @@ Scope (§15): Vite, Pixi and Preact client; Body view, path painting, radial men
 - [x] PWA (§10.7): manifest, icons rasterised at build time from one SVG (`apps/client/build/icon.svg`), and a Workbox service worker precaching the app shell. Safe-area insets; portrait and landscape layouts.
 - [x] Acceptance: a full Single Rock game is playable to the end at 390×844 (Playwright smoke test, plus manual screenshot review at 390×844, 844×390 and 1440×900).
 - [x] Acceptance: Playwright smoke test (`e2e/smoke.spec.ts`). It uses a real touch drag (CDP) to paint, then submits, watches the replay, and finishes against the Easy bot with an accelerated scripted player.
-- [~] Acceptance: 60 fps on a mid-range phone profile. `e2e/perf.spec.ts` passes: under 4× CPU throttle, the frame CPU median is about 1.5–2.5 ms and p95 is about 11–14 ms (replay board swaps), within one 16.7 ms frame. This container has no GPU, so raw frame rates here only reflect software WebGL (see DECISIONS #29). **Open item: confirm 60 fps on a real mid-range Android phone and an iPhone 12.**
+- [~] Acceptance: 60 fps on a mid-range phone profile. `e2e/perf.spec.ts` (a CI regression check of CPU work under a 4× throttle, plus a structural guard against per-swap geometry rebuilds) passes. **Open item: real-device validation on a mid-range Android phone and an iPhone 12**, per DECISIONS #33.
 - [x] Client unit tests (`apps/client/test/logic.test.ts`): hex layout, path painting (including routing around rock), the planner and assault preview against the sim, replay timeline reconstruction over whole games, the event log, and skirmish save/restore.
 
 ## Next: M4, Online multiplayer

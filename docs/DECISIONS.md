@@ -42,3 +42,20 @@ Rulings on ambiguous or unspecified points in `docs/SPEC.md`, as CLAUDE.md requi
 30. **Saving a skirmish.** The game in progress is saved to `localStorage` as seed plus every turn's orders plus the current draft, and rebuilt by replaying through the sim (§9.4's "reconstructable from the seed plus the orders"). IndexedDB drafts keyed by `(gameId, turn)` arrive with online play in M4.
 31. **E2E hook.** With `?e2e` in the URL, the match screen exposes `window.__swarm`: phase, turn, the view, and an `autoplay` flag that plays the human's turns with the Normal bot policy and skips replays. This is the "accelerated scripted player" of §14. The service worker is not registered in that mode.
 32. **Fonts.** Fredoka (display) and Inter (UI, tabular figures) load from Google Fonts. The service worker caches them at runtime so the installed app still works offline.
+
+## 2026-11-12 — Performance validation (PR #3 CI failure)
+
+33. **CI regression checks versus real-device validation (§10.7, §15 M3).** The perf test failed on PR #3's first CI run (frame-time p95 19.1 ms against 16.7 ms). Investigation found three causes:
+    - **A real cost.** Replay board swaps re-tessellated every vein and gap-triangle polygon (444 on the test board). That is 11–13 ms of CPU per swap at 4× throttle here, and about 18 ms on the slower CI runner, which matches the failing replay p95. It is fixed by drawing those shapes as pooled sprites (backported from M4); a swap now costs 1–7 ms at 4× throttle.
+    - **A harness bug.** The e2e scripted player could submit one more turn after being switched off, so a replay animated inside the "idle" window (CI attempt 1: idle median 4.0 ms, p95 23 ms). It now re-checks the flag. The test also waits for real idleness: planning phase, a stable turn, and the bot's worker done.
+    - **Unsound statistics.** CI renders WebGL in software at ~10 fps, so the fixed 3 s windows held 25–47 frames, and their "p95" was the second-worst frame. Idle is now sampled by count (120 frames).
+
+    **What CI asserts** (a regression check of the code, at a 4× throttle relative to the runner):
+    - idle and replay frame medians under 5 ms;
+    - idle p95 within one 16.7 ms frame;
+    - a board swap (redraw plus render, median of 7) under 16.7 − 5 = 11.7 ms, so a swap frame plus a typical frame's other work fits in one frame;
+    - a hardware-independent structural guard: a swap rebuilds no per-cell geometry. This catches the original regression on any machine, which the timing budget alone does not on a fast host.
+
+    Replay p95 is logged, not asserted: it is the swap frames (measured directly above) plus software-rasteriser stalls.
+
+    **Real-device validation is separate**, because throttled timings are relative to the runner and CI has no GPU. Before each release candidate, and after any rendering change, run the M3/M5 benchmark scene on a physical mid-range Android phone and an iPhone 12. Attach Chrome or Safari remote devtools, or run `PERF_DPR=2.75` on a GPU-equipped machine as a first pass. Pass: a sustained 60 fps (no frame over 16.7 ms outside the replay's board swaps, none over 33 ms at all) mid-game on a Large body. Record the results in `docs/PROGRESS.md`. A device-farm job (real devices, not emulators) can automate this later; it should not gate pull requests.

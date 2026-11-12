@@ -271,7 +271,9 @@ export default function Match({ session, onExit, onFinished }: Props) {
     if (!window.__swarm.autoplay || phase !== "planning" || !view.current) return;
     let cancelled = false;
     void import("@swarm/bot").then(({ chooseOrders }) => {
-      if (cancelled || phaseRef.current !== "planning") return;
+      // Re-check the flag: it may have been switched off while the bot module loaded.
+      // Without this, the scripted player submits one more turn after being stopped.
+      if (cancelled || !window.__swarm?.autoplay || phaseRef.current !== "planning") return;
       session.planner.clear();
       for (const o of chooseOrders(session.state, HUMAN, "normal", "e2e")) session.planner.add(o);
       refreshPlan();
