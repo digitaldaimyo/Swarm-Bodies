@@ -38,6 +38,7 @@ jobs:
         run: |
           pnpm balance -- --games 200 --players normal,random
           pnpm balance -- --games 100 --strains swarmer,biofilm
+          pnpm balance -- --games 50 --map system --strains swarmer,biofilm
       - run: pnpm exec playwright install --with-deps chromium webkit
       - name: Golden replays, client smoke, frame budget, online play (Chromium and WebKit)
         run: pnpm test:e2e

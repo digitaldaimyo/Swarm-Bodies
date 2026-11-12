@@ -40,6 +40,7 @@ Scope (§15): multiple bodies, orbits, System view, body strip, Fruit/Launch/spo
 **Open items for the user:**
 
 - **Balance (M6):** on systems, Normal mirrors reach the turn limit with nobody above 40% dominance in about 80% of games (20-game sample; target under 5%, §12.4). Spores and the 40-turn limit interact here: the turn limit, the 60% threshold and the launch and spore numbers are all M6 tuning.
+- **Strains on systems:** Normal Swarmer beats Biofilm in 78% of system games (50-game sample; 98% on Single Rock). CI now runs this batch as a smoke check, without asserting the rate.
 - The sun-direction marker sits on the body on very wide screens; the M8 polish pass should revisit it.
 - Strain balance (DECISIONS #36), real-device 60 fps, and WebKit e2e (CI only): as below.
 
