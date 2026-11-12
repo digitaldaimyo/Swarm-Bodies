@@ -13,7 +13,9 @@ import {
   orbitAngle,
   resolveTurn,
   sinFx,
+  randomOrderSet,
   travelTime,
+  upgradeState,
   validateOrderSet,
   type Body,
   type GameEvent,
@@ -678,3 +680,29 @@ describe("SPEC §8 events", () => {
 });
 
 void cellAtBody0;
+
+describe("stored states from before M5", () => {
+  it("upgrade to the current shape and keep resolving identically", () => {
+    const fresh = createGame({ mode: "singleRock", playerCount: 2 }, "upgrade");
+    // What an M4 snapshot looked like: no orbits, comets, fruiting, spores or schedule.
+    const old = JSON.parse(JSON.stringify(fresh)) as Record<string, unknown> & GameState;
+    delete (old as Partial<GameState>).spores;
+    delete (old as Partial<GameState>).nextSporeId;
+    delete (old as Partial<GameState>).schedule;
+    for (const b of old.bodies) {
+      delete (b as Partial<Body>).orbit;
+      delete (b as Partial<Body>).home;
+      delete (b as Partial<Body>).comets;
+      for (const c of b.colony) if (c) delete (c as Partial<typeof c>).fruiting;
+    }
+    const up = upgradeState(old);
+    expect(up).toEqual(fresh);
+    expect(hashState(up)).toBe(hashState(fresh));
+    const orders = { 0: randomOrderSet(fresh, 0, "u"), 1: randomOrderSet(fresh, 1, "v") };
+    expect(hashState(resolveTurn(up, orders).state)).toBe(
+      hashState(resolveTurn(fresh, orders).state),
+    );
+    // Current states pass through unchanged.
+    expect(upgradeState(fresh)).toEqual(fresh);
+  });
+});

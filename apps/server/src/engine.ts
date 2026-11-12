@@ -5,6 +5,7 @@ import {
   createGame,
   hashState,
   resolveTurn,
+  upgradeState,
   validateOrderSet,
   type GameState,
   type Order,
@@ -637,7 +638,14 @@ export class GameEngine {
       .select({ id: games.id })
       .from(games)
       .where(eq(games.status, "active"));
-    for (const { id } of active) this.schedule(await this.load(id));
+    // One unreadable game must not keep the server down: log it and carry on.
+    for (const { id } of active) {
+      try {
+        this.schedule(await this.load(id));
+      } catch (err) {
+        this.deps.log.error({ gameId: id, err }, "could not restore game");
+      }
+    }
   }
 
   // ----------------------------------------------------------------------------------------
@@ -832,7 +840,8 @@ export class GameEngine {
         orderBy: (t, { desc }) => [desc(t.turn)],
       });
       if (!snap) throw new GameError("corrupt", `Game ${gameId} has no snapshot`, 500);
-      state = snap.state;
+      // Snapshots written before M5 lack the system fields (DECISIONS).
+      state = upgradeState(snap.state);
       const results = await this.db
         .select()
         .from(turnResults)

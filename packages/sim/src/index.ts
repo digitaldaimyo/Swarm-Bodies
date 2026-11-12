@@ -27,6 +27,7 @@ export {
   type FilteredOrders,
 } from "./validate";
 export { resolveTurn } from "./resolve";
+export { upgradeState } from "./upgrade";
 export {
   bodyPosition,
   distanceScaled,
