@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 // SPEC §9.3: the golden replays must produce identical hashes in Node, Chromium and WebKit.
 // `pnpm test:e2e` builds the sim as a browser bundle first.

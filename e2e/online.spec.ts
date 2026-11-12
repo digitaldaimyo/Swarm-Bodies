@@ -1,4 +1,5 @@
-import { expect, test, type Browser, type Page } from "@playwright/test";
+import { type Browser, type Page } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 // SPEC §15 M4 acceptance, end to end: two real browsers against the real server.
 test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
