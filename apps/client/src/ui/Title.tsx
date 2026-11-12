@@ -6,10 +6,22 @@ interface Props {
   onOnline(): void;
   onContinue(): void;
   onSettings(): void;
+  onCampaign(): void;
+  onDaily(): void;
+  onCodex(): void;
 }
 
 /** Title screen with an animated slime backdrop (SPEC §10.1), drawn as SVG, no bitmaps. */
-export function Title({ hasSave, onPlay, onOnline, onContinue, onSettings }: Props) {
+export function Title({
+  hasSave,
+  onPlay,
+  onOnline,
+  onContinue,
+  onSettings,
+  onCampaign,
+  onDaily,
+  onCodex,
+}: Props) {
   const click = (fn: () => void) => () => {
     audio.unlock();
     audio.click();
@@ -28,18 +40,29 @@ export function Title({ hasSave, onPlay, onOnline, onContinue, onSettings }: Pro
         <nav class="menu" aria-label="Main menu">
           {hasSave && (
             <button class="btn btn-primary" onClick={click(onContinue)}>
-              Continue skirmish
+              Continue game
             </button>
           )}
-          <button class={hasSave ? "btn" : "btn btn-primary"} onClick={click(onPlay)}>
+          <button class={hasSave ? "btn" : "btn btn-primary"} onClick={click(onCampaign)}>
+            Campaign
+          </button>
+          <button class="btn" onClick={click(onPlay)}>
             Play skirmish
           </button>
           <button class="btn" onClick={click(onOnline)}>
             Play online
           </button>
-          <button class="btn btn-ghost" onClick={click(onSettings)}>
-            Settings
+          <button class="btn" onClick={click(onDaily)}>
+            Daily Seed
           </button>
+          <div class="menu-row">
+            <button class="btn btn-ghost" onClick={click(onCodex)}>
+              Codex
+            </button>
+            <button class="btn btn-ghost" onClick={click(onSettings)}>
+              Settings
+            </button>
+          </div>
         </nav>
       </div>
     </main>

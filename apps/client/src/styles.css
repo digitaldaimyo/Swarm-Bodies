@@ -1250,3 +1250,229 @@ h3 {
   grid-template-columns: 1fr 1fr;
   border-radius: 18px;
 }
+
+/* M7: title menu row, campaign map, tutorial, codex, leaderboards, cosmetics, replays */
+.menu-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.header-note {
+  margin-left: auto;
+  font-size: 14px;
+}
+.center {
+  text-align: center;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.galaxy {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1.05;
+  max-height: 62vh;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background:
+    radial-gradient(circle at 20% 80%, rgba(62, 214, 232, 0.12), transparent 40%),
+    radial-gradient(circle at 85% 15%, rgba(242, 92, 184, 0.12), transparent 45%), var(--space);
+  overflow: hidden;
+}
+.galaxy-links {
+  position: absolute;
+  inset: 6%;
+  width: 88%;
+  height: 88%;
+}
+.galaxy-links .link {
+  stroke: var(--line);
+  stroke-width: 2;
+  stroke-dasharray: 4 4;
+}
+.galaxy-links .link.lit {
+  stroke: var(--p0);
+  stroke-dasharray: none;
+  opacity: 0.7;
+}
+.galaxy-node {
+  position: absolute;
+  /* Same inset as the links: node x/y are percentages of the inner 88%. */
+  translate: -50% -50%;
+  margin: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  background: var(--panel);
+  color: var(--muted);
+  font: 700 16px var(--font-display);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.galaxy-node.open {
+  border-color: var(--p0);
+  color: var(--text);
+  box-shadow: 0 0 14px rgba(62, 214, 232, 0.45);
+}
+.galaxy-node.next {
+  animation: node-pulse 1.8s ease-in-out infinite;
+}
+.galaxy-node.done {
+  border-color: var(--good);
+  color: var(--good);
+}
+.galaxy-node.locked {
+  opacity: 0.55;
+}
+@keyframes node-pulse {
+  50% {
+    box-shadow: 0 0 26px rgba(62, 214, 232, 0.8);
+  }
+}
+:root[data-motion="reduce"] .galaxy-node.next {
+  animation: none;
+}
+.briefing-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.facts {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.facts strong {
+  color: var(--text);
+}
+
+.tutorial-card {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100px + var(--safe-bottom));
+  transform: translateX(-50%);
+  width: min(440px, calc(100% - 24px));
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: rgba(16, 23, 46, 0.95);
+  border: 1px solid var(--p0);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+  display: grid;
+  gap: 8px;
+  z-index: 5;
+}
+.match.has-strip .tutorial-card {
+  bottom: calc(158px + var(--safe-bottom));
+}
+.tutorial-card p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.35;
+}
+.tutorial-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tutorial-actions .muted {
+  margin-right: auto;
+}
+
+.codex-entry.locked {
+  opacity: 0.75;
+}
+.codex-entry p {
+  margin: 0;
+}
+.codex-entry .flavour {
+  font-style: italic;
+}
+.codex-entry .note {
+  color: var(--muted);
+  font-size: 14px;
+}
+.achievements {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.achievement {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  opacity: 0.7;
+}
+.achievement.got {
+  opacity: 1;
+  border-color: var(--warn);
+}
+.ach-mark {
+  color: var(--warn);
+}
+
+.leaderboard tr.you td {
+  color: var(--p0);
+  font-weight: 700;
+}
+.rewards ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+}
+.rewards {
+  border-color: var(--good);
+}
+
+.strain.locked,
+.seg.locked {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.field.column {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+.cosmetics .swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 6px;
+}
+.cosmetics .seg {
+  padding: 0 12px;
+}
+.share-row {
+  flex-wrap: wrap;
+}
+.share-note {
+  width: 100%;
+  margin: 0;
+  word-break: break-all;
+}
+.replay-title {
+  font-size: 13px;
+  color: var(--muted);
+  max-width: 60vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

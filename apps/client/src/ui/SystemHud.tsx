@@ -1,5 +1,5 @@
 import { forecast, type GameState, type PlayerId } from "@swarm/sim";
-import { PLAYER_CSS } from "../render/palette";
+import { playerCss } from "../render/palette";
 import { bodyShares } from "../render/system";
 
 const TYPE_CSS = {
@@ -25,7 +25,7 @@ function ring(state: GameState, id: number): string {
   const stops: string[] = [];
   for (const [p, n] of [...owners].sort((x, y) => x[0] - y[0])) {
     const end = at + (360 * n) / Math.max(1, playable);
-    stops.push(`${PLAYER_CSS[p % PLAYER_CSS.length]} ${at}deg ${end}deg`);
+    stops.push(`${playerCss(p)} ${at}deg ${end}deg`);
     at = end;
   }
   stops.push(`rgba(255,255,255,0.12) ${at}deg 360deg`);

@@ -169,3 +169,27 @@ export function matchSummary(history: readonly TurnRecord[], player: PlayerId) {
   }
   return { captures, lost, stalemates, grown };
 }
+
+/**
+ * The game summary (content's summarizeGame) for the viewer, rebuilt from the session's first
+ * state: its seed, mode and resolved rules reproduce the game exactly.
+ */
+export async function summarizeSession(
+  session: MatchSession,
+  context: import("@swarm/content").SummaryContext,
+): Promise<import("@swarm/content").GameSummary> {
+  const { summarizeGame } = await import("@swarm/content");
+  const first = session.history[0]?.before ?? session.state;
+  return summarizeGame(
+    {
+      mode: first.mode,
+      playerCount: first.players.length,
+      strains: first.players.map((p) => p.strain),
+      rules: first.rules,
+    },
+    first.seed,
+    session.history.map((h) => h.orders),
+    session.me,
+    context,
+  );
+}

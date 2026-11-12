@@ -4,7 +4,9 @@ import type { Strain } from "@swarm/protocol";
 import { audio } from "../audio/sfx";
 import type { GameMode } from "@swarm/sim";
 import { neutralBodies, type SkirmishSettings, type SystemSize } from "../game/session";
-import { strainInfo } from "@swarm/content";
+import { strainInfo, unlockedMutations, unlockedStrains } from "@swarm/content";
+import { MUTATION_IDS } from "@swarm/sim";
+import { useProgress } from "./progress";
 import { loadStrain, storeStrain, STRAINS, StrainPicker } from "./StrainPicker";
 
 interface Props {
@@ -27,10 +29,16 @@ export function Setup({ defaultSeed, onBack, onStart }: Props) {
   const [size, setSize] = useState<SystemSize>("standard");
   const neutral = neutralBodies(bots + 1, size);
   const [seed, setSeed] = useState(defaultSeed);
-  const [strain, setStrain] = useState<Strain>(loadStrain);
-  const [botStrain, setBotStrain] = useState<Strain>(() =>
+  // Offline play offers what the campaign has unlocked so far (SPEC §11.1).
+  const progress = useProgress();
+  const available = unlockedStrains(progress) as Strain[];
+  const pool = unlockedMutations(progress);
+  const [picked, setStrain] = useState<Strain>(loadStrain);
+  const strain = available.includes(picked) ? picked : "swarmer";
+  const [pickedBot, setBotStrain] = useState<Strain>(() =>
     loadStrain() === "swarmer" ? "biofilm" : "swarmer",
   );
+  const botStrain = available.includes(pickedBot) ? pickedBot : "biofilm";
   return (
     <main class="panel-screen">
       <header class="screen-header">
@@ -42,6 +50,7 @@ export function Setup({ defaultSeed, onBack, onStart }: Props) {
       <section class="card">
         <h3>Your strain</h3>
         <StrainPicker
+          available={available}
           value={strain}
           onChange={(s) => {
             setStrain(s);
@@ -93,7 +102,7 @@ export function Setup({ defaultSeed, onBack, onStart }: Props) {
               : "Checks its plan against your likely replies before committing."}
         </p>
         <div class="segmented wrap" role="radiogroup" aria-label="Bot strain">
-          {STRAINS.map((s) => (
+          {STRAINS.filter((s) => available.includes(s)).map((s) => (
             <button
               key={s}
               role="radio"
@@ -169,6 +178,7 @@ export function Setup({ defaultSeed, onBack, onStart }: Props) {
             map,
             bots: map === "system" ? bots : 1,
             size,
+            ...(pool.length < MUTATION_IDS.length ? { mutationPool: pool } : {}),
           });
         }}
       >

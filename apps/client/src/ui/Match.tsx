@@ -16,10 +16,12 @@ import { buildTimeline, describeEvents, type Frame, type LogEntry } from "../gam
 import { MatchView } from "../render/view";
 import { BodyStrip, ForecastStrip } from "./SystemHud";
 import { DraftModal, MutationGlyphs } from "./DraftModal";
-import { PLAYER_CSS } from "../render/palette";
+import { playerCss, setLocalCosmetics } from "../render/palette";
+import { localCosmetics } from "./Cosmetics";
 import { OrderDrawer } from "./OrderDrawer";
 import { RadialMenu } from "./RadialMenu";
 import { getSettings, haptic, updateSettings, useSettings } from "./settings";
+import type { TutorialStep } from "@swarm/content";
 
 interface Props {
   session: MatchSession;
@@ -27,6 +29,8 @@ interface Props {
   onSave?: (() => void) | undefined;
   onExit(): void;
   onFinished(): void;
+  /** Scripted tutorial steps (campaign nodes 1–3, SPEC §11.1). */
+  tutorial?: readonly TutorialStep[] | undefined;
 }
 
 type Phase = "planning" | "waiting" | "replay";
@@ -49,9 +53,15 @@ declare global {
 }
 const e2e = typeof location !== "undefined" && new URLSearchParams(location.search).has("e2e");
 
-export default function Match({ session, onSave, onExit, onFinished }: Props) {
+export default function Match({ session, onSave, onExit, onFinished, tutorial }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<MatchView | null>(null);
+  // Your cosmetics (SPEC §11.3), for your seat on this screen; declared first so the view is
+  // drawn with them from its first frame.
+  useEffect(() => {
+    setLocalCosmetics(localCosmetics(session.me));
+    return () => setLocalCosmetics(null);
+  }, [session]);
   const [, force] = useState(0);
   const rerender = useCallback(() => force((n) => n + 1), []);
   const [phase, setPhaseState] = useState<Phase>("planning");
@@ -80,6 +90,9 @@ export default function Match({ session, onSave, onExit, onFinished }: Props) {
   const [log, setLog] = useState<{ turn: number; entries: LogEntry[] } | null>(null);
   const [showLog, setShowLog] = useState(false);
   const [paused, setPaused] = useState(false);
+  // Tutorial (SPEC §11.1): the current step, and what happened since it was last checked.
+  const [tutorialStep, setTutorialStep] = useState(0);
+  const tutorialSignals = useRef(new Set<string>());
   const [now, setNow] = useState(Date.now());
   const settings = useSettings();
   const ctl = useRef({ paused: false, skipped: false });
@@ -297,6 +310,8 @@ export default function Match({ session, onSave, onExit, onFinished }: Props) {
       if (launchRef.current) setLaunch(null);
       setPhase("replay");
       // Off-screen action this turn lights the body strip (SPEC §10.5).
+      for (const e of record.events)
+        if ("player" in e && e.player === me) tutorialSignals.current.add(`event:${e.type}`);
       const touched = new Set<number>();
       for (const e of record.events)
         if ("cell" in e && e.cell.body !== bodyRef.current) touched.add(e.cell.body);
@@ -388,6 +403,7 @@ export default function Match({ session, onSave, onExit, onFinished }: Props) {
     audio.click();
     view.current?.cancelPaint();
     setPhase("waiting");
+    tutorialSignals.current.add("submit");
     session.submit();
   }, [session]);
 
@@ -479,6 +495,22 @@ export default function Match({ session, onSave, onExit, onFinished }: Props) {
     return () => {
       cancelled = true;
     };
+  });
+
+  // Advances the tutorial when its step's trigger has happened; anything else is forgotten so a
+  // stale submit or capture never completes a later step.
+  const step = tutorial?.[tutorialStep];
+  useEffect(() => {
+    if (!step) return;
+    const u = step.until;
+    const signals = tutorialSignals.current;
+    const hit =
+      (u.kind === "order" && session.planner.orders.some((o) => o.type === u.order)) ||
+      (u.kind === "systemView" && systemView) ||
+      (u.kind === "submit" && signals.has("submit")) ||
+      (u.kind === "event" && signals.has(`event:${u.event}`));
+    signals.clear();
+    if (hit) setTutorialStep((i) => i + 1);
   });
 
   const { planner, state } = session;
@@ -715,6 +747,38 @@ export default function Match({ session, onSave, onExit, onFinished }: Props) {
         }}
       />
 
+      {step && phase !== "replay" && !draftOpen && (
+        <aside
+          class="tutorial-card"
+          role="status"
+          aria-live="polite"
+          data-tutorial-step={tutorialStep}
+        >
+          <p>{step.text}</p>
+          <div class="tutorial-actions">
+            <span class="muted">
+              {tutorialStep + 1}/{tutorial?.length}
+            </span>
+            <button
+              class="btn btn-ghost small-btn"
+              onClick={() => setTutorialStep(tutorial?.length ?? 0)}
+            >
+              Skip tutorial
+            </button>
+            {step.until.kind === "next" && (
+              <button
+                class="btn btn-primary small-btn"
+                onClick={() => {
+                  audio.click();
+                  setTutorialStep((i) => i + 1);
+                }}
+              >
+                Got it
+              </button>
+            )}
+          </div>
+        </aside>
+      )}
       <footer class="hud-bottom">
         <button
           class="btn btn-pill"
@@ -808,7 +872,7 @@ function ReadyMarkers({
           <span key={s.seat} class="ready-item" title={label} aria-label={label}>
             <span
               class={`ready-dot ${s.ready ? "on" : s.thinking ? "thinking" : ""} ${s.connected ? "" : "offline"}`}
-              style={{ "--c": PLAYER_CSS[s.seat % PLAYER_CSS.length] }}
+              style={{ "--c": playerCss(s.seat) }}
             />
             {s.botControlled && <span class="bot-badge">BOT</span>}
             <MutationGlyphs ids={mutations(s.seat)} />
@@ -827,7 +891,7 @@ function DominanceBar({ dominance, names }: { dominance: number[]; names(seat: n
       <div class="dominance multi" aria-label={`Dominance: ${parts}`}>
         {dominance.map((d, i) => (
           <span key={i} class="dom-row">
-            <span style={{ width: `${d / 10}%`, background: PLAYER_CSS[i % PLAYER_CSS.length] }} />
+            <span style={{ width: `${d / 10}%`, background: playerCss(i) }} />
           </span>
         ))}
         <span class="dom-goal" />
@@ -836,9 +900,9 @@ function DominanceBar({ dominance, names }: { dominance: number[]; names(seat: n
   }
   return (
     <div class="dominance" aria-label={`Dominance: ${parts}`}>
-      <span style={{ width: `${(dominance[0] ?? 0) / 10}%`, background: PLAYER_CSS[0] }} />
+      <span style={{ width: `${(dominance[0] ?? 0) / 10}%`, background: playerCss(0) }} />
       <span class="dom-goal" />
-      <span style={{ width: `${(dominance[1] ?? 0) / 10}%`, background: PLAYER_CSS[1] }} />
+      <span style={{ width: `${(dominance[1] ?? 0) / 10}%`, background: playerCss(1) }} />
     </div>
   );
 }

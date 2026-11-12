@@ -1,4 +1,4 @@
-import type { Difficulty } from "@swarm/bot";
+import type { Difficulty, Personality } from "@swarm/bot";
 import type { GameState, OrderSet, PlayerId } from "@swarm/sim";
 
 export interface BotRequest {
@@ -7,6 +7,7 @@ export interface BotRequest {
   player: PlayerId;
   difficulty: Difficulty;
   seed: string;
+  personality?: Personality;
 }
 export interface BotResponse {
   id: number;
@@ -19,6 +20,7 @@ export interface BotRunner {
     player: PlayerId,
     difficulty: Difficulty,
     seed: string,
+    personality?: Personality,
   ): Promise<OrderSet>;
   dispose(): void;
 }
@@ -35,11 +37,18 @@ export function workerBot(): BotRunner {
     waiting.delete(e.data.id);
   };
   return {
-    choose(state, player, difficulty, seed) {
+    choose(state, player, difficulty, seed, personality) {
       const id = next++;
       return new Promise((resolve) => {
         waiting.set(id, resolve);
-        worker.postMessage({ id, state, player, difficulty, seed } satisfies BotRequest);
+        worker.postMessage({
+          id,
+          state,
+          player,
+          difficulty,
+          seed,
+          ...(personality ? { personality } : {}),
+        } satisfies BotRequest);
       });
     },
     dispose: () => worker.terminate(),
@@ -50,8 +59,8 @@ export function workerBot(): BotRunner {
 export async function inlineBot(): Promise<BotRunner> {
   const { chooseOrders } = await import("@swarm/bot");
   return {
-    choose: async (state, player, difficulty, seed) =>
-      chooseOrders(state, player, difficulty, seed),
+    choose: async (state, player, difficulty, seed, personality) =>
+      chooseOrders(state, player, difficulty, seed, personality ? { personality } : {}),
     dispose: () => undefined,
   };
 }

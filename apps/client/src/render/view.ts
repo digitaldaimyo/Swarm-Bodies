@@ -24,7 +24,15 @@ import { PathPainter } from "../game/painter";
 import type { StepPreview } from "../game/planner";
 import type { Effect, Frame } from "../game/timeline";
 import { drawAsteroid, drawGrid, drawStars, drawTerrain } from "./art";
-import { DEPOSIT_COLORS, desaturate, lighten, playerColor, SPACE } from "./palette";
+import {
+  DEPOSIT_COLORS,
+  desaturate,
+  lighten,
+  playerColor,
+  SPACE,
+  trailColor,
+  veinScale,
+} from "./palette";
 import { SpritePool } from "./pool";
 import { SystemLayer } from "./system";
 
@@ -755,7 +763,7 @@ export class MatchView {
         bar.position.set((p.x + q.x) / 2, (p.y + q.y) / 2);
         bar.rotation = Math.atan2(q.y - p.y, q.x - p.x);
         bar.width = Math.hypot(q.x - p.x, q.y - p.y);
-        bar.height = 12 + 1.6 * Math.min(c.biomass, o.biomass);
+        bar.height = (12 + 1.6 * Math.min(c.biomass, o.biomass)) * veinScale(c.owner);
       }
     });
     colony.forEach((c, i) => {
@@ -906,7 +914,7 @@ export class MatchView {
     for (const sp of state.spores) {
       if (sp.owner !== this.viewer || sp.targetBody !== body.id) continue;
       const p = hexToPixel(sp.targetCell);
-      const color = playerColor(sp.owner);
+      const color = trailColor(sp.owner);
       const d = HEX_SIZE * 0.7;
       g.circle(p.x, p.y, d).stroke({ width: 2, color, alpha: 0.9 });
       g.moveTo(p.x - d - 5, p.y)

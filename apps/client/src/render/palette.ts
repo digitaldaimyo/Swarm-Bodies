@@ -23,8 +23,42 @@ export const DEPOSIT_COLORS: Record<DepositKind, number> = {
   mineral: 0xc9a85c,
 };
 
+/**
+ * Your cosmetics (SPEC §11.3), applied to your own seat on your own screen only: everyone else
+ * still sees the standard seat colours. Null when none are active (replays, other screens).
+ */
+export interface LocalCosmetics {
+  seat: number;
+  palette: number | null;
+  /** Vein thickness factor (1 is standard). */
+  veinScale: number;
+  trail: number | null;
+}
+let local: LocalCosmetics | null = null;
+
+export function setLocalCosmetics(c: LocalCosmetics | null): void {
+  local = c;
+}
+
 export function playerColor(p: number): number {
+  if (local && p === local.seat && local.palette !== null) return local.palette;
   return PLAYER_COLORS[p % PLAYER_COLORS.length] as number;
+}
+
+export function playerCss(p: number): string {
+  if (local && p === local.seat && local.palette !== null)
+    return `#${local.palette.toString(16).padStart(6, "0")}`;
+  return PLAYER_CSS[p % PLAYER_CSS.length] as string;
+}
+
+export function veinScale(p: number): number {
+  return local && p === local.seat ? local.veinScale : 1;
+}
+
+/** Spore trail colour: your trail cosmetic, else the seat colour. */
+export function trailColor(p: number): number {
+  if (local && p === local.seat && local.trail !== null) return local.trail;
+  return playerColor(p);
 }
 
 /** Mixes a colour toward grey: disconnected colonies desaturate (SPEC §10.2). */
