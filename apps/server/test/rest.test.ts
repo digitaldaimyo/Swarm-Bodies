@@ -6,8 +6,10 @@ import {
   freshDatabaseUrl,
   guest,
   startServer,
+  TestClient,
   type Harness,
 } from "./support";
+import type { GameState } from "@swarm/sim";
 
 let h: Harness;
 let drop: () => Promise<void>;
@@ -88,6 +90,38 @@ describe.skipIf(!databaseAvailable)("REST (SPEC §9.4)", () => {
     expect((await api(h, "GET", `/api/replays/${gameId}`, a.token)).body).toMatchObject({
       code: "notFinished",
     });
+  });
+
+  it("creates, fills and starts a 3-player system game (SPEC §4, M5)", async () => {
+    const [a, b, c] = [await guest(h), await guest(h), await guest(h)];
+    const created = await api<{ gameId: string; code: string }>(h, "POST", "/api/games", a.token, {
+      settings: { pace: "live", turnSeconds: 60, map: "system", players: 3 },
+      strain: "swarmer",
+    });
+    expect(created.status).toBe(200);
+    const { gameId, code } = created.body;
+    await api(h, "POST", `/api/games/${code}/join`, b.token, { strain: "biofilm" });
+    // Two of three seats: too early to start.
+    expect((await api(h, "POST", `/api/games/${gameId}/start`, a.token)).status).toBe(409);
+    await api(h, "POST", `/api/games/${code}/join`, c.token, { strain: "swarmer" });
+    expect((await api(h, "POST", `/api/games/${gameId}/start`, a.token)).status).toBe(200);
+    const client = await TestClient.open(h, c.token);
+    client.send({ type: "subscribe", gameId });
+    const state = (await client.type("gameState")).state as GameState;
+    expect(state.mode).toBe("system");
+    expect(state.players).toHaveLength(3);
+    expect(state.bodies.length).toBeGreaterThanOrEqual(5);
+    expect(new Set(state.players.map((p) => p.home.body)).size).toBe(3);
+    client.close();
+  });
+
+  it("rejects a 3-player Single Rock game", async () => {
+    const a = await guest(h);
+    const bad = await api(h, "POST", "/api/games", a.token, {
+      settings: { pace: "live", turnSeconds: 60, map: "singleRock", players: 3 },
+      strain: "swarmer",
+    });
+    expect(bad.status).toBe(400);
   });
 
   it("validates request bodies with the protocol schemas", async () => {

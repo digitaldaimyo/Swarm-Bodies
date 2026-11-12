@@ -105,4 +105,29 @@ describe("protocol (SPEC §9.4, §14)", () => {
       }).success,
     ).toBe(false);
   });
+
+  it("accepts system maps for 2–4 players; Single Rock stays 2-player (SPEC §4)", () => {
+    const ok = (map: string, players: number) =>
+      GameSettingsSchema.safeParse({ pace: "live", turnSeconds: 60, map, players }).success;
+    expect([2, 3, 4].map((n) => ok("system", n))).toEqual([true, true, true]);
+    expect(ok("system", 5)).toBe(false);
+    expect(ok("system", 1)).toBe(false);
+    expect(ok("singleRock", 3)).toBe(false);
+    expect(ok("moon", 2)).toBe(false);
+  });
+
+  it("carries fruit and launch orders (SPEC §6)", () => {
+    expect(
+      OrderSetSchema.safeParse([
+        { type: "fruit", body: 0, cell: { q: 1, r: 0 } },
+        {
+          type: "launch",
+          body: 0,
+          cell: { q: 1, r: 0 },
+          targetBody: 2,
+          targetCell: { q: 0, r: 0 },
+        },
+      ]).success,
+    ).toBe(true);
+  });
 });

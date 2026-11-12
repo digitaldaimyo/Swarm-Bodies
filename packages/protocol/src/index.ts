@@ -51,9 +51,10 @@ export const GameSettingsSchema = z
   .object({
     pace: z.enum(["live", "async"]),
     turnSeconds: z.number().int(),
-    map: z.literal("singleRock"),
-    players: z.literal(2),
+    map: z.enum(["singleRock", "system"]),
+    players: z.number().int().min(2).max(4),
   })
+  .refine((s) => s.map === "system" || s.players === 2, "Single Rock is a 2-player test map")
   .refine(
     (s) => (s.pace === "live" ? LIVE_TIMERS : ASYNC_TIMERS).includes(s.turnSeconds as never),
     "turnSeconds must be one of the presets for this pace",
@@ -61,8 +62,8 @@ export const GameSettingsSchema = z
 export type GameSettings = z.infer<typeof GameSettingsSchema>;
 
 export const DEFAULT_SETTINGS: Record<GameSettings["pace"], GameSettings> = {
-  live: { pace: "live", turnSeconds: 60, map: "singleRock", players: 2 },
-  async: { pace: "async", turnSeconds: 24 * 3600, map: "singleRock", players: 2 },
+  live: { pace: "live", turnSeconds: 60, map: "system", players: 2 },
+  async: { pace: "async", turnSeconds: 24 * 3600, map: "system", players: 2 },
 };
 
 export const PlayerMetaSchema = z.object({
@@ -220,6 +221,7 @@ export const PushKeyResponseSchema = z.object({ publicKey: z.string().nullable()
 export const ReplayResponseSchema = z.object({
   gameId: z.string(),
   seed: z.string(),
+  map: z.enum(["singleRock", "system"]),
   strains: z.array(StrainSchema),
   turns: z.array(z.record(z.string(), OrderSetSchema)),
   result: GameResultSchema.nullable(),

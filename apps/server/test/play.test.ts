@@ -51,11 +51,13 @@ describe.skipIf(!databaseAvailable)("live play over WebSocket (SPEC §9.4)", () 
 
   it("rejects illegal and malformed orders, wrong turns and outsiders", async () => {
     const g = await twoPlayerGame(h);
+    // Reinforcing the opponent's home core is never legal.
+    const enemyHome = g.state.players[1]!.home;
     g.a.client.send({
       type: "submitOrders",
       gameId: g.gameId,
       turn: 1,
-      orders: [{ type: "reinforce", body: 0, cell: { q: 0, r: 0 } }],
+      orders: [{ type: "reinforce", body: enemyHome.body, cell: enemyHome.cell }],
     });
     expect(await g.a.client.type("error")).toMatchObject({ code: "illegalOrder" });
     g.a.client.send({ type: "submitOrders", gameId: g.gameId, turn: 2, orders: [] });

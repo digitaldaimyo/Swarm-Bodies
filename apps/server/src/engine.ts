@@ -18,6 +18,7 @@ import type {
   ServerMessage,
   Strain,
 } from "@swarm/protocol";
+import { DEFAULT_SETTINGS } from "@swarm/protocol";
 import type { Db } from "./db";
 import type { PushSender } from "./push";
 import {
@@ -329,6 +330,7 @@ export class GameEngine {
   /** Seed and resolved orders of a finished game (SPEC §12.3 shareable replays). */
   async replay(gameId: string): Promise<{
     seed: string;
+    map: GameSettings["map"];
     strains: Strain[];
     turns: Record<string, Order[]>[];
     result: GameState["result"];
@@ -343,6 +345,7 @@ export class GameEngine {
       .orderBy(turnResults.turn);
     return {
       seed: g.seed,
+      map: g.settings.map,
       strains: g.seats.map((s) => s.strain),
       turns: rows.map((r) => r.orders),
       result: g.state?.result ?? null,
@@ -373,12 +376,8 @@ export class GameEngine {
       where: eq(accounts.id, other.accountId),
     });
     if (!host) return this.enqueue(account, pace, strain);
-    const settings: GameSettings = {
-      pace,
-      turnSeconds: pace === "live" ? 60 : 24 * 3600,
-      map: "singleRock",
-      players: 2,
-    };
+    // Quick match plays the real game: a 2-player system (SPEC §4; Single Rock is a test map).
+    const settings: GameSettings = { ...DEFAULT_SETTINGS[pace] };
     const { gameId, code } = await this.createGame(
       { id: host.id, name: host.name },
       settings,

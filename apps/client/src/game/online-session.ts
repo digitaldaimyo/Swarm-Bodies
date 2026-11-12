@@ -234,7 +234,7 @@ export class OnlineSession extends SessionBase implements MatchSession {
     const replay = await api.replay(this.gameId);
     const { createGame, resolveTurn } = await import("@swarm/sim");
     let state = createGame(
-      { mode: "singleRock", playerCount: replay.strains.length, strains: replay.strains },
+      { mode: replay.map, playerCount: replay.strains.length, strains: replay.strains },
       replay.seed,
     );
     this.history.length = 0;
