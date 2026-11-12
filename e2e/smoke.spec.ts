@@ -141,9 +141,9 @@ test("system skirmish: body strip, System view, launches, and a finished game (M
     () => (window as unknown as { __swarm?: { view?: unknown } }).__swarm?.view,
   );
 
-  // The body strip lists every body; three players get five bodies (SPEC §4.1).
+  // The body strip lists every body; three players get four (players + 1, DECISIONS #71).
   const strip = page.getByRole("navigation", { name: "Bodies" });
-  await expect(strip.getByRole("button", { name: /^Body \d+,/ })).toHaveCount(5);
+  await expect(strip.getByRole("button", { name: /^Body \d+,/ })).toHaveCount(4);
   await expect(strip.getByRole("button", { name: /^Body \d+, .*yours/ })).toHaveCount(1);
 
   // System view with the launch-window forecast, then open another body from the strip.
