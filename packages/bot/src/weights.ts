@@ -28,6 +28,8 @@ export interface BotWeights {
   expansion: number;
   /** Fraction of a future launch's value credited to growing a fruiting body now. */
   fruitFaith: number;
+  /** Worth of each N a Predator capture pays. */
+  feed: number;
 }
 
 export const NORMAL_WEIGHTS: BotWeights = {
@@ -42,6 +44,7 @@ export const NORMAL_WEIGHTS: BotWeights = {
   contestRisk: 0.5,
   expansion: 0.6,
   fruitFaith: 0.6,
+  feed: 0.5,
 };
 
 export type Personality = "balanced" | "aggressive" | "greedy" | "expansionist" | "saboteur";

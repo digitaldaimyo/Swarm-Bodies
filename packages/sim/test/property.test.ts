@@ -209,10 +209,17 @@ describe("SPEC §14 property tests", () => {
     const mirrorOrder = (o: Order): Order =>
       o.type === "grow"
         ? { ...o, path: o.path.map((h) => ({ q: 0 - h.q, r: 0 - h.r })) }
-        : { ...o, cell: { q: 0 - o.cell.q, r: 0 - o.cell.r } };
+        : o.type === "draft"
+          ? o
+          : { ...o, cell: { q: 0 - o.cell.q, r: 0 - o.cell.r } };
     fc.assert(
       fc.property(fc.string({ minLength: 1 }), (seed) => {
-        let s = createGame({ mode: "singleRock", playerCount: 2 }, seed);
+        // Drafts are off: offers come from the per-player stream `draft:<player>:<index>`
+        // (SPEC §7.2), so swapping seats legitimately swaps what each side is offered.
+        let s = createGame(
+          { mode: "singleRock", playerCount: 2, rules: { draftThresholds: [] } },
+          seed,
+        );
         for (let t = 0; t < 25 && !s.result; t++) {
           const o0 = randomOrderSet(s, 0, "m");
           const o1 = randomOrderSet(s, 1, "m");

@@ -119,6 +119,7 @@ function createSingleRock(config: GameConfig, rules: Rules, seed: string): GameS
       core: true,
       connected: true,
       fruiting: null,
+      cut: 0,
     };
     for (const a of adjacent0) {
       colony[idx(flip(a))] = {
@@ -127,6 +128,7 @@ function createSingleRock(config: GameConfig, rules: Rules, seed: string): GameS
         core: false,
         connected: true,
         fruiting: null,
+        cut: 0,
       };
     }
     players.push({
@@ -137,6 +139,9 @@ function createSingleRock(config: GameConfig, rules: Rules, seed: string): GameS
       eliminatedOnTurn: null,
       dominanceStreak: 0,
       home: { body: 0, cell: core },
+      mutations: [],
+      draft: null,
+      draftsOffered: 0,
     });
   }
 
@@ -288,6 +293,9 @@ function createSystem(config: GameConfig, rules: Rules, seed: string): GameState
     eliminatedOnTurn: null,
     dominanceStreak: 0,
     home: { body: bodyId, cell: { q: 0, r: 0 } },
+    mutations: [],
+    draft: null,
+    draftsOffered: 0,
   }));
 
   return {
@@ -388,6 +396,7 @@ function buildBody(
       core: true,
       connected: true,
       fruiting: null,
+      cut: 0,
     };
     for (const a of adjacent) {
       colony[idx(a)] = {
@@ -396,6 +405,7 @@ function buildBody(
         core: false,
         connected: true,
         fruiting: null,
+        cut: 0,
       };
     }
   }

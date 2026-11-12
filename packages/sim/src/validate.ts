@@ -1,7 +1,16 @@
 import { areAdjacent, getBoard, type Hex } from "./hex";
 import { inLaunchRange } from "./orbit";
-import { cellIndexOf, entryCost, maxBiomassFor, playerRules } from "./rules";
-import type { Body, GameState, Order, PlayerId, RejectReason, ValidationResult } from "./types";
+import { MUTATION_IDS, type MutationId } from "./config";
+import { cellIndexOf, entryCost, maxBiomassFor, playerRules, reachFor } from "./rules";
+import type {
+  BoardOrder,
+  Body,
+  GameState,
+  Order,
+  PlayerId,
+  RejectReason,
+  ValidationResult,
+} from "./types";
 
 /**
  * Order validation (SPEC §5.1). This is the single implementation used by the client while
@@ -58,6 +67,11 @@ function isHex(v: unknown): v is Hex {
 export function isWellFormedOrder(order: unknown): order is Order {
   if (typeof order !== "object" || order === null) return false;
   const o = order as Record<string, unknown>;
+  if (o["type"] === "draft")
+    return (
+      typeof o["mutation"] === "string" &&
+      (MUTATION_IDS as readonly string[]).includes(o["mutation"])
+    );
   if (!isInt(o["body"])) return false;
   switch (o["type"]) {
     case "grow":
@@ -96,6 +110,13 @@ function checkOne(
     return fail("tooManyOrders", `At most ${state.rules.maxOrdersPerSet} orders per turn.`);
   }
   if (!isWellFormedOrder(order)) return fail("malformed", "The order is malformed.");
+  if (order.type === "draft") {
+    if (!ps.draft) return fail("noDraft", "There is no draft to pick from.");
+    if (!ps.draft.options.includes(order.mutation))
+      return fail("notOffered", "That mutation is not on offer.");
+    if (ctx.count > 0) return fail("draftNotFirst", "A draft pick must be the first order.");
+    return { ok: true, cost: 0 };
+  }
   const body = state.bodies.find((b) => b.id === order.body);
   if (!body) return fail("noSuchBody", "No such body.");
   const board = getBoard(body.radius);
@@ -107,9 +128,9 @@ function checkOne(
     case "grow": {
       const { path } = order;
       if (path.length < 2) return fail("pathTooShort", "A grow path needs at least one new cell.");
-      const reach = playerRules(state, player).growReach;
-      if (path.length - 1 > reach) {
-        return fail("pathTooLong", `Grow reach is ${reach}.`);
+      // Bound the work before the per-cell checks; the exact reach is checked below.
+      if (path.length - 1 > playerRules(state, player).growReach + 4) {
+        return fail("pathTooLong", `Grow reach is ${playerRules(state, player).growReach}.`);
       }
       const idx: number[] = [];
       for (const h of path) {
@@ -118,6 +139,10 @@ function checkOne(
         if (body.terrain[i] === "rock") return fail("rock", "The path crosses rock.");
         if (idx.includes(i)) return fail("pathRepeats", "The path visits a cell twice.");
         idx.push(i);
+      }
+      const reach = reachFor(state, body, idx[idx.length - 1] as number, player);
+      if (path.length - 1 > reach) {
+        return fail("pathTooLong", `Grow reach is ${reach}.`);
       }
       for (let j = 1; j < path.length; j++) {
         if (!areAdjacent(path[j - 1] as Hex, path[j] as Hex)) {
@@ -201,13 +226,11 @@ function checkOne(
         return fail("tooLittleBiomass", `Fruiting needs biomass ${state.rules.fruitMinBiomass}.`);
       }
       if (ctx.retracted.has(k)) return fail("conflictsWithOrder", "That cell is being retracted.");
-      if (fruitingCount(state, player) + ctx.fruiting.size >= state.rules.maxFruiting) {
-        return fail(
-          "tooManyFruiting",
-          `At most ${state.rules.maxFruiting} fruiting bodies at once.`,
-        );
+      const pr = playerRules(state, player);
+      if (fruitingCount(state, player) + ctx.fruiting.size >= pr.maxFruiting) {
+        return fail("tooManyFruiting", `At most ${pr.maxFruiting} fruiting bodies at once.`);
       }
-      cost = state.rules.fruitCost;
+      cost = pr.fruitCost;
       break;
     }
     case "launch": {
@@ -257,9 +280,10 @@ function commit(
   cost: number,
   ctx: PlanContext,
 ): void {
-  const body = state.bodies.find((b) => b.id === order.body) as Body;
   ctx.cost += cost;
   ctx.count++;
+  if (order.type === "draft") return;
+  const body = state.bodies.find((b) => b.id === order.body) as Body;
   switch (order.type) {
     case "grow": {
       const idx = order.path.map((h) => cellIndexOf(body, h));
@@ -310,11 +334,37 @@ export function validateOrder(
   pending: readonly Order[],
 ): ValidationResult {
   const ctx = emptyContext();
+  let s = state;
   for (const p of pending) {
-    const r = checkOne(state, player, p, ctx);
-    if (r.ok) commit(state, player, p, r.cost, ctx);
+    const r = checkOne(s, player, p, ctx);
+    if (r.ok) {
+      commit(s, player, p, r.cost, ctx);
+      if (p.type === "draft") s = applyDraftPick(s, player, p.mutation);
+    }
   }
-  return checkOne(state, player, order, ctx);
+  return checkOne(s, player, order, ctx);
+}
+
+/**
+ * The state with `player`'s pending draft resolved to `mutation` (SPEC §5.3 phase 1). A draft
+ * pick comes first in a set, and every later order is judged with the new mutation in effect.
+ */
+export function applyDraftPick(
+  state: GameState,
+  player: PlayerId,
+  mutation: MutationId,
+): GameState {
+  return {
+    ...state,
+    players: state.players.map((p) =>
+      p.id === player ? { ...p, mutations: [...p.mutations, mutation], draft: null } : p,
+    ),
+  };
+}
+
+/** Orders that act on a body (every order but a draft pick). */
+export function isBoardOrder(o: Order): o is BoardOrder {
+  return o.type !== "draft";
 }
 
 export type OrderSetValidation =
@@ -346,11 +396,14 @@ export function filterOrderSet(
 ): FilteredOrders {
   const ctx = emptyContext();
   const out: FilteredOrders = { accepted: [], rejected: [], cost: 0 };
+  let s = state;
   orders.forEach((order, index) => {
-    const r = checkOne(state, player, order, ctx);
+    const r = checkOne(s, player, order, ctx);
     if (r.ok) {
-      commit(state, player, order as Order, r.cost, ctx);
-      out.accepted.push({ index, order: order as Order });
+      commit(s, player, order as Order, r.cost, ctx);
+      const o = order as Order;
+      if (o.type === "draft") s = applyDraftPick(s, player, o.mutation);
+      out.accepted.push({ index, order: o });
     } else {
       out.rejected.push({ index, reason: r.reason, message: r.message });
     }

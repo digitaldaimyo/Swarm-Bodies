@@ -1,4 +1,6 @@
 import {
+  cellYield,
+  defenseOf,
   fruitingCount,
   getBoard,
   hexDistance,
@@ -19,6 +21,17 @@ import type { Candidate, GenerateOptions } from "./candidates";
 
 const FORECAST_TURNS = 6;
 
+/** Hex offsets at distance 1–4, with their distance. */
+const NEAR: readonly (readonly [number, number, number])[] = (() => {
+  const out: [number, number, number][] = [];
+  for (let dq = -4; dq <= 4; dq++)
+    for (let dr = -4; dr <= 4; dr++) {
+      const d = hexDistance({ q: 0, r: 0 }, { q: dq, r: dr });
+      if (d >= 1 && d <= 4) out.push([dq, dr, d]);
+    }
+  return out;
+})();
+
 interface Landing {
   cell: Hex;
   value: number;
@@ -28,7 +41,9 @@ interface Landing {
 function bestLanding(a: Analysis, target: Body): Landing | null {
   const { state, me, weights: w } = a;
   const board = getBoard(target.radius);
-  const landing = state.rules.landingBiomass;
+  const mineRules = playerRules(state, me);
+  const landing = mineRules.landingBiomass;
+  const flags = target.colony.map((c) => !!c?.connected);
   let open = 0;
   let mine = 0;
   for (let i = 0; i < target.colony.length; i++) {
@@ -41,14 +56,11 @@ function bestLanding(a: Analysis, target: Body): Landing | null {
   // Expansion value: unclaimed room, worth much less where we already have a foothold.
   const room = Math.min(open, 40) * w.expansion * (mine > 0 ? 0.25 : 1) * (open / playable + 0.5);
   const horizon = Math.max(1, Math.min(w.incomeHorizon, state.rules.turnLimit - state.turn));
-  const incomeValue = state.rules.incomePerCore * horizon;
+  const incomeValue = mineRules.incomePerCore * horizon;
 
   let best: Landing | null = null;
   const yieldOf = (i: number) => {
-    const d = target.deposits[i];
-    let v = d ? state.rules.depositYield[d] : 0;
-    for (const c of target.comets) if (c.cell === i) v += c.yield;
-    return v;
+    return cellYield(state, target, i, me);
   };
   for (let i = 0; i < target.colony.length; i++) {
     if (target.terrain[i] === "rock") continue;
@@ -56,9 +68,10 @@ function bestLanding(a: Analysis, target: Body): Landing | null {
     const h = board.cells[i] as Hex;
     let enemyNear = 0;
     let depositNear = yieldOf(i) * 2;
-    for (let j = 0; j < board.cells.length; j++) {
-      const d = hexDistance(h, board.cells[j] as Hex);
-      if (d === 0 || d > 4) continue;
+    // Only cells within distance 4 matter: walk those offsets instead of the whole board.
+    for (const [dq, dr, d] of NEAR) {
+      const j = board.indexOf(h.q + dq, h.r + dr);
+      if (j < 0) continue;
       const o = target.colony[j];
       if (o && o.owner !== me) enemyNear += d <= 2 ? 3 : 1;
       if (d <= 2 && !o) depositNear += yieldOf(j) * (d === 1 ? 1 : 0.5);
@@ -70,12 +83,7 @@ function bestLanding(a: Analysis, target: Body): Landing | null {
       continue; // Reinforcing our own cell by spore is rarely worth a launch.
     } else {
       // Capture: only when the landing beats the defense (no support from cut-off cells counted).
-      let defense = c.biomass;
-      for (const n of board.neighbours[i] as readonly number[]) {
-        const o = target.colony[n];
-        if (o && o.owner === c.owner && o.connected)
-          defense += playerRules(state, c.owner).defenseSupport;
-      }
+      const defense = defenseOf(state, target, target.colony, flags, i);
       if (landing <= defense) continue;
       value =
         incomeValue +
@@ -142,14 +150,10 @@ export function generateSporeCandidates(
 
   // Fruit: worth a share of the best launch the forecast says will open from that body soon.
   const ps = state.players.find((p) => p.id === me);
-  if (
-    !ps ||
-    ps.nutrients < state.rules.fruitCost ||
-    fruitingCount(state, me) >= state.rules.maxFruiting
-  )
-    return;
+  const pr = playerRules(state, me);
+  if (!ps || ps.nutrients < pr.fruitCost || fruitingCount(state, me) >= pr.maxFruiting) return;
   const windows = forecast(state, FORECAST_TURNS, me);
-  const matureBy = state.turn + state.rules.fruitMatureTurns;
+  const matureBy = state.turn + pr.fruitMatureTurns;
   for (const body of state.bodies) {
     const reachable = new Set<number>();
     for (const f of windows) {
@@ -202,7 +206,7 @@ export function generateSporeCandidates(
       kind: "fruit",
       orders: [{ type: "fruit", body: body.id, cell: { q: h.q, r: h.r } }],
       value: prospect * w.fruitFaith * (opts.ignoreThreats ? 0.8 : 1),
-      cost: state.rules.fruitCost,
+      cost: pr.fruitCost,
       claims: [],
       start: `fruit:${body.id}:${chosen.i}`,
       reinforces: null,

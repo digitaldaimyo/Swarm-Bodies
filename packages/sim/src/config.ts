@@ -10,10 +10,44 @@ export type DepositKind = "ice" | "organic" | "mineral";
 export type BodyType = "carbonaceous" | "icy" | "metallic" | "irradiated";
 export type BodySize = "small" | "medium" | "large";
 /** Strains (SPEC §7.1). "base" is the unmodified ruleset, used by tests and golden replays. */
-export type StrainId = "base" | "swarmer" | "biofilm";
-export const STRAIN_IDS: readonly StrainId[] = ["base", "swarmer", "biofilm"];
-/** Strains a player can pick in M4. Predator and Sporer arrive in M6. */
-export const PLAYABLE_STRAINS: readonly Exclude<StrainId, "base">[] = ["swarmer", "biofilm"];
+export type StrainId = "base" | "swarmer" | "biofilm" | "predator" | "sporer";
+export const STRAIN_IDS: readonly StrainId[] = ["base", "swarmer", "biofilm", "predator", "sporer"];
+/** Strains a player can pick. */
+export const PLAYABLE_STRAINS: readonly Exclude<StrainId, "base">[] = [
+  "swarmer",
+  "biofilm",
+  "predator",
+  "sporer",
+];
+
+/** The launch mutation pool (SPEC §7.3), in canonical (sorted) order. */
+export type MutationId =
+  | "acid_tendrils"
+  | "chemotaxis"
+  | "cryophile"
+  | "deep_reserves"
+  | "dormancy"
+  | "hardened_spores"
+  | "lithotroph"
+  | "quorum"
+  | "rad_shield"
+  | "rapid_fruiting"
+  | "regeneration"
+  | "thick_veins";
+export const MUTATION_IDS: readonly MutationId[] = [
+  "acid_tendrils",
+  "chemotaxis",
+  "cryophile",
+  "deep_reserves",
+  "dormancy",
+  "hardened_spores",
+  "lithotroph",
+  "quorum",
+  "rad_shield",
+  "rapid_fruiting",
+  "regeneration",
+  "thick_veins",
+];
 
 /** A strain's changes to the base rules. Absent fields keep the base value. */
 export interface StrainModifiers {
@@ -24,8 +58,43 @@ export interface StrainModifiers {
   maxBiomass?: number;
   defenseSupport?: number;
   reinforceAmount?: number;
-  /** Added to the launch range (Sporer: +2, M6). */
+  /** Added to the launch range (Sporer: +2). */
   launchRangeBonus?: number;
+  /** Added to attack on assaults, i.e. entering an enemy cell (Predator: +1). */
+  assaultBonus?: number;
+  /** Gain N equal to the defender's lost biomass on every capture (Predator). */
+  captureFeeds?: boolean;
+  /** Added to every deposit yield; yields stay at least `minDepositYield` (Predator: −1). */
+  depositYieldDelta?: number;
+  /** SPEC §7.1 Sporer. */
+  fruitCost?: number;
+  fruitMatureTurns?: number;
+  maxFruiting?: number;
+  landingBiomass?: number;
+}
+
+/** SPEC §7.3: every mutation's numbers. Effects are in `mutations.ts`. */
+export interface MutationNumbers {
+  acidAttack: number;
+  /** Disconnected turns a Dormant cell survives without starving. */
+  dormancyTurns: number;
+  thickVeinsDefense: number;
+  chemotaxisCostDelta: number;
+  chemotaxisReach: number;
+  cryophileIceBonus: number;
+  lithotrophMineralBonus: number;
+  hardenedLandingBonus: number;
+  rapidFruitingTurns: number;
+  /** Quorum: a cell with at least this many adjacent own cells gets the bonuses. */
+  quorumNeighbours: number;
+  quorumAttack: number;
+  quorumDefense: number;
+  /** Regeneration: on even turns, connected cells below this biomass gain `regenerationAmount`. */
+  regenerationBelow: number;
+  regenerationAmount: number;
+  deepReservesPerCore: number;
+  deepReservesInterestPermille: number;
+  deepReservesInterestCap: number;
 }
 
 export interface Rules {
@@ -110,6 +179,13 @@ export interface Rules {
   cometYield: number;
   cometDuration: number;
   cometWarning: number;
+  /** SPEC §6: deposit yields never drop below this (Predator). */
+  minDepositYield: number;
+  /** SPEC §7.2 drafts: total-biomass thresholds, options per offer, and the pool offered. */
+  draftThresholds: number[];
+  draftOptions: number;
+  mutationPool: MutationId[];
+  mutations: MutationNumbers;
 }
 
 export const BASE_RULES: Rules = {
@@ -162,6 +238,16 @@ export const BASE_RULES: Rules = {
     swarmer: { growReach: 4, entryCostDelta: -1, maxBiomass: 7 },
     // Slow, dense, immovable.
     biofilm: { growReach: 2, maxBiomass: 12, defenseSupport: 2, reinforceAmount: 4 },
+    // Eats the enemy.
+    predator: { assaultBonus: 1, captureFeeds: true, depositYieldDelta: -1 },
+    // Spreads across the system.
+    sporer: {
+      fruitCost: 6,
+      fruitMatureTurns: 1,
+      maxFruiting: 3,
+      launchRangeBonus: 2,
+      landingBiomass: 2,
+    },
   },
 
   systemExtraBodies: 2,
@@ -188,6 +274,29 @@ export const BASE_RULES: Rules = {
   cometYield: 5,
   cometDuration: 6,
   cometWarning: 2,
+  minDepositYield: 1,
+  draftThresholds: [40, 90, 160],
+  draftOptions: 3,
+  mutationPool: [...MUTATION_IDS],
+  mutations: {
+    acidAttack: 2,
+    dormancyTurns: 3,
+    thickVeinsDefense: 2,
+    chemotaxisCostDelta: -1,
+    chemotaxisReach: 1,
+    cryophileIceBonus: 2,
+    lithotrophMineralBonus: 2,
+    hardenedLandingBonus: 2,
+    rapidFruitingTurns: 1,
+    quorumNeighbours: 3,
+    quorumAttack: 1,
+    quorumDefense: 1,
+    regenerationBelow: 3,
+    regenerationAmount: 1,
+    deepReservesPerCore: 1,
+    deepReservesInterestPermille: 100,
+    deepReservesInterestCap: 3,
+  },
 };
 
 /** Shallow-merges overrides onto BASE_RULES (nested records are replaced, not merged). */

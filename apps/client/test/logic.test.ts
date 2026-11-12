@@ -151,7 +151,7 @@ describe("replay timeline (SPEC §10.5)", () => {
       const lastEvent = frames.filter((f) => f.phase !== "final").at(-1);
       if (lastEvent) {
         const strip = (cs: (typeof state.bodies)[0]["colony"]) =>
-          cs.map((c) => (c ? { ...c, connected: false } : null));
+          cs.map((c) => (c ? { ...c, connected: false, cut: 0 } : null));
         expect(strip(lastEvent.colony.get(0)!)).toEqual(strip(state.bodies[0]!.colony));
       }
       s = state;
@@ -175,7 +175,7 @@ describe("replay timeline (SPEC §10.5)", () => {
         if (lastEvent) {
           // Fruiting progress (phase 11) has no event; the final frame carries it.
           const strip = (cs: (typeof state.bodies)[0]["colony"]) =>
-            cs.map((c) => (c ? { ...c, connected: false, fruiting: null } : null));
+            cs.map((c) => (c ? { ...c, connected: false, fruiting: null, cut: 0 } : null));
           for (const b of state.bodies)
             expect(strip(lastEvent.colony.get(b.id)!)).toEqual(strip(b.colony));
         }

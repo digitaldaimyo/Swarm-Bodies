@@ -15,6 +15,11 @@ export {
   playerTotals,
   dominancePermille,
   type PlayerTotals,
+  attackOn,
+  defenseOf,
+  cellYield,
+  incomeFor,
+  reachFor,
 } from "./rules";
 export {
   validateOrder,
@@ -23,6 +28,8 @@ export {
   isWellFormedOrder,
   newCellPositions,
   fruitingCount,
+  applyDraftPick,
+  isBoardOrder,
   type OrderSetValidation,
   type FilteredOrders,
 } from "./validate";
@@ -44,3 +51,4 @@ export { sinFx, cosFx, TRIG_SCALE } from "./trig";
 export { listLegalOrders, type LegalOrderIndex } from "./legal";
 export { serialize, deserialize, hashState, canonicalJson } from "./serialize";
 export { randomOrderSet } from "./random-player";
+export { MUTATIONS, mutationsOf, type MutationDef, type CellContext } from "./mutations";

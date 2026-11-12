@@ -55,7 +55,7 @@ describe("tools/balance", () => {
     expect(parseArgs(["--map", "system"]).map).toBe("system");
     expect(() => parseArgs(["--map", "moon"])).toThrow(/--map/);
     expect(() => parseArgs(["--strains", "swarmer"])).toThrow();
-    expect(() => parseArgs(["--strains", "swarmer,predator"])).toThrow();
+    expect(() => parseArgs(["--strains", "swarmer,phage"])).toThrow();
     expect(parseArgs(["--players", "easy,random"]).players).toEqual(["easy", "random"]);
     expect(() => parseArgs(["--players", "normal"])).toThrow();
     expect(() => parseArgs(["--players", "normal,genius"])).toThrow();

@@ -141,6 +141,7 @@ describe("SPEC §4.1–4.4 system generation", () => {
           core: true,
           connected: true,
           fruiting: null,
+          cut: 0,
         });
         expect(p.nutrients).toBe(10);
         const board = getBoard(home.radius);
@@ -398,7 +399,14 @@ describe("SPEC §5.1 Launch and §6 spores", () => {
                 ...b,
                 colony: b.colony.map((c, i) =>
                   i === getBoard(b.radius).indexOf(3, 0)
-                    ? { owner: 0, biomass: 2, core: false, connected: false, fruiting: null }
+                    ? {
+                        owner: 0,
+                        biomass: 2,
+                        core: false,
+                        connected: false,
+                        fruiting: null,
+                        cut: 0,
+                      }
                     : c,
                 ),
               }
@@ -469,7 +477,7 @@ describe("SPEC §5.1 Launch and §6 spores", () => {
               ...b,
               colony: b.colony.map((c, k) =>
                 k === i
-                  ? { owner: 1, biomass: 9, core: false, connected: true, fruiting: null }
+                  ? { owner: 1, biomass: 9, core: false, connected: true, fruiting: null, cut: 0 }
                   : c,
               ),
             }

@@ -2,7 +2,7 @@
  * Test fixtures shared by the sim, bot and tool test suites (import from "@swarm/sim/testing").
  * Pure like the rest of the sim, but not part of the game API.
  */
-import type { DepositKind, Rules, StrainId } from "./config";
+import type { DepositKind, MutationId, Rules, StrainId } from "./config";
 import { refreshConnectivity } from "./connectivity";
 import { createGame } from "./generate";
 import { getBoard, type Hex } from "./hex";
@@ -16,6 +16,8 @@ export interface CellSpec {
   core?: boolean;
   /** Turns until mature (0 = mature). */
   fruiting?: number;
+  /** Consecutive disconnected turns so far. */
+  cut?: number;
 }
 
 export interface ScenarioSpec {
@@ -27,6 +29,7 @@ export interface ScenarioSpec {
   bodyType?: GameState["bodies"][number]["type"];
   turn?: number;
   strains?: [StrainId, StrainId];
+  mutations?: [MutationId[], MutationId[]];
 }
 
 /**
@@ -58,6 +61,7 @@ export function scenario(spec: ScenarioSpec): GameState {
       core: c.core ?? false,
       connected: false,
       fruiting: c.fruiting ?? null,
+      cut: c.cut ?? 0,
     };
   }
   const newBody = { ...body, type: spec.bodyType ?? body.type, terrain, deposits, colony };
@@ -70,6 +74,7 @@ export function scenario(spec: ScenarioSpec): GameState {
       ...p,
       nutrients: spec.nutrients?.[i] ?? 50,
       strain: spec.strains?.[i] ?? "base",
+      mutations: spec.mutations?.[i] ?? [],
     })),
   };
 }
@@ -112,6 +117,8 @@ export interface SystemSpec {
   turn?: number;
   rules?: Partial<Rules>;
   schedule?: GameState["schedule"];
+  strains?: StrainId[];
+  mutations?: MutationId[][];
 }
 
 /**
@@ -145,6 +152,7 @@ export function systemScenario(spec: SystemSpec): GameState {
         core: c.core ?? false,
         connected: false,
         fruiting: c.fruiting ?? null,
+        cut: 0,
       };
     }
     const body = {
@@ -171,6 +179,8 @@ export function systemScenario(spec: SystemSpec): GameState {
       ...p,
       nutrients: spec.nutrients?.[i] ?? 50,
       home: { body: 0, cell: { q: 0, r: 0 } },
+      strain: spec.strains?.[i] ?? "base",
+      mutations: spec.mutations?.[i] ?? [],
     })),
   };
 }

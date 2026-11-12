@@ -132,7 +132,7 @@ describe.skipIf(!databaseAvailable)("REST (SPEC §9.4)", () => {
     });
     expect(bad.status).toBe(400);
     expect(
-      (await api(h, "POST", "/api/games/NOPE00/join", a.token, { strain: "predator" })).status,
+      (await api(h, "POST", "/api/games/NOPE00/join", a.token, { strain: "phage" })).status,
     ).toBe(400);
     expect(
       (await api(h, "POST", "/api/games/NOPE00/join", a.token, { strain: "swarmer" })).status,

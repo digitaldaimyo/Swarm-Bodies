@@ -69,6 +69,7 @@ describe("SPEC §4.1–4.4 Single Rock generation", () => {
         core: true,
         connected: true,
         fruiting: null,
+        cut: 0,
       });
       const own = body.colony
         .map((c, i) => ({ c, h: board.cells[i] as Hex }))
@@ -82,6 +83,7 @@ describe("SPEC §4.1–4.4 Single Rock generation", () => {
           core: false,
           connected: true,
           fruiting: null,
+          cut: 0,
         });
         expect(hexDistance(h, p.home.cell)).toBe(1);
       }

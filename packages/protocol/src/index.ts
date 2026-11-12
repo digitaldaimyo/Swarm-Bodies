@@ -4,7 +4,7 @@
  * message is rejected at the edge. Game rules are not checked here; the sim does that.
  */
 import { z } from "zod";
-import type { GameState, Order } from "@swarm/sim";
+import { MUTATION_IDS, type GameState, type MutationId, type Order } from "@swarm/sim";
 
 export const PROTOCOL_VERSION = 1;
 
@@ -36,11 +36,15 @@ export const OrderSchema = z.discriminatedUnion("type", [
     targetBody: z.number().int().min(0).max(16),
     targetCell: HexSchema,
   }),
+  z.object({
+    type: z.literal("draft"),
+    mutation: z.enum(MUTATION_IDS as [MutationId, ...MutationId[]]),
+  }),
 ]);
 /** The sim enforces the real order limit (12); this only bounds message size. */
 export const OrderSetSchema = z.array(OrderSchema).max(32);
 
-export const StrainSchema = z.enum(["swarmer", "biofilm"]);
+export const StrainSchema = z.enum(["swarmer", "biofilm", "predator", "sporer"]);
 export type Strain = z.infer<typeof StrainSchema>;
 
 /** SPEC §3 turn timer presets, in seconds. */

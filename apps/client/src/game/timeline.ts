@@ -183,6 +183,7 @@ export function buildTimeline(
           core: false,
           connected: true,
           fruiting: null,
+          cut: 0,
         });
         break;
       }
@@ -211,6 +212,7 @@ export function buildTimeline(
           core: false,
           connected: true,
           fruiting: null,
+          cut: 0,
         });
         break;
       }
@@ -312,6 +314,7 @@ export function buildTimeline(
             core: true,
             connected: true,
             fruiting: null,
+            cut: 0,
           });
         }
         break;
@@ -334,6 +337,11 @@ export function buildTimeline(
           arrived: e.type === "CometArrived",
         });
         break;
+      case "Regenerated": {
+        const c = get(e.cell);
+        if (c) set(e.cell, { ...c, biomass: e.biomass });
+        break;
+      }
       case "Irradiated":
         open("events").effects.push({
           kind: "fade",

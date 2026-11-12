@@ -1,4 +1,4 @@
-import type { BodySize, BodyType, DepositKind, Rules, StrainId } from "./config";
+import type { BodySize, BodyType, DepositKind, MutationId, Rules, StrainId } from "./config";
 import type { Hex } from "./hex";
 
 export type PlayerId = number;
@@ -14,6 +14,8 @@ export interface Colony {
   connected: boolean;
   /** Turns until this fruiting body matures (0 = mature, can launch), or null (SPEC §5.1). */
   fruiting: number | null;
+  /** Consecutive starvation phases this cell has spent disconnected (Dormancy, SPEC §7.3). */
+  cut: number;
 }
 
 /** SPEC §4.5. Radius in distance units, period in turns, phase in degrees. */
@@ -73,6 +75,18 @@ export interface PlayerState {
   dominanceStreak: number;
   /** Start cell of the home core, for reference by UI and tests. */
   home: { body: number; cell: Hex };
+  /** Drafted mutations, in the order they were taken (SPEC §7.2). Public. */
+  mutations: MutationId[];
+  /** A pending draft offer, picked with a Draft order next turn (or auto-assigned). */
+  draft: DraftOffer | null;
+  /** Draft thresholds already crossed (each offers one draft). */
+  draftsOffered: number;
+}
+
+export interface DraftOffer {
+  /** 0-based draft number; the RNG stream is `draft:<player>:<index>`. */
+  index: number;
+  options: MutationId[];
 }
 
 export type GameMode = "singleRock" | "system";
@@ -134,6 +148,12 @@ export interface RetractOrder {
   cell: Hex;
 }
 
+/** Pick a mutation from the pending draft (SPEC §5.1, §7.2). Must be the first order of a set. */
+export interface DraftOrder {
+  type: "draft";
+  mutation: MutationId;
+}
+
 /** Grow a spore launcher on an own connected cell (SPEC §5.1). */
 export interface FruitOrder {
   type: "fruit";
@@ -150,7 +170,10 @@ export interface LaunchOrder {
   targetCell: Hex;
 }
 
-export type Order = GrowOrder | ReinforceOrder | RetractOrder | FruitOrder | LaunchOrder;
+export type Order =
+  GrowOrder | ReinforceOrder | RetractOrder | FruitOrder | LaunchOrder | DraftOrder;
+/** Orders that act on a cell of a body (every order but Draft). */
+export type BoardOrder = Exclude<Order, DraftOrder>;
 export type OrderSet = Order[];
 
 export type RejectReason =
@@ -184,7 +207,10 @@ export type RejectReason =
   | "notMature"
   | "sameBody"
   | "outOfRange"
-  | "duplicateLaunch";
+  | "duplicateLaunch"
+  | "noDraft"
+  | "notOffered"
+  | "draftNotFirst";
 
 export type ValidationResult =
   { ok: true; cost: number } | { ok: false; reason: RejectReason; message: string };
@@ -265,6 +291,14 @@ export type GameEvent =
   | { type: "CometArrived"; cell: CellRef; until: number; yield: number }
   | { type: "CometFaded"; cell: CellRef }
   | { type: "Irradiated"; player: PlayerId; cell: CellRef }
+  | { type: "DraftOffered"; player: PlayerId; index: number; options: MutationId[] }
+  | { type: "DraftPicked"; player: PlayerId; mutation: MutationId; auto: boolean }
+  /** Predator: nutrients gained from a capture (SPEC §7.1). */
+  | { type: "CaptureFed"; player: PlayerId; cell: CellRef; amount: number }
+  /** Dormancy: a cut-off cell that skipped starvation this turn (SPEC §7.3). */
+  | { type: "Dormant"; player: PlayerId; cell: CellRef; turnsLeft: number }
+  /** Regeneration: a connected cell that regrew on an even turn (SPEC §7.3). */
+  | { type: "Regenerated"; player: PlayerId; cell: CellRef; biomass: number }
   | { type: "PlayerEliminated"; player: PlayerId }
   | { type: "GameOver"; result: GameResult };
 

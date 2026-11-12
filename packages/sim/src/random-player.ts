@@ -12,6 +12,13 @@ export function randomOrderSet(state: GameState, player: PlayerId, seed: string)
   const rng = rngStream(seed, `random:${player}:${state.turn}`);
   const legal = listLegalOrders(state, player);
   const orders: Order[] = [];
+  // Pick from a pending draft three times in four; otherwise let the first option be assigned.
+  // A separate stream keeps the rest of the player's choices independent of drafts.
+  const draft = state.players.find((p) => p.id === player)?.draft;
+  if (draft) {
+    const d = rngStream(seed, `random-draft:${player}:${state.turn}`);
+    if (d.int(4) > 0) orders.push({ type: "draft", mutation: d.pick(draft.options) });
+  }
   if (legal.growStarts.length === 0) return orders;
   const wanted = rng.range(0, Math.min(legal.maxOrders, 6));
   for (let attempt = 0; attempt < wanted * 4 && orders.length < wanted; attempt++) {

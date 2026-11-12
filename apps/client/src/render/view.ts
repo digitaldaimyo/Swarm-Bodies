@@ -973,6 +973,7 @@ export class MatchView {
     g.clear();
     const color = playerColor(player);
     orders.forEach((o, k) => {
+      if (o.type === "draft") return;
       if (o.type === "launch" && o.targetBody === this.bodyId) {
         const p = hexToPixel(o.targetCell);
         g.circle(p.x, p.y, HEX_SIZE * 0.7).stroke({ width: 2.5, color, alpha: 0.9 });

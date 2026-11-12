@@ -26,7 +26,7 @@ export const SYSTEM_COUNT = 30;
 const out = fileURLToPath(
   new URL("../../../packages/sim/test/golden/replays.json", import.meta.url),
 );
-const STRAINS: StrainId[] = ["base", "swarmer", "biofilm"];
+const STRAINS: StrainId[] = ["base", "swarmer", "biofilm", "predator", "sporer"];
 const cases: { seed: string; config: GameConfig; script: string }[] = [
   ...Array.from({ length: SINGLE_ROCK_COUNT }, (_, i) => ({
     seed: `golden-${String(i).padStart(2, "0")}`,
