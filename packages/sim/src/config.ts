@@ -155,6 +155,10 @@ export interface Rules {
   systemExtraBodies: number;
   systemMinBodies: number;
   systemMaxBodies: number;
+  /** Bodies beyond the homes that a system always has (0: every body is a home, tutorials). */
+  systemMinNeutrals: number;
+  /** Types neutral bodies are drawn from, uniformly (campaign and sector modifiers). */
+  neutralBodyTypes: BodyType[];
   /** SPEC §4.5 orbits, in distance units and turns. */
   orbitRadiusMin: number;
   orbitRadiusMax: number;
@@ -267,6 +271,8 @@ export const BASE_RULES: Rules = {
   // neutral instead of each taking their own (DECISIONS).
   systemExtraBodies: 1,
   systemMinBodies: 3,
+  systemMinNeutrals: 1,
+  neutralBodyTypes: ["carbonaceous", "icy", "metallic", "irradiated"],
   systemMaxBodies: 7,
   orbitRadiusMin: 3,
   orbitRadiusMax: 12,
