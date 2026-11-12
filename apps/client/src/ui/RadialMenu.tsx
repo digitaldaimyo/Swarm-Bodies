@@ -1,9 +1,9 @@
-import { getBoard, type Hex, type Order } from "@swarm/sim";
+import { getBoard, playerRules, type Hex, type Order } from "@swarm/sim";
 import type { Point } from "../game/layout";
-import { HUMAN, type SkirmishSession } from "../game/session";
+import type { MatchSession } from "../game/match-session";
 
 interface Props {
-  session: SkirmishSession;
+  session: MatchSession;
   cell: Hex;
   at: Point;
   onAdd(o: Order): void;
@@ -27,7 +27,7 @@ export function RadialMenu({ session, cell, at, onAdd, onRemove, onClose }: Prop
   const items = [
     {
       label: "Reinforce",
-      sub: r1.ok ? `${r1.cost} N · +${state.rules.reinforceAmount}` : r1.message,
+      sub: r1.ok ? `${r1.cost} N · +${playerRules(state, session.me).reinforceAmount}` : r1.message,
       ok: r1.ok,
       act: () => onAdd(reinforce),
       icon: "+",
@@ -53,7 +53,7 @@ export function RadialMenu({ session, cell, at, onAdd, onRemove, onClose }: Prop
       >
         <div class="radial-title">
           {c?.core ? "Core" : "Cell"} · biomass {c?.biomass ?? 0}
-          {c && c.owner === HUMAN && !c.connected ? " · cut off" : ""}
+          {c && c.owner === session.me && !c.connected ? " · cut off" : ""}
         </div>
         {items.map((it) => (
           <button

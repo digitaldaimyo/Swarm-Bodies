@@ -1,4 +1,11 @@
-import { entryCost, maxBiomassFor, type Colony, type Hex, type Order } from "@swarm/sim";
+import {
+  entryCost,
+  maxBiomassFor,
+  playerRules,
+  type Colony,
+  type Hex,
+  type Order,
+} from "@swarm/sim";
 import type { Analysis, BodyAnalysis } from "./analysis";
 
 export type CandidateKind = "grow" | "assault" | "reinforce";
@@ -61,7 +68,10 @@ function generateReinforce(
   for (let i = 0; i < body.colony.length; i++) {
     const c = body.colony[i];
     if (!c || c.owner !== me || !c.connected) continue;
-    const add = Math.min(state.rules.reinforceAmount, maxBiomassFor(state, c) - c.biomass);
+    const add = Math.min(
+      playerRules(state, me).reinforceAmount,
+      maxBiomassFor(state, c) - c.biomass,
+    );
     if (add <= 0 || (ba.threatReinforced[i] as number) === 0) continue;
     const def = ba.defense[i] as number;
     const t = ba.threat[i] as number;
@@ -92,7 +102,8 @@ function generatePaths(
   const { body, board } = ba;
   const { colony } = body;
   const { rules } = state;
-  const reach = rules.growReach;
+  const mine = playerRules(state, me);
+  const reach = mine.growReach;
   const enemyOwned = (i: number): Colony | null => {
     const c = colony[i];
     return c && c.owner !== me ? c : null;
@@ -105,7 +116,7 @@ function generatePaths(
     if (!nbs.some((n) => body.terrain[n] !== "rock" && colony[n]?.owner !== me)) continue;
 
     const touchesEnemy = nbs.some((n) => enemyOwned(n) !== null);
-    const boost = Math.min(rules.reinforceAmount, maxBiomassFor(state, start) - start.biomass);
+    const boost = Math.min(mine.reinforceAmount, maxBiomassFor(state, start) - start.biomass);
     const variants = touchesEnemy && boost > 0 ? [0, boost] : [0];
 
     for (const extra of variants) {
@@ -146,11 +157,11 @@ function generatePaths(
             for (const n of board.neighbours[t] as readonly number[]) {
               const o = colony[n];
               if (o && o.owner === defender.owner && o.connected && !claimed.has(n))
-                defense += rules.defenseSupport;
+                defense += playerRules(state, defender.owner).defenseSupport;
             }
             if (attack <= defense) continue; // The path would halt here.
             capture = true;
-            newB = Math.min(rules.maxBiomass, attack - defense);
+            newB = Math.min(mine.maxBiomass, attack - defense);
             gain = w.cell + w.capture + (ba.depositValue[t] as number) * 1.5;
             if (opts.sever) gain += (ba.enemyCut[t] as number) * w.sever;
             if (defender.core)
@@ -160,7 +171,7 @@ function generatePaths(
           path.push(t);
           claimed.add(t);
           const v = value + gain;
-          const c = cost + entryCost(state, body, t);
+          const c = cost + entryCost(state, body, t, me);
           const wasCapture = hasCapture;
           hasCapture = hasCapture || capture;
           // A boosted variant only makes sense if it enables an assault.

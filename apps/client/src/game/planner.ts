@@ -1,6 +1,7 @@
 import {
   getBoard,
   maxBiomassFor,
+  playerRules,
   validateOrder,
   type GameState,
   type Hex,
@@ -160,7 +161,8 @@ export function previewPath(
       let defense = defender.biomass;
       for (const n of board.neighbours[t] as readonly number[]) {
         const c = b.colony[n];
-        if (c && c.owner === defender.owner && c.connected) defense += state.rules.defenseSupport;
+        if (c && c.owner === defender.owner && c.connected)
+          defense += playerRules(state, defender.owner).defenseSupport;
       }
       const win = attack > defense;
       out.push({
@@ -172,7 +174,7 @@ export function previewPath(
         uncertain: true,
       });
       if (!win) break;
-      feederB = Math.min(state.rules.maxBiomass, attack - defense);
+      feederB = Math.min(playerRules(state, player).maxBiomass, attack - defense);
     }
     own.add(t);
     feederIdx = t;

@@ -8,6 +8,20 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    services:
+      # Server tests and the online e2e tests need Postgres (SPEC §9.4, §14).
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: swarm
+          POSTGRES_PASSWORD: swarm
+          POSTGRES_DB: swarm
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U swarm" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://swarm:swarm@localhost:5432/postgres
+      E2E_DATABASE_URL: postgres://swarm:swarm@localhost:5432/swarm_e2e
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -20,8 +34,10 @@ jobs:
       - run: pnpm lint
       - run: pnpm test
       - run: pnpm build
-      - name: Balance smoke batch
-        run: pnpm balance -- --games 200 --players normal,random
+      - name: Balance smoke batches
+        run: |
+          pnpm balance -- --games 200 --players normal,random
+          pnpm balance -- --games 100 --strains swarmer,biofilm
       - run: pnpm exec playwright install --with-deps chromium webkit
-      - name: Golden replays in Chromium and WebKit
+      - name: Golden replays, client smoke, frame budget, online play (Chromium and WebKit)
         run: pnpm test:e2e

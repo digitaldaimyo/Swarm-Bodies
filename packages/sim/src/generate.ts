@@ -112,6 +112,7 @@ function createSingleRock(config: GameConfig, rules: Rules, seed: string): GameS
     }
     players.push({
       id: p,
+      strain: config.strains?.[p] ?? "base",
       nutrients: rules.startNutrients,
       eliminated: false,
       eliminatedOnTurn: null,

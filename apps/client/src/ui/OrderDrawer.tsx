@@ -1,22 +1,22 @@
 import { useRef } from "preact/hooks";
 import { newCellPositions, validateOrder, type GameState, type Hex, type Order } from "@swarm/sim";
-import { HUMAN, type SkirmishSession } from "../game/session";
+import type { MatchSession } from "../game/match-session";
 
 interface Props {
   open: boolean;
   orders: readonly Order[];
-  session: SkirmishSession;
+  session: MatchSession;
   onToggle(): void;
   onFocus(h: Hex): void;
   onRemove(index: number): void;
 }
 
-function describe(state: GameState, o: Order): { title: string; cell: Hex } {
+function describe(state: GameState, me: number, o: Order): { title: string; cell: Hex } {
   switch (o.type) {
     case "grow": {
       // Count new cells only: passing through your own cells is free and claims nothing.
       const body = state.bodies.find((b) => b.id === o.body);
-      const n = body ? newCellPositions(body, HUMAN, o.path).length : o.path.length - 1;
+      const n = body ? newCellPositions(body, me, o.path).length : o.path.length - 1;
       return {
         title: `Grow ${n} new cell${n === 1 ? "" : "s"}`,
         cell: o.path[o.path.length - 1] as Hex,
@@ -33,7 +33,7 @@ function describe(state: GameState, o: Order): { title: string; cell: Hex } {
 export function OrderDrawer({ open, orders, session, onToggle, onFocus, onRemove }: Props) {
   const costs: number[] = [];
   orders.forEach((o, i) => {
-    const r = validateOrder(session.state, HUMAN, o, orders.slice(0, i));
+    const r = validateOrder(session.state, session.me, o, orders.slice(0, i));
     costs.push(r.ok ? r.cost : 0);
   });
   return (
@@ -55,8 +55,11 @@ export function OrderDrawer({ open, orders, session, onToggle, onFocus, onRemove
         <ul>
           {orders.map((o, i) => (
             <SwipeRow key={`${i}:${JSON.stringify(o)}`} onDelete={() => onRemove(i)}>
-              <button class="order-main" onClick={() => onFocus(describe(session.state, o).cell)}>
-                <span>{describe(session.state, o).title}</span>
+              <button
+                class="order-main"
+                onClick={() => onFocus(describe(session.state, session.me, o).cell)}
+              >
+                <span>{describe(session.state, session.me, o).title}</span>
                 <span class="num muted">{o.type === "retract" ? "+1 N" : `${costs[i]} N`}</span>
               </button>
               <button

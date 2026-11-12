@@ -103,6 +103,10 @@ test("frame CPU cost fits a 60 fps budget mid-game under a 4× CPU throttle", as
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await page.getByRole("button", { name: "Play skirmish" }).click();
+  // A Biofilm mirror: games last past turn 13 despite the Swarmer imbalance (DECISIONS #36),
+  // and growth uses base entry costs.
+  await page.getByRole("radio", { name: /^Biofilm/ }).click();
+  await page.getByRole("radio", { name: "Bot plays Biofilm" }).click();
   await page.getByRole("radio", { name: "Normal bot" }).click();
   await page.getByRole("textbox").fill("perf-1");
   await page.getByRole("button", { name: "Start" }).click();
@@ -137,7 +141,8 @@ test("frame CPU cost fits a 60 fps budget mid-game under a 4× CPU throttle", as
         w.__settle = { turn: w.__swarm.turn, since: now };
         return false;
       }
-      const botReady = document.querySelector('.ready-dot.on[title="Bot is ready"]') !== null;
+      // M4's ready markers label each seat ("Bot: ready").
+      const botReady = document.querySelector('[aria-label="Bot: ready"] .ready-dot.on') !== null;
       return botReady && now - w.__settle.since > 1000;
     },
     null,

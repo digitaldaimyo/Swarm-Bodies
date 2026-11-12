@@ -9,6 +9,22 @@
 export type DepositKind = "ice" | "organic" | "mineral";
 export type BodyType = "carbonaceous" | "icy" | "metallic" | "irradiated";
 export type BodySize = "small" | "medium" | "large";
+/** Strains (SPEC §7.1). "base" is the unmodified ruleset, used by tests and golden replays. */
+export type StrainId = "base" | "swarmer" | "biofilm";
+export const STRAIN_IDS: readonly StrainId[] = ["base", "swarmer", "biofilm"];
+/** Strains a player can pick in M4. Predator and Sporer arrive in M6. */
+export const PLAYABLE_STRAINS: readonly Exclude<StrainId, "base">[] = ["swarmer", "biofilm"];
+
+/** A strain's changes to the base rules. Absent fields keep the base value. */
+export interface StrainModifiers {
+  growReach?: number;
+  /** Added to every cell's entry cost (the minimum still applies). */
+  entryCostDelta?: number;
+  /** Max biomass of normal cells. Cores keep the same margin above it as in the base rules. */
+  maxBiomass?: number;
+  defenseSupport?: number;
+  reinforceAmount?: number;
+}
 
 export interface Rules {
   /** SPEC §3 */
@@ -58,6 +74,9 @@ export interface Rules {
   /** SPEC §5.3 phase 9 and 10 */
   starvationLoss: number;
   incomePerCore: number;
+
+  /** SPEC §7.1 */
+  strains: Record<StrainId, StrainModifiers>;
 }
 
 export const BASE_RULES: Rules = {
@@ -103,6 +122,14 @@ export const BASE_RULES: Rules = {
 
   starvationLoss: 1,
   incomePerCore: 2,
+
+  strains: {
+    base: {},
+    // Fast, thin, everywhere.
+    swarmer: { growReach: 4, entryCostDelta: -1, maxBiomass: 7 },
+    // Slow, dense, immovable.
+    biofilm: { growReach: 2, maxBiomass: 12, defenseSupport: 2, reinforceAmount: 4 },
+  },
 };
 
 /** Shallow-merges overrides onto BASE_RULES (nested records are replaced, not merged). */

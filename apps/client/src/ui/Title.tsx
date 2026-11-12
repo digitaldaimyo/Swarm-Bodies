@@ -3,12 +3,13 @@ import { audio } from "../audio/sfx";
 interface Props {
   hasSave: boolean;
   onPlay(): void;
+  onOnline(): void;
   onContinue(): void;
   onSettings(): void;
 }
 
 /** Title screen with an animated slime backdrop (SPEC §10.1), drawn as SVG, no bitmaps. */
-export function Title({ hasSave, onPlay, onContinue, onSettings }: Props) {
+export function Title({ hasSave, onPlay, onOnline, onContinue, onSettings }: Props) {
   const click = (fn: () => void) => () => {
     audio.unlock();
     audio.click();
@@ -32,6 +33,9 @@ export function Title({ hasSave, onPlay, onContinue, onSettings }: Props) {
           )}
           <button class={hasSave ? "btn" : "btn btn-primary"} onClick={click(onPlay)}>
             Play skirmish
+          </button>
+          <button class="btn" onClick={click(onOnline)}>
+            Play online
           </button>
           <button class="btn btn-ghost" onClick={click(onSettings)}>
             Settings

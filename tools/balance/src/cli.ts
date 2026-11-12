@@ -3,16 +3,17 @@
  *
  *   pnpm balance -- --games 200 [--players normal,random] [--seed prefix] [--strains a,b] [--json]
  *
- * Seats alternate every game so neither policy always moves as player 0. Strains arrive in
- * M4/M6; until then `--strains` is accepted and ignored.
+ * Seats alternate every game so neither policy always moves as player 0. `--strains a,b` gives
+ * side A strain a and side B strain b; each strain follows its side when seats swap.
  */
+import { STRAIN_IDS, type StrainId } from "@swarm/sim";
 import { isPolicyName, playGame, policyByName, type PlayedGame, type PolicyName } from "./play";
 
 interface Options {
   games: number;
   seed: string;
   players: [PolicyName, PolicyName];
-  strains: string[];
+  strains: [StrainId, StrainId];
   json: boolean;
 }
 
@@ -21,7 +22,7 @@ export function parseArgs(argv: readonly string[]): Options {
     games: 200,
     seed: "balance",
     players: ["normal", "normal"],
-    strains: [],
+    strains: ["base", "base"],
     json: false,
   };
   const args = argv.filter((a) => a !== "--");
@@ -52,12 +53,19 @@ export function parseArgs(argv: readonly string[]): Options {
         opts.players = names as [PolicyName, PolicyName];
         break;
       }
-      case "--strains":
-        opts.strains = value()
+      case "--strains": {
+        const names = value()
           .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean);
+          .map((s) => s.trim());
+        if (
+          names.length !== 2 ||
+          !names.every((n) => (STRAIN_IDS as readonly string[]).includes(n))
+        ) {
+          throw new Error(`--strains takes two of ${STRAIN_IDS.join(", ")} (e.g. swarmer,biofilm)`);
+        }
+        opts.strains = names as [StrainId, StrainId];
         break;
+      }
       case "--json":
         opts.json = true;
         break;
@@ -77,6 +85,7 @@ export function parseArgs(argv: readonly string[]): Options {
 
 export interface SideReport {
   policy: PolicyName;
+  strain: StrainId;
   wins: number;
   /** Slowest single turn and mean turn time for this side, in ms. */
   maxTurnMs: number;
@@ -94,9 +103,13 @@ export interface Report {
   errors: { seed: string; message: string }[];
 }
 
-export function runBatch(opts: Pick<Options, "games" | "seed" | "players">): Report {
-  const sides = opts.players.map((policy) => ({
+export function runBatch(
+  opts: Pick<Options, "games" | "seed" | "players"> & { strains?: [StrainId, StrainId] },
+): Report {
+  const strains = opts.strains ?? ["base", "base"];
+  const sides = opts.players.map((policy, i) => ({
     policy,
+    strain: strains[i] as StrainId,
     wins: 0,
     maxTurnMs: 0,
     meanTurnMs: 0,
@@ -122,13 +135,19 @@ export function runBatch(opts: Pick<Options, "games" | "seed" | "players">): Rep
     const policies = sideOfSeat.map((side) => policyByName(opts.players[side] as PolicyName, seed));
     let game: PlayedGame;
     try {
-      game = playGame({ mode: "singleRock", playerCount: 2 }, seed, policies, (seat, ms) => {
-        const side = sideOfSeat[seat] as number;
-        const s = sides[side as 0 | 1];
-        s.maxTurnMs = Math.max(s.maxTurnMs, ms);
-        timeSum[side] = (timeSum[side] as number) + ms;
-        timeCount[side] = (timeCount[side] as number) + 1;
-      });
+      const seatStrains = sideOfSeat.map((side) => strains[side] as StrainId);
+      game = playGame(
+        { mode: "singleRock", playerCount: 2, strains: seatStrains },
+        seed,
+        policies,
+        (seat, ms) => {
+          const side = sideOfSeat[seat] as number;
+          const s = sides[side as 0 | 1];
+          s.maxTurnMs = Math.max(s.maxTurnMs, ms);
+          timeSum[side] = (timeSum[side] as number) + ms;
+          timeCount[side] = (timeCount[side] as number) + 1;
+        },
+      );
     } catch (err) {
       report.errors.push({
         seed,
@@ -159,11 +178,6 @@ export function runBatch(opts: Pick<Options, "games" | "seed" | "players">): Rep
 
 function main(): void {
   const opts = parseArgs(process.argv.slice(2));
-  if (opts.strains.length > 0) {
-    console.warn(
-      `Note: strains (${opts.strains.join(", ")}) are not in the sim until M4/M6; using base rules.`,
-    );
-  }
   const started = performance.now();
   const report = runBatch(opts);
   const ms = Math.round(performance.now() - started);
@@ -173,14 +187,14 @@ function main(): void {
     const pct = (n: number) => `${((100 * n) / report.games).toFixed(1)}%`;
     const [a, b] = report.sides;
     console.log(
-      `Single Rock, ${a.policy} vs ${b.policy} — ${report.games} games in ${ms} ms (seats alternate)`,
+      `Single Rock, ${a.policy}/${a.strain} vs ${b.policy}/${b.strain} — ${report.games} games in ${ms} ms (seats alternate)`,
     );
     for (const [label, s] of [
       ["A", a],
       ["B", b],
     ] as const) {
       console.log(
-        `  ${label} ${s.policy.padEnd(7)} wins: ${s.wins} (${pct(s.wins)})  turn time mean ${s.meanTurnMs.toFixed(2)} ms, max ${s.maxTurnMs.toFixed(1)} ms`,
+        `  ${label} ${(s.strain === "base" ? s.policy : `${s.policy}/${s.strain}`).padEnd(15)} wins: ${s.wins} (${pct(s.wins)})  turn time mean ${s.meanTurnMs.toFixed(2)} ms, max ${s.maxTurnMs.toFixed(1)} ms`,
       );
     }
     console.log(`  draws: ${report.draws} (${pct(report.draws)})`);

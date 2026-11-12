@@ -8,7 +8,7 @@ export function loadSkirmish(): SavedSkirmish | null {
     const raw = localStorage.getItem(KEY);
     if (!raw) return null;
     const saved = JSON.parse(raw) as SavedSkirmish;
-    return saved.version === 1 ? saved : null;
+    return saved.version === 2 ? saved : null;
   } catch {
     return null;
   }

@@ -1,5 +1,5 @@
 import { areAdjacent, getBoard, type Hex } from "./hex";
-import { cellIndexOf, entryCost, maxBiomassFor } from "./rules";
+import { cellIndexOf, entryCost, maxBiomassFor, playerRules } from "./rules";
 import type { Body, GameState, Order, PlayerId, RejectReason, ValidationResult } from "./types";
 
 /**
@@ -97,8 +97,9 @@ function checkOne(
     case "grow": {
       const { path } = order;
       if (path.length < 2) return fail("pathTooShort", "A grow path needs at least one new cell.");
-      if (path.length - 1 > state.rules.growReach) {
-        return fail("pathTooLong", `Grow reach is ${state.rules.growReach}.`);
+      const reach = playerRules(state, player).growReach;
+      if (path.length - 1 > reach) {
+        return fail("pathTooLong", `Grow reach is ${reach}.`);
       }
       const idx: number[] = [];
       for (const h of path) {
@@ -133,7 +134,7 @@ function checkOne(
         if (ctx.growNewCells.has(key(body.id, i))) {
           return fail("overlappingPath", "Another of your paths already targets that cell.");
         }
-        cost += entryCost(state, body, i);
+        cost += entryCost(state, body, i, player);
       }
       break;
     }

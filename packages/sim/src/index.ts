@@ -8,6 +8,9 @@ export { connectivityOf } from "./connectivity";
 export {
   entryCost,
   maxBiomassFor,
+  playerRules,
+  strainOf,
+  type PlayerRules,
   playableCellCount,
   playerTotals,
   dominancePermille,

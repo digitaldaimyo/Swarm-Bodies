@@ -47,6 +47,14 @@ function generatedIcons(): Plugin {
   };
 }
 
+function serverProxy() {
+  const target = process.env["SWARM_SERVER"] ?? "http://localhost:8787";
+  return {
+    "/api": { target, changeOrigin: true },
+    "/ws": { target: target.replace(/^http/, "ws"), ws: true },
+  };
+}
+
 export default defineConfig({
   plugins: [
     preact(),
@@ -78,6 +86,9 @@ export default defineConfig({
       workbox: {
         globPatterns: ["**/*.{js,css,html,svg,png,webmanifest}"],
         navigateFallback: "/index.html",
+        navigateFallbackDenylist: [/^\/api\//, /^\/ws/],
+        // Web Push handlers (public/push-sw.js) live alongside the generated worker.
+        importScripts: ["/push-sw.js"],
         runtimeCaching: [
           {
             urlPattern: ({ url }) =>
@@ -91,5 +102,8 @@ export default defineConfig({
     }),
   ],
   worker: { format: "es" },
+  // The game server (apps/server) serves /api and /ws; dev and preview proxy to it.
+  server: { proxy: serverProxy() },
+  preview: { proxy: serverProxy() },
   build: { target: "es2022", sourcemap: true, chunkSizeWarningLimit: 900 },
 });

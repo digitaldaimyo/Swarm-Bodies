@@ -16,6 +16,18 @@ describe("tools/balance", () => {
     expect(report.sides[0].wins).toBeGreaterThanOrEqual(190);
   });
 
+  it("plays strain matchups (M4)", () => {
+    const report = runBatch({
+      games: 20,
+      seed: "strains",
+      players: ["normal", "normal"],
+      strains: ["swarmer", "biofilm"],
+    });
+    expect(report.errors).toEqual([]);
+    expect(report.rejectedOrders).toBe(0);
+    expect(report.sides.map((s) => s.strain)).toEqual(["swarmer", "biofilm"]);
+  });
+
   it("parses the documented flags, tolerating pnpm's `--`", () => {
     expect(
       parseArgs(["--", "--games", "5", "--strains", "swarmer,biofilm", "--seed", "x"]),
@@ -26,6 +38,8 @@ describe("tools/balance", () => {
       strains: ["swarmer", "biofilm"],
       json: false,
     });
+    expect(() => parseArgs(["--strains", "swarmer"])).toThrow();
+    expect(() => parseArgs(["--strains", "swarmer,predator"])).toThrow();
     expect(parseArgs(["--players", "easy,random"]).players).toEqual(["easy", "random"]);
     expect(() => parseArgs(["--players", "normal"])).toThrow();
     expect(() => parseArgs(["--players", "normal,genius"])).toThrow();

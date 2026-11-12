@@ -1,5 +1,5 @@
 import { getBoard, type Hex } from "./hex";
-import { maxBiomassFor } from "./rules";
+import { maxBiomassFor, playerRules } from "./rules";
 import type { CellRef, GameState, PlayerId } from "./types";
 
 /** Fast lookup of which cells each order type can use this turn (SPEC §9.2), for UI and bots. */
@@ -22,7 +22,7 @@ export function listLegalOrders(state: GameState, player: PlayerId): LegalOrderI
     player,
     nutrients: ps?.nutrients ?? 0,
     maxOrders: state.rules.maxOrdersPerSet,
-    growReach: state.rules.growReach,
+    growReach: playerRules(state, player).growReach,
     growStarts: [],
     reinforceTargets: [],
     retractTargets: [],

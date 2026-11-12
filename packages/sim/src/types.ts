@@ -1,4 +1,4 @@
-import type { BodySize, BodyType, DepositKind, Rules } from "./config";
+import type { BodySize, BodyType, DepositKind, Rules, StrainId } from "./config";
 import type { Hex } from "./hex";
 
 export type PlayerId = number;
@@ -27,6 +27,7 @@ export interface Body {
 
 export interface PlayerState {
   id: PlayerId;
+  strain: StrainId;
   nutrients: number;
   eliminated: boolean;
   /** Turn on which the player was eliminated, or null. */
@@ -42,6 +43,8 @@ export type GameMode = "singleRock";
 export interface GameConfig {
   mode: GameMode;
   playerCount: number;
+  /** One strain per player, by seat. Missing entries are "base". */
+  strains?: StrainId[];
   rules?: Partial<Rules>;
 }
 

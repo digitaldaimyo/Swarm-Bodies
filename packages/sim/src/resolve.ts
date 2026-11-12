@@ -1,7 +1,7 @@
 import { connectivityOf, refreshConnectivity } from "./connectivity";
 import { getBoard, type Hex } from "./hex";
 import { idiv } from "./math";
-import { cellIndexOf, maxBiomassFor, playableCellCount, playerTotals } from "./rules";
+import { cellIndexOf, maxBiomassFor, playableCellCount, playerRules, playerTotals } from "./rules";
 import type {
   Body,
   CellRef,
@@ -87,7 +87,10 @@ export function resolveTurn(
       const body = bodyOf(order.body);
       const i = cellIndexOf(body, order.cell);
       const c = body.colony[i] as Colony;
-      const biomass = Math.min(maxBiomassFor(next, c), c.biomass + next.rules.reinforceAmount);
+      const biomass = Math.min(
+        maxBiomassFor(next, c),
+        c.biomass + playerRules(next, pid).reinforceAmount,
+      );
       body.colony[i] = { ...c, biomass };
       events.push({ type: "Reinforced", player: pid, cell: ref(body, i), biomass });
     }
@@ -307,10 +310,12 @@ function resolveGrowth(
 
       let defense = defender.biomass;
       for (const n of getBoard(body.radius).neighbours[cell] as readonly number[]) {
-        if (board[n]?.owner === defender.owner && flags[n]) defense += rules.defenseSupport;
+        if (board[n]?.owner === defender.owner && flags[n])
+          defense += playerRules(next, defender.owner).defenseSupport;
       }
       if (winner.attack > defense) {
-        const biomass = Math.min(rules.maxBiomass, Math.max(1, winner.attack - defense));
+        const cap = playerRules(next, winner.path.player).maxBiomass;
+        const biomass = Math.min(cap, Math.max(1, winner.attack - defense));
         body.colony[cell] = { owner: winner.path.player, biomass, core: false, connected: false };
         events.push({
           type: "CellCaptured",

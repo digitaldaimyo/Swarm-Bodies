@@ -1,8 +1,11 @@
-import { HUMAN, matchSummary, type SkirmishSession } from "../game/session";
+import type { MatchSession } from "../game/match-session";
+import { matchSummary } from "../game/match-session";
 import { PLAYER_CSS } from "../render/palette";
 
 interface Props {
-  session: SkirmishSession;
+  session: MatchSession;
+  /** "Rematch" for a skirmish, "Play again" online. */
+  againLabel: string;
   onTitle(): void;
   onRematch(): void;
   onWatch(): void;
@@ -16,20 +19,19 @@ const REASONS: Record<string, string> = {
 };
 
 /** Results (SPEC §10.1 screen 6): winner, dominance graph, stats, replay and rematch. */
-export default function Results({ session, onTitle, onRematch, onWatch }: Props) {
+export default function Results({ session, againLabel, onTitle, onRematch, onWatch }: Props) {
   const result = session.state.result;
-  const won = result?.winner === HUMAN;
+  const won = result?.winner === session.me;
   const title = result?.winner === null ? "Draw" : won ? "Victory" : "Defeat";
-  const me = matchSummary(session.history, 0);
-  const bot = matchSummary(session.history, 1);
+  const seats = session.state.players.map((p) => p.id);
+  const summaries = seats.map((s) => matchSummary(session.history, s));
   const last = session.stats[session.stats.length - 1];
+  const reason = result ? `Turn ${result.turn}, ${REASONS[result.reason] ?? result.reason}.` : "";
   return (
     <main class="panel-screen results">
       <h2 class={`result-title ${won ? "won" : "lost"}`}>{title}</h2>
       <p class="muted">
-        {result ? `Turn ${result.turn}, ${REASONS[result.reason] ?? result.reason}.` : ""}{" "}
-        {session.settings.difficulty === "easy" ? "Easy" : "Normal"} bot · seed{" "}
-        <code>{session.settings.seed}</code>
+        {reason} {session.description}
       </p>
       <section class="card">
         <h3>Dominance</h3>
@@ -40,25 +42,34 @@ export default function Results({ session, onTitle, onRematch, onWatch }: Props)
           <thead>
             <tr>
               <th />
-              <th style={{ color: PLAYER_CSS[0] }}>You</th>
-              <th style={{ color: PLAYER_CSS[1] }}>Bot</th>
+              {seats.map((s) => (
+                <th key={s} style={{ color: PLAYER_CSS[s % PLAYER_CSS.length] }}>
+                  {session.name(s)}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
-            <Row label="Cells" a={last?.cells[0]} b={last?.cells[1]} />
-            <Row label="Biomass" a={last?.biomass[0]} b={last?.biomass[1]} />
-            <Row label="Cells grown" a={me.grown} b={bot.grown} />
-            <Row label="Captures" a={me.captures} b={bot.captures} />
-            <Row label="Stalemates" a={me.stalemates} b={bot.stalemates} />
+            <Row
+              label="Strain"
+              values={session.state.players.map(
+                (p) => p.strain[0]?.toUpperCase() + p.strain.slice(1),
+              )}
+            />
+            <Row label="Cells" values={seats.map((s) => last?.cells[s] ?? 0)} />
+            <Row label="Biomass" values={seats.map((s) => last?.biomass[s] ?? 0)} />
+            <Row label="Cells grown" values={summaries.map((x) => x.grown)} />
+            <Row label="Captures" values={summaries.map((x) => x.captures)} />
+            <Row label="Stalemates" values={summaries.map((x) => x.stalemates)} />
           </tbody>
         </table>
       </section>
       <div class="button-row">
-        <button class="btn" onClick={onWatch}>
+        <button class="btn" onClick={onWatch} disabled={session.history.length === 0}>
           Watch replay
         </button>
         <button class="btn btn-primary" onClick={onRematch}>
-          Rematch
+          {againLabel}
         </button>
       </div>
       <button class="btn btn-ghost btn-wide" onClick={onTitle}>
@@ -68,17 +79,20 @@ export default function Results({ session, onTitle, onRematch, onWatch }: Props)
   );
 }
 
-function Row({ label, a, b }: { label: string; a: number | undefined; b: number | undefined }) {
+function Row({ label, values }: { label: string; values: (number | string)[] }) {
   return (
     <tr>
       <th scope="row">{label}</th>
-      <td class="num">{a ?? 0}</td>
-      <td class="num">{b ?? 0}</td>
+      {values.map((v, i) => (
+        <td key={i} class="num">
+          {v}
+        </td>
+      ))}
     </tr>
   );
 }
 
-function DominanceGraph({ session }: { session: SkirmishSession }) {
+function DominanceGraph({ session }: { session: MatchSession }) {
   const w = 320;
   const h = 140;
   const pad = 8;
@@ -87,6 +101,7 @@ function DominanceGraph({ session }: { session: SkirmishSession }) {
   const goal = session.state.rules.dominanceWinPermille;
   const y = (pm: number) => h - pad - ((h - 2 * pad) * pm) / 1000;
   const x = (i: number) => pad + ((w - 2 * pad) * i) / n;
+  const seats = session.state.players.map((p) => p.id);
   const line = (p: number) =>
     stats.map((s, i) => `${x(i).toFixed(1)},${y(s.dominance[p] ?? 0).toFixed(1)}`).join(" ");
   const final = stats[stats.length - 1];
@@ -97,19 +112,20 @@ function DominanceGraph({ session }: { session: SkirmishSession }) {
         <text x={w - pad} y={y(goal) - 4} text-anchor="end" class="goal-label">
           {goal / 10}% wins
         </text>
-        {[0, 1].map((p) => (
+        {seats.map((p) => (
           <polyline
             key={p}
             points={line(p)}
             fill="none"
-            stroke={PLAYER_CSS[p]}
+            stroke={PLAYER_CSS[p % PLAYER_CSS.length]}
             stroke-width="2.5"
             stroke-linejoin="round"
           />
         ))}
       </svg>
       <figcaption class="muted">
-        Final: you {(final?.dominance[0] ?? 0) / 10}%, bot {(final?.dominance[1] ?? 0) / 10}%
+        Final:{" "}
+        {seats.map((p) => `${session.name(p)} ${(final?.dominance[p] ?? 0) / 10}%`).join(", ")}
       </figcaption>
     </figure>
   );
