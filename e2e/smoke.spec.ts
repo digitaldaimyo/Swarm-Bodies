@@ -78,6 +78,9 @@ test("skirmish: paint, submit, replay, and finish against the Easy bot", async (
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await page.getByRole("button", { name: "Play skirmish" }).click();
+  // A Biofilm mirror: long enough games, and base entry costs (2 N per cell).
+  await page.getByRole("radio", { name: /^Biofilm/ }).click();
+  await page.getByRole("radio", { name: "Bot plays Biofilm" }).click();
   await page.getByRole("radio", { name: "Easy bot" }).click();
   await page.getByRole("textbox").fill("smoke-1");
   await page.getByRole("button", { name: "Start" }).click();

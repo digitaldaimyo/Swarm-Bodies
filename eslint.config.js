@@ -24,6 +24,14 @@ export default tseslint.config(
     languageOptions: { globals: { ...globals.node } },
   },
   {
+    files: ["apps/client/public/**/*.js"],
+    languageOptions: { globals: { ...globals.serviceworker } },
+  },
+  {
+    files: ["apps/client/src/**/*.{ts,tsx}"],
+    languageOptions: { globals: { ...globals.browser } },
+  },
+  {
     // Tests run with noUncheckedIndexedAccess; `!` on known fixture lookups keeps them readable.
     files: ["**/test/**/*.ts", "e2e/**/*.ts"],
     rules: { "@typescript-eslint/no-non-null-assertion": "off" },
