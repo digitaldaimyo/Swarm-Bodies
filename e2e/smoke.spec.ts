@@ -124,6 +124,8 @@ test("skirmish: paint, submit, replay, and finish against the Easy bot", async (
 test("system skirmish: body strip, System view, launches, and a finished game (M5)", async ({
   page,
 }) => {
+  // A whole 3-player game: headroom for starved CI runners (PR #6: ~3.7× slower than usual).
+  test.setTimeout(300_000);
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
@@ -135,7 +137,9 @@ test("system skirmish: body strip, System view, launches, and a finished game (M
   await page.getByRole("radio", { name: "Asteroid system" }).click();
   await page.getByRole("radio", { name: "2 bots" }).click();
   await page.getByRole("radio", { name: "Easy bot" }).click();
-  await page.getByRole("textbox").fill("smoke-sys");
+  // A seed whose game is decided by dominance at turn 20 (most seeds run to the turn limit):
+  // the test's wall time scales with the runner, and a starved CI runner draws ~5 fps.
+  await page.getByRole("textbox").fill("smoke-sys-4");
   await page.getByRole("button", { name: "Start" }).click();
   await page.waitForFunction(
     () => (window as unknown as { __swarm?: { view?: unknown } }).__swarm?.view,
@@ -159,8 +163,14 @@ test("system skirmish: body strip, System view, launches, and a finished game (M
     () => ((window as unknown as { __swarm: { autoplay: boolean } }).__swarm.autoplay = true),
   );
   await expect(page.getByRole("heading", { name: /Victory|Defeat|Draw/ })).toBeVisible({
-    timeout: 170_000,
+    timeout: 280_000,
   });
+  const turns = await page.evaluate(
+    () =>
+      (window as unknown as { __swarm: { session: { state: { turn: number } } } }).__swarm.session
+        .state.turn,
+  );
+  expect(turns).toBeLessThanOrEqual(22);
   const launches = await page.evaluate(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const s = (window as any).__swarm.session;
