@@ -1,3 +1,4 @@
+import { chooseOrders } from "@swarm/bot";
 import {
   createGame,
   dominancePermille,
@@ -18,6 +19,20 @@ export const randomPolicy =
   (state, player) =>
     randomOrderSet(state, player, playSeed);
 
+export const POLICY_NAMES = ["random", "easy", "normal", "hard"] as const;
+export type PolicyName = (typeof POLICY_NAMES)[number];
+
+export function isPolicyName(name: string): name is PolicyName {
+  return (POLICY_NAMES as readonly string[]).includes(name);
+}
+
+/** Builds a policy by name. Every policy is deterministic given the game seed. */
+export function policyByName(name: PolicyName, seed: string): Policy {
+  return name === "random"
+    ? randomPolicy(seed)
+    : (state, player) => chooseOrders(state, player, name, seed);
+}
+
 export interface PlayedGame {
   seed: string;
   result: GameResult;
@@ -28,7 +43,19 @@ export interface PlayedGame {
   rejected: number;
 }
 
-export function playGame(config: GameConfig, seed: string, policy: Policy): PlayedGame {
+/**
+ * Plays one game to the end. `policy` is either one policy for every seat or one per seat.
+ * `onTurn` sees how long each seat's policy took, for time-budget reports.
+ */
+export function playGame(
+  config: GameConfig,
+  seed: string,
+  policy: Policy | readonly Policy[],
+  onTurn?: (seat: number, ms: number) => void,
+  clock: () => number = () => performance.now(),
+): PlayedGame {
+  const seatPolicy = (seat: number): Policy =>
+    Array.isArray(policy) ? (policy[seat] as Policy) : (policy as Policy);
   let state = createGame(config, seed);
   const turns: OrderSet[][] = [];
   const dominance: number[][] = [];
@@ -37,7 +64,13 @@ export function playGame(config: GameConfig, seed: string, policy: Policy): Play
   for (let guard = 0; !state.result; guard++) {
     if (guard > state.rules.turnLimit + 1)
       throw new Error(`Game ${seed} did not end by the turn limit`);
-    const orders: OrderSet[] = state.players.map((p) => (p.eliminated ? [] : policy(state, p.id)));
+    const orders: OrderSet[] = state.players.map((p, seat) => {
+      if (p.eliminated) return [];
+      const t0 = clock();
+      const set = seatPolicy(seat)(state, p.id);
+      onTurn?.(seat, clock() - t0);
+      return set;
+    });
     const byPlayer: Record<PlayerId, OrderSet> = {};
     state.players.forEach((p, i) => (byPlayer[p.id] = orders[i] as OrderSet));
     const out = resolveTurn(state, byPlayer);

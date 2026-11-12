@@ -1,12 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { parseArgs, runBatch } from "../src/cli";
 
-describe("tools/balance (SPEC §15 M1)", () => {
-  it("plays random-legal games to completion without errors", () => {
-    const report = runBatch({ games: 40, seed: "ci" });
+describe("tools/balance", () => {
+  it("plays random-legal games to completion without errors (M1)", () => {
+    const report = runBatch({ games: 40, seed: "ci", players: ["random", "random"] });
     expect(report.errors).toEqual([]);
-    expect(Object.values(report.wins).reduce((a, b) => a + b, 0) + report.draws).toBe(40);
+    expect(report.sides[0].wins + report.sides[1].wins + report.draws).toBe(40);
     expect(report.rejectedOrders).toBe(0);
+  });
+
+  it("Normal beats random-legal play in at least 95% of 200 games (M2 acceptance)", () => {
+    const report = runBatch({ games: 200, seed: "m2", players: ["normal", "random"] });
+    expect(report.errors).toEqual([]);
+    expect(report.rejectedOrders).toBe(0);
+    expect(report.sides[0].wins).toBeGreaterThanOrEqual(190);
   });
 
   it("parses the documented flags, tolerating pnpm's `--`", () => {
@@ -15,9 +22,13 @@ describe("tools/balance (SPEC §15 M1)", () => {
     ).toEqual({
       games: 5,
       seed: "x",
+      players: ["normal", "normal"],
       strains: ["swarmer", "biofilm"],
       json: false,
     });
+    expect(parseArgs(["--players", "easy,random"]).players).toEqual(["easy", "random"]);
+    expect(() => parseArgs(["--players", "normal"])).toThrow();
+    expect(() => parseArgs(["--players", "normal,genius"])).toThrow();
     expect(() => parseArgs(["--games", "zero"])).toThrow();
     expect(() => parseArgs(["--bogus"])).toThrow();
   });
