@@ -106,14 +106,18 @@ export interface Harness {
 }
 
 /** An engine + HTTP server on a database URL. Call twice on one URL to simulate a restart. */
-export async function startServer(url: string, clock = new ManualClock()): Promise<Harness> {
+export async function startServer(
+  url: string,
+  clock = new ManualClock(),
+  appOptions: { clientDir?: string; corsOrigins?: string[] } = {},
+): Promise<Harness> {
   const database = await openDatabase(url);
   const scheduler = new ManualScheduler();
   const push = new RecordingPush();
   const silent = { info: () => undefined, warn: () => undefined, error: () => undefined };
   const progression = new Progression(database.db, { clock, log: silent });
   const engine = new GameEngine(database.db, { clock, scheduler, push, log: silent, progression });
-  const app = await buildApp({ engine, progression });
+  const app = await buildApp({ engine, progression, ...appOptions });
   await app.listen({ port: 0, host: "127.0.0.1" });
   const address = app.server.address();
   const port = typeof address === "object" && address ? address.port : 0;

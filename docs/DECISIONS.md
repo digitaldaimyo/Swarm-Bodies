@@ -243,3 +243,13 @@ Rulings on ambiguous or unspecified points in `docs/SPEC.md`, as CLAUDE.md requi
       - **Identical decisions:** bot outputs hash the same across 540 decisions before and after.
       - **Devices:** no real phones were available. The 4× CPU-throttle frame tests stand in for a mid-range phone, and the bot runs in a worker, so a slow turn only delays the bot's sealed orders and never blocks input.
 103.  **Keyboard test in WebKit** presses Option+Tab: Safari's plain Tab skips buttons unless the user enables "Press Tab to highlight each item".
+
+## 2026-11-12 — Deployment (Render, Neon, GitHub Pages)
+
+104. **One server serves everything; Pages is an extra front door.**
+     - **Render:** the game server also serves the built client (`apps/client/dist`), with an SPA fallback, so the app, `/api` and `/ws` share one origin. Hashed assets are cached for a year; the shell, manifest and service worker revalidate.
+     - **GitHub Pages:** `.github/workflows/pages.yml` publishes the same client under `/<repo>/`, built with `VITE_BASE` and `VITE_API_ORIGIN`. Offline modes run there even while the free Render instance sleeps. Online play calls Render, which allows the Pages origin through `CORS_ORIGINS`.
+       - CORS is safe because auth is a bearer token in a header, never a cookie.
+       - `404.html` is a copy of the shell, so `/replay/:id` links work without server rewrites.
+     - **Base paths:** the client builds every URL from `import.meta.env.BASE_URL`: the manifest, service-worker fallback, push worker, share links and replay route.
+     - **Neon:** a connection through Neon's pooler (a host containing `-pooler.`) turns off named prepared statements, which PgBouncer in transaction mode cannot keep. The transaction-scoped advisory locks used for turn resolution work through the pooler.

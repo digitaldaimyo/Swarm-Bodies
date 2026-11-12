@@ -1,4 +1,6 @@
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
+import cors from "@fastify/cors";
+import fastifyStatic from "@fastify/static";
 import websocket from "@fastify/websocket";
 import type { ZodType } from "zod";
 import {
@@ -23,6 +25,10 @@ export interface AppOptions {
   engine: GameEngine;
   progression: Progression;
   logger?: boolean;
+  /** The built client (apps/client/dist) to serve at "/", with an SPA fallback. */
+  clientDir?: string | undefined;
+  /** Other origins allowed to call the API (the GitHub Pages copy of the client). */
+  corsOrigins?: readonly string[];
 }
 
 /** HTTP and WebSocket front end (SPEC §9.4). All game logic lives in GameEngine. */
@@ -30,9 +36,39 @@ export async function buildApp({
   engine,
   progression,
   logger = false,
+  clientDir,
+  corsOrigins = [],
 }: AppOptions): Promise<FastifyInstance> {
   const app = Fastify({ logger, bodyLimit: 64 * 1024 });
   await app.register(websocket, { options: { maxPayload: MAX_WS_MESSAGE } });
+  // Auth is a bearer token in a header (never a cookie), so allowing listed origins is safe.
+  if (corsOrigins.length > 0)
+    await app.register(cors, {
+      origin: [...corsOrigins],
+      methods: ["GET", "POST", "PUT", "DELETE"],
+      allowedHeaders: ["authorization", "content-type"],
+      maxAge: 86_400,
+    });
+  if (clientDir) {
+    await app.register(fastifyStatic, {
+      root: clientDir,
+      cacheControl: false,
+      // Hashed assets never change; the shell, manifest and service worker must revalidate.
+      setHeaders: (res, path) => {
+        res.setHeader(
+          "cache-control",
+          /[\\/]assets[\\/]/.test(path) ? "public, max-age=31536000, immutable" : "no-cache",
+        );
+      },
+    });
+    // SPA fallback: app routes such as /replay/:id get the shell; unknown API paths stay 404.
+    app.setNotFoundHandler((req, reply) => {
+      const url = req.url.split("?")[0] ?? "";
+      if (req.method === "GET" && !url.startsWith("/api/") && url !== "/ws")
+        return reply.header("cache-control", "no-cache").sendFile("index.html");
+      return reply.status(404).send({ code: "notFound", message: "Not found" });
+    });
+  }
 
   app.setErrorHandler((err, _req, reply) => {
     if (err instanceof GameError)

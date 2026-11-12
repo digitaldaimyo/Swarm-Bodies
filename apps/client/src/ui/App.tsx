@@ -20,6 +20,7 @@ import {
 } from "./progress";
 import { audio } from "../audio/sfx";
 import { loadSkirmish, saveSkirmish } from "./storage";
+import { appPath, BASE } from "../net/origin";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { Lobby } from "./Lobby";
 import { Online } from "./Online";
@@ -247,7 +248,7 @@ export function App() {
   // Deep links: ?join=CODE from a shared invite, ?game=ID from a push notification,
   // /replay/:id for a shared replay (SPEC §12).
   useEffect(() => {
-    const shared = /^\/replay\/([0-9a-f-]{36})\/?$/i.exec(location.pathname)?.[1];
+    const shared = /^\/replay\/([0-9a-f-]{36})\/?$/i.exec(appPath())?.[1];
     if (shared) {
       void openReplay(async () => {
         const [{ api }, { replayFromResponse }] = await Promise.all([
@@ -300,7 +301,7 @@ export function App() {
       )}
       <ErrorBoundary
         onReset={() => {
-          if (location.pathname !== "/") history.replaceState(null, "", "/");
+          if (appPath() !== "/") history.replaceState(null, "", BASE);
           toTitle();
         }}
       >
@@ -401,7 +402,7 @@ export function App() {
               history={screen.history}
               title={screen.title}
               onClose={() => {
-                if (location.pathname !== "/") history.replaceState(null, "", "/");
+                if (appPath() !== "/") history.replaceState(null, "", BASE);
                 toTitle();
               }}
             />

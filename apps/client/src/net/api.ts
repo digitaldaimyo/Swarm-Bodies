@@ -1,5 +1,6 @@
 import type { ZodType } from "zod";
 import type { OrderSet } from "@swarm/sim";
+import { apiUrl } from "./origin";
 import {
   CreateGameResponseSchema,
   ErrorResponseSchema,
@@ -78,7 +79,7 @@ async function request<T>(
   if (auth) headers["authorization"] = `Bearer ${(await ensureGuest()).token}`;
   let res: Response;
   try {
-    res = await fetch(`/api${path}`, {
+    res = await fetch(apiUrl(path), {
       method,
       headers,
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),

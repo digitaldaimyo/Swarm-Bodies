@@ -1,4 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
+import { appLink } from "../net/origin";
 import { strainInfo } from "@swarm/content";
 import type { GameMeta, Strain } from "@swarm/protocol";
 import type { GameState } from "@swarm/sim";
@@ -43,7 +44,7 @@ export function Lobby({ meta: initial, onBack, onStarted }: Props) {
   const me = meta.players.find((p) => p.you);
   const host = me?.seat === meta.hostSeat;
   const full = meta.players.length >= meta.settings.players;
-  const link = `${location.origin}/?join=${meta.code}`;
+  const link = appLink(`?join=${meta.code}`);
 
   const share = async () => {
     audio.click();
