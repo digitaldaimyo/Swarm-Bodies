@@ -310,6 +310,7 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
       setDrawer(false);
       if (launchRef.current) setLaunch(null);
       setPhase("replay");
+      audio.setDuck(true);
       // Off-screen action this turn lights the body strip (SPEC §10.5).
       for (const e of record.events)
         if ("player" in e && e.player === me) tutorialSignals.current.add(`event:${e.type}`);
@@ -343,6 +344,7 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
     view.current?.setState(session.state);
     view.current?.setInputEnabled(true);
     playing.current = false;
+    audio.setDuck(false);
     onSave?.();
     if (session.finished) {
       setTimeout(onFinished, window.__swarm?.autoplay ? 0 : 900);
@@ -404,7 +406,7 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
     setInfo(null);
     setDrawer(false);
     haptic("submit");
-    audio.click();
+    audio.submit();
     view.current?.cancelPaint();
     setPhase("waiting");
     tutorialSignals.current.add("submit");
@@ -853,22 +855,33 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
 }
 
 function frameSound(f: Frame): void {
-  if (f.phase === "launch") {
-    if (f.effects.some((e) => e.kind === "launch" && !e.fizzled)) audio.launch();
-    if (f.effects.some((e) => e.kind === "land")) setTimeout(() => audio.squelch(), 380);
-    return;
+  const has = (k: string) => f.effects.some((e) => e.kind === k);
+  switch (f.phase) {
+    case "launch":
+      if (f.effects.some((e) => e.kind === "launch" && !e.fizzled)) audio.launch();
+      if (has("land")) setTimeout(() => audio.squelch(), 380);
+      return;
+    case "starve":
+      if (has("fade")) audio.starve();
+      return;
+    case "income":
+      if (has("income")) audio.income();
+      return;
+    case "events":
+      if (has("flare")) audio.flare();
+      else if (has("flash")) audio.thud();
+      return;
+    case "growth": {
+      const kinds = new Set(f.effects.map((e) => (e.kind === "tendril" ? e.outcome : e.kind)));
+      setTimeout(() => {
+        if (kinds.has("capture") || kinds.has("coreLost")) audio.crunch();
+        else if (kinds.has("claim")) audio.squelch();
+        if (kinds.has("repelled") || kinds.has("splash")) audio.thud();
+      }, 380);
+      return;
+    }
+    default:
   }
-  if (f.phase === "events" && f.effects.some((e) => e.kind === "flash")) {
-    audio.thud();
-    return;
-  }
-  if (f.phase !== "growth") return;
-  const kinds = new Set(f.effects.map((e) => (e.kind === "tendril" ? e.outcome : e.kind)));
-  setTimeout(() => {
-    if (kinds.has("capture") || kinds.has("coreLost")) audio.crunch();
-    else if (kinds.has("claim")) audio.squelch();
-    if (kinds.has("repelled") || kinds.has("splash")) audio.thud();
-  }, 380);
 }
 
 /** Ready markers per player (SPEC §10.2), with bot takeover and connection shown to everyone. */

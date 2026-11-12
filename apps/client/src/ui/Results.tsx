@@ -2,7 +2,8 @@ import { achievementInfo, campaignNode, mutationInfo, strainInfo } from "@swarm/
 import type { MutationId } from "@swarm/sim";
 import type { MatchSession } from "../game/match-session";
 import type { GameRewards } from "./progress";
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
+import { audio } from "../audio/sfx";
 import { matchSummary } from "../game/match-session";
 import { PLAYER_CSS } from "../render/palette";
 
@@ -38,6 +39,8 @@ export default function Results({
   const result = session.state.result;
   const won = result?.winner === session.me;
   const title = result?.winner === null ? "Draw" : won ? "Victory" : "Defeat";
+  // The end-of-game stinger plays once, when the results first appear.
+  useEffect(() => audio.stinger(won), []);
   const seats = session.state.players.map((p) => p.id);
   const summaries = seats.map((s) => matchSummary(session.history, s));
   const last = session.stats[session.stats.length - 1];
