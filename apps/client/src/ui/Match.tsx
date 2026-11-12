@@ -350,6 +350,7 @@ export default function Match({ session, onSave, onExit, onFinished }: Props) {
     const turn = session.state.turn;
     void import("@swarm/bot").then(({ chooseOrders }) => {
       // Re-check the flag: it may have been switched off while the bot module loaded.
+      // Without this, the scripted player submits one more turn after being stopped.
       if (cancelled || !window.__swarm?.autoplay || !planning() || session.state.turn !== turn)
         return;
       session.planner.clear();

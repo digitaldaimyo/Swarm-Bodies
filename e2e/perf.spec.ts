@@ -9,11 +9,13 @@ import { expect, test, type Page } from "@playwright/test";
  *
  * - Typical frames (median), idle and during a replay, stay under 5 ms on the emulated phone:
  *   under a third of a 16.7 ms frame, leaving the rest for the browser and the GPU.
- * - Idle frames stay inside one frame even at p95.
- * - The heaviest work, a replay board swap (redrawing every colony cell), is timed directly
- *   and must take under half a frame. Replay p95 is logged but not asserted: on GPU-less hosts
- *   the software rasteriser stalls the main thread right after a swap re-renders the cached
- *   colony texture, which says nothing about a phone's GPU (docs/DECISIONS.md #29).
+ * - Idle frames stay inside one frame at p95, over at least 100 frames.
+ * - A replay board swap (redrawing every colony cell, the heaviest work in the game) is timed
+ *   directly; with a typical frame's work on top it must still fit in one frame, so replays
+ *   never visibly stutter.
+ *
+ * This is a CI regression check of CPU work. It is not a device benchmark: real-device frame
+ * rates are validated separately (docs/DECISIONS.md #33).
  *
  * Raw requestAnimationFrame rates are logged but not asserted: CI machines and this repo's dev
  * containers often have no GPU, so WebGL is rasterised in software (SwiftShader), and that
@@ -33,7 +35,8 @@ test.describe.configure({ retries: 1 });
 
 const FRAME_MS = 1000 / 60;
 const TYPICAL_BUDGET_MS = 5;
-const SWAP_BUDGET_MS = FRAME_MS / 2;
+/** A swap frame is the swap plus a typical frame's other work, and must fit in one frame. */
+const SWAP_BUDGET_MS = FRAME_MS - TYPICAL_BUDGET_MS;
 
 interface FrameStats {
   frames: number;
@@ -43,10 +46,15 @@ interface FrameStats {
   rafFps: number;
 }
 
-/** Times main-thread work per Pixi frame, via ticker listeners at the highest and lowest priority. */
-async function sampleFrames(page: Page, ms: number): Promise<FrameStats> {
+/**
+ * Times main-thread work per Pixi frame, via ticker listeners at the highest and lowest priority.
+ * Stops after `minFrames` frames or `maxMs`, whichever comes first: CI runners render WebGL in
+ * software at ~10 fps, so a fixed 3 s window gave ~30 frames and a "p95" that was really the
+ * second-worst frame.
+ */
+async function sampleFrames(page: Page, minFrames: number, maxMs: number): Promise<FrameStats> {
   return page.evaluate(
-    (duration) =>
+    ({ minFrames, maxMs }) =>
       new Promise<FrameStats>((resolve) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const app = (window as any).__swarm.view.app;
@@ -54,14 +62,16 @@ async function sampleFrames(page: Page, ms: number): Promise<FrameStats> {
         const stamps: number[] = [];
         let start = 0;
         const begin = () => (start = performance.now());
+        const t0 = performance.now();
         const end = () => {
           const now = performance.now();
           cost.push(now - start);
           stamps.push(now);
+          if (cost.length >= minFrames || now - t0 >= maxMs) finish();
         };
         app.ticker.add(begin, null, 1000);
         app.ticker.add(end, null, -1000);
-        setTimeout(() => {
+        const finish = () => {
           app.ticker.remove(begin);
           app.ticker.remove(end);
           const sorted = cost.slice().sort((a, b) => a - b);
@@ -75,9 +85,9 @@ async function sampleFrames(page: Page, ms: number): Promise<FrameStats> {
             max: sorted[sorted.length - 1] ?? 0,
             rafFps: (1000 * (stamps.length - 1)) / Math.max(1, span),
           });
-        }, duration);
+        };
       }),
-    ms,
+    { minFrames, maxMs },
   );
 }
 
@@ -93,7 +103,8 @@ test("frame CPU cost fits a 60 fps budget mid-game under a 4× CPU throttle", as
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await page.getByRole("button", { name: "Play skirmish" }).click();
-  // A Biofilm mirror: long enough games, and base entry costs (2 N per cell).
+  // A Biofilm mirror: games last past turn 13 despite the Swarmer imbalance (DECISIONS #36),
+  // and growth uses base entry costs.
   await page.getByRole("radio", { name: /^Biofilm/ }).click();
   await page.getByRole("radio", { name: "Bot plays Biofilm" }).click();
   await page.getByRole("radio", { name: "Normal bot" }).click();
@@ -115,16 +126,36 @@ test("frame CPU cost fits a 60 fps budget mid-game under a 4× CPU throttle", as
   await page.evaluate(
     () => ((window as unknown as { __swarm: { autoplay: boolean } }).__swarm.autoplay = false),
   );
+  // Wait until the game is truly idle. Stopping autoplay can still let one in-flight turn
+  // through, whose replay used to land inside the idle window; and the bot's worker plans as
+  // soon as a turn opens. So: planning phase, turn number stable, bot ready.
   await expect(page.getByRole("button", { name: "Submit" })).toBeEnabled({ timeout: 15_000 });
+  await page.waitForFunction(
+    () => {
+      const w = window as unknown as {
+        __swarm: { phase: string; turn: number };
+        __settle?: { turn: number; since: number };
+      };
+      const now = performance.now();
+      if (!w.__settle || w.__settle.turn !== w.__swarm.turn || w.__swarm.phase !== "planning") {
+        w.__settle = { turn: w.__swarm.turn, since: now };
+        return false;
+      }
+      // M4's ready markers label each seat ("Bot: ready").
+      const botReady = document.querySelector('[aria-label="Bot: ready"] .ready-dot.on') !== null;
+      return botReady && now - w.__settle.since > 1000;
+    },
+    null,
+    { timeout: 30_000, polling: 100 },
+  );
 
-  // Measure the view alone: wait until the bot's worker has finished choosing its orders.
-  await expect(page.getByLabel("Bot: ready")).toBeVisible({ timeout: 15_000 });
-  await page.waitForTimeout(300);
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 });
-  const idle = await sampleFrames(page, 3000);
-  // A board swap's CPU cost, timed directly (median of 7), as a replay does 4–6 times a turn.
-  const swapMs = await page.evaluate(() => {
+  const idle = await sampleFrames(page, 120, 30_000);
+  // The heaviest work in the game: a replay board swap redraws every colony cell, 4–6 times a
+  // turn. Timed directly (median of 7, redraw plus render), it is a stable CPU measurement;
+  // inside a replay the same frames also absorb software-GL stalls.
+  const { swapMs, swapGeometry } = await page.evaluate(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const v = (window as any).__swarm.view;
     const colony = v.colony;
@@ -135,17 +166,28 @@ test("frame CPU cost fits a 60 fps budget mid-game under a 4× CPU throttle", as
       v.app.renderer.render(v.app.stage);
       runs.push(performance.now() - t);
     }
-    return runs.sort((a, b) => a - b)[3] as number;
+    // Shapes the colony layer had to tessellate for this board (sprites need none).
+    const swapGeometry: number = v.gooG.context.instructions.length;
+    return { swapMs: runs.sort((a, b) => a - b)[3] as number, swapGeometry };
   });
   await page.getByRole("button", { name: "Submit" }).click();
   await expect(page.getByLabel("Replay controls")).toBeVisible();
-  const replay = await sampleFrames(page, 2500);
+  const replay = await sampleFrames(page, 1000, 2500);
   await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 });
 
-  console.log(`idle:   ${fmt(idle)}\nreplay: ${fmt(replay)}\nboard swap: ${swapMs.toFixed(2)} ms`);
-  expect(idle.frames).toBeGreaterThan(10);
+  console.log(
+    `idle:   ${fmt(idle)}\nreplay: ${fmt(replay)}\nboard swap: ${swapMs.toFixed(2)} ms, ${swapGeometry} colony shapes`,
+  );
+  expect(idle.frames).toBeGreaterThanOrEqual(100);
   expect(idle.p50).toBeLessThan(TYPICAL_BUDGET_MS);
   expect(idle.p95).toBeLessThan(FRAME_MS);
   expect(replay.p50).toBeLessThan(TYPICAL_BUDGET_MS);
+  // Replay p95 is logged, not asserted: it is the 4–6 swap frames, which the line below
+  // measures directly, plus software-rasteriser stalls that say nothing about phones.
   expect(swapMs).toBeLessThan(SWAP_BUDGET_MS);
+  // Hardware-independent guard for the cost CI caught on PR #3: a board swap must not rebuild
+  // per-cell geometry (the old renderer rebuilt hundreds of polygons per swap: 444 on the test
+  // board). Only the static
+  // bounds rect remains, whatever the board size.
+  expect(swapGeometry).toBeLessThanOrEqual(1);
 });
