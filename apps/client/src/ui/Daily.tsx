@@ -31,7 +31,7 @@ export default function Daily({ onBack, onPlay }: Props) {
   return (
     <main class="panel-screen daily">
       <header class="screen-header">
-        <button class="btn btn-icon" onClick={onBack} aria-label="Back">
+        <button class="btn btn-icon" onClick={onBack} aria-label="Back" title="Back">
           ←
         </button>
         <h2>Daily Seed</h2>

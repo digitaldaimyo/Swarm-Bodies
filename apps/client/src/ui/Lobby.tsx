@@ -71,7 +71,7 @@ export function Lobby({ meta: initial, onBack, onStarted }: Props) {
   return (
     <main class="panel-screen">
       <header class="screen-header">
-        <button class="btn btn-icon" onClick={onBack} aria-label="Back">
+        <button class="btn btn-icon" onClick={onBack} aria-label="Back" title="Back">
           ←
         </button>
         <h2>Lobby</h2>

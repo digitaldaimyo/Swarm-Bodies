@@ -8,7 +8,13 @@ export interface Settings {
   haptics: boolean;
   reduceMotion: boolean;
   replaySpeed: 1 | 2;
+  /** Colourblind pattern overlays on colonies (SPEC §10.4, §10.8). */
+  patterns: boolean;
+  /** UI text scale, 1 to 1.5 (SPEC §10.8). */
+  textScale: number;
 }
+
+export const TEXT_SCALES = [1, 1.25, 1.5] as const;
 
 const KEY = "swarm.settings.v1";
 
@@ -22,6 +28,8 @@ function defaults(): Settings {
     haptics: true,
     reduceMotion: reduce,
     replaySpeed: 1,
+    patterns: false,
+    textScale: 1,
   };
 }
 

@@ -262,6 +262,7 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
     }).then((v) => {
       if (disposed) return v.destroy();
       view.current = v;
+      v.setPatterns(getSettings().patterns);
       v.reduceMotion = getSettings().reduceMotion;
       v.setViewer(me);
       if (bodyRef.current !== 0) v.showBody(bodyRef.current);
@@ -388,6 +389,9 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
     const id = setInterval(() => setNow(Date.now()), 500);
     return () => clearInterval(id);
   }, [session]);
+
+  // Colourblind patterns follow the setting live (SPEC §10.8).
+  useEffect(() => view.current?.setPatterns(settings.patterns), [settings.patterns]);
 
   useEffect(() => {
     audio.setPad(true, (session.state.turn - 1) / session.state.rules.turnLimit);
@@ -605,7 +609,12 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
             mutations={(seat) => state.players.find((p) => p.id === seat)?.mutations ?? []}
           />
         </div>
-        <button class="btn btn-icon menu-btn" aria-label="Leave match" onClick={onExit}>
+        <button
+          class="btn btn-icon menu-btn"
+          aria-label="Leave match"
+          title="Leave match"
+          onClick={onExit}
+        >
           ✕
         </button>
         <DominanceBar dominance={lastStats?.dominance ?? []} names={(s) => session.name(s)} />
@@ -667,6 +676,7 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
           <button
             class="btn btn-icon"
             aria-label={paused ? "Play" : "Pause"}
+            title={paused ? "Play" : "Pause"}
             onClick={() => {
               ctl.current.paused = !ctl.current.paused;
               setPaused(ctl.current.paused);
@@ -677,6 +687,7 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
           <button
             class="btn btn-icon"
             aria-label="Replay speed"
+            title="Replay speed"
             onClick={() => updateSettings({ replaySpeed: settings.replaySpeed === 1 ? 2 : 1 })}
           >
             {settings.replaySpeed}×
@@ -684,6 +695,7 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
           <button
             class="btn btn-icon"
             aria-label="Skip replay"
+            title="Skip replay"
             onClick={() => (ctl.current.skipped = true)}
           >
             ⏭
@@ -792,6 +804,7 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
           <button
             class={planner.draftPick ? "btn btn-icon draft-btn" : "btn btn-icon draft-btn pending"}
             aria-label={planner.draftPick ? "Mutation draft (picked)" : "Mutation draft waiting"}
+            title={planner.draftPick ? "Mutation draft (picked)" : "Mutation draft waiting"}
             onClick={() => setDraftClosedTurn(-1)}
           >
             ✦
@@ -800,6 +813,7 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
         <button
           class="btn btn-icon"
           aria-label="Undo last order"
+          title="Undo last order"
           disabled={planner.orders.length === 0 || phase !== "planning" || session.submitted}
           onClick={() => {
             planner.undo();
@@ -811,6 +825,7 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
         <button
           class="btn btn-icon"
           aria-label="Whole body"
+          title="Whole body"
           onClick={() => view.current?.showWholeBody()}
         >
           ⤢
@@ -819,6 +834,7 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
           <button
             class="btn btn-icon"
             aria-label="What happened last turn"
+            title="What happened last turn"
             onClick={() => setShowLog(true)}
           >
             ☰

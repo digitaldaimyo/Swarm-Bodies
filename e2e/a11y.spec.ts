@@ -79,3 +79,49 @@ test("match HUD and results pass axe (WCAG 2.1 AA)", async ({ page }) => {
   });
   await audit(page, "results");
 });
+
+test("HUD controls are reachable by keyboard on desktop (SPEC §10.8)", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/?e2e");
+  await page.getByRole("button", { name: "Play skirmish" }).click();
+  await page.getByRole("button", { name: "Start" }).click();
+  await page.waitForFunction(
+    () => (window as unknown as { __swarm?: { view?: unknown } }).__swarm?.view,
+  );
+  const reached = new Set<string>();
+  for (let i = 0; i < 30; i++) {
+    await page.keyboard.press("Tab");
+    const name = await page.evaluate(() => {
+      const el = document.activeElement as HTMLElement | null;
+      return el?.getAttribute("aria-label") ?? el?.textContent?.trim() ?? "";
+    });
+    reached.add(name);
+  }
+  // Undo is disabled (so skipped by Tab) until there is an order to undo.
+  for (const control of ["Leave match", "Whole body", "Submit"])
+    expect(
+      [...reached].some((n) => n.startsWith(control)),
+      control,
+    ).toBe(true);
+  expect([...reached].some((n) => n.startsWith("Orders"))).toBe(true);
+});
+
+test("text at 150% and colourblind patterns pass axe and fit the phone", async ({ page }) => {
+  await page.goto("/?e2e");
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("checkbox", { name: "Colourblind patterns" }).check();
+  await page.getByRole("radio", { name: "150%" }).click();
+  // Text grows; nothing scrolls sideways.
+  await expect
+    .poll(() =>
+      page.evaluate(() => parseFloat(getComputedStyle(document.querySelector("h2")!).fontSize)),
+    )
+    .toBeCloseTo(26 * 1.5, 0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await audit(page, "settings at 150%");
+  await page.reload();
+  await expect(page.getByRole("radio", { name: "150%" })).toHaveCount(0); // back on the title
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByRole("radio", { name: "150%" })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("checkbox", { name: "Colourblind patterns" })).toBeChecked();
+});

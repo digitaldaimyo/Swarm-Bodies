@@ -28,12 +28,14 @@ import {
   DEPOSIT_COLORS,
   desaturate,
   lighten,
+  PLAYER_PATTERNS,
   playerColor,
   SPACE,
   trailColor,
   veinScale,
 } from "./palette";
 import { SpritePool } from "./pool";
+import { drawPattern } from "./patterns";
 import { SystemLayer } from "./system";
 
 export interface ViewCallbacks {
@@ -90,6 +92,10 @@ export class MatchView {
   private bandPool!: SpritePool;
   private readonly blobLayer = new Container();
   private readonly sheenLayer = new Container();
+  /** Colourblind pattern overlays (SPEC §10.4, §10.8): one pool per seat pattern. */
+  private readonly patternLayer = new Container();
+  private patternPools: SpritePool[] = [];
+  private patterns = false;
   private glowPool!: SpritePool;
   private blobPool!: SpritePool;
   private sheenPool!: SpritePool;
@@ -223,6 +229,7 @@ export class MatchView {
       this.bandLayer,
       this.blobLayer,
       this.sheenLayer,
+      this.patternLayer,
     );
     this.world.addChild(
       this.goo,
@@ -272,6 +279,13 @@ export class MatchView {
     this.triPool = new SpritePool(this.triLayer, tri);
     this.blobPool = new SpritePool(this.blobLayer, disc);
     this.sheenPool = new SpritePool(this.sheenLayer, soft);
+    this.patternPools = PLAYER_PATTERNS.map(
+      (p) =>
+        new SpritePool(
+          this.patternLayer,
+          this.app.renderer.generateTexture({ target: drawPattern(p), resolution: 2 }),
+        ),
+    );
     BitmapFont.install({
       name: "swarm-numbers",
       style: {
@@ -689,6 +703,13 @@ export class MatchView {
   // ---------------------------------------------------------------------------------------
   // Board
 
+  /** Turns the colourblind pattern overlays on or off (Settings). */
+  setPatterns(on: boolean): void {
+    if (on === this.patterns) return;
+    this.patterns = on;
+    if (this.patternPools.length > 0) this.setBoard(this.colony);
+  }
+
   setState(state: GameState): void {
     this.state = state;
     this.setBoard(this.body.colony, state);
@@ -714,6 +735,7 @@ export class MatchView {
     this.bandPool.begin();
     this.blobPool.begin();
     this.sheenPool.begin();
+    for (const pool of this.patternPools) pool.begin();
     const colorOf = (c: Colony) =>
       c.connected ? playerColor(c.owner) : desaturate(playerColor(c.owner), 0.65);
     const radiusOf = (c: Colony) => (c.core ? 13 : 9) + 1.1 * c.biomass;
@@ -781,7 +803,12 @@ export class MatchView {
         lighten(colorOf(c), 0.7),
         c.connected ? shine : shine * 0.4,
       );
+      if (this.patterns) {
+        const pool = this.patternPools[c.owner % this.patternPools.length] as SpritePool;
+        pool.take(p.x, p.y, Math.max(8, r * 0.8), 0x061018, 0.72);
+      }
     });
+    for (const pool of this.patternPools) pool.end();
     this.glowPool.end();
     this.triPool.end();
     this.bandPool.end();

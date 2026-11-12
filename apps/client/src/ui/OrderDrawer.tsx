@@ -85,6 +85,7 @@ export function OrderDrawer({ open, orders, session, onToggle, onFocus, onRemove
               <button
                 class="btn btn-icon small"
                 aria-label={`Delete order ${i + 1}`}
+                title={`Delete order ${i + 1}`}
                 onClick={() => onRemove(i)}
               >
                 ✕

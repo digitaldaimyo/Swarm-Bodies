@@ -102,6 +102,9 @@ export function App() {
   useEffect(() => {
     document.documentElement.dataset["motion"] = settings.reduceMotion ? "reduce" : "full";
   }, [settings.reduceMotion]);
+  useEffect(() => {
+    document.documentElement.style.setProperty("--text-scale", String(settings.textScale));
+  }, [settings.textScale]);
 
   const busy = async (fn: () => Promise<void>) => {
     setLoading(true);

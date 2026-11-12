@@ -2,7 +2,7 @@ import { audio } from "../audio/sfx";
 import { useState } from "preact/hooks";
 import type { ReplayFile } from "../game/replay";
 import { Cosmetics } from "./Cosmetics";
-import { updateSettings, useSettings, type Settings } from "./settings";
+import { TEXT_SCALES, updateSettings, useSettings, type Settings } from "./settings";
 
 export function SettingsScreen({
   onBack,
@@ -31,7 +31,7 @@ export function SettingsScreen({
       <output>{Math.round(s[key] * 100)}</output>
     </label>
   );
-  const toggle = (key: "haptics" | "reduceMotion", label: string) => (
+  const toggle = (key: "haptics" | "reduceMotion" | "patterns", label: string) => (
     <label class="field toggle">
       <span>{label}</span>
       <input
@@ -44,7 +44,7 @@ export function SettingsScreen({
   return (
     <main class="panel-screen">
       <header class="screen-header">
-        <button class="btn btn-icon" onClick={onBack} aria-label="Back">
+        <button class="btn btn-icon" onClick={onBack} aria-label="Back" title="Back">
           ←
         </button>
         <h2>Settings</h2>
@@ -69,6 +69,26 @@ export function SettingsScreen({
                 onClick={() => updateSettings({ replaySpeed: v })}
               >
                 {v}×
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+      <section class="card">
+        <h3>Accessibility</h3>
+        {toggle("patterns", "Colourblind patterns")}
+        <div class="field">
+          <span id="text-size-label">Text size</span>
+          <div class="segmented small wide3" role="radiogroup" aria-labelledby="text-size-label">
+            {TEXT_SCALES.map((v) => (
+              <button
+                key={v}
+                role="radio"
+                aria-checked={s.textScale === v}
+                class={s.textScale === v ? "seg active" : "seg"}
+                onClick={() => updateSettings({ textScale: v })}
+              >
+                {Math.round(v * 100)}%
               </button>
             ))}
           </div>

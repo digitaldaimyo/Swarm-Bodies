@@ -59,6 +59,7 @@ export function BodyStrip({
         class={system ? "body-thumb system on" : "body-thumb system"}
         aria-pressed={system}
         aria-label="System view"
+        title="System view"
         onClick={onSystem}
       >
         <span class="sun" aria-hidden="true" />

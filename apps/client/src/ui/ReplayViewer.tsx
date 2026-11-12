@@ -72,7 +72,12 @@ export default function ReplayViewer({
           </span>
           {title && <span class="replay-title">{title}</span>}
         </div>
-        <button class="btn btn-icon menu-btn" aria-label="Close replay" onClick={onClose}>
+        <button
+          class="btn btn-icon menu-btn"
+          aria-label="Close replay"
+          title="Close replay"
+          onClick={onClose}
+        >
           ✕
         </button>
       </header>
@@ -80,6 +85,7 @@ export default function ReplayViewer({
         <button
           class="btn btn-icon"
           aria-label={paused ? "Play" : "Pause"}
+          title={paused ? "Play" : "Pause"}
           onClick={() => {
             ctl.current.paused = !ctl.current.paused;
             setPaused(ctl.current.paused);
@@ -90,6 +96,7 @@ export default function ReplayViewer({
         <button
           class="btn btn-icon"
           aria-label="Next turn"
+          title="Next turn"
           onClick={() => (ctl.current.skipped = true)}
         >
           ⏭

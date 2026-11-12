@@ -42,7 +42,7 @@ export function Setup({ defaultSeed, onBack, onStart }: Props) {
   return (
     <main class="panel-screen">
       <header class="screen-header">
-        <button class="btn btn-icon" onClick={onBack} aria-label="Back">
+        <button class="btn btn-icon" onClick={onBack} aria-label="Back" title="Back">
           ←
         </button>
         <h2>Skirmish</h2>
