@@ -242,7 +242,6 @@ export function isOneRegion(board: Board, terrain: readonly Terrain[]): boolean 
 // Star systems (SPEC §4.1–4.5)
 
 const SIZES: readonly BodySize[] = ["small", "medium", "large"];
-const TYPES: readonly BodyType[] = ["carbonaceous", "icy", "metallic", "irradiated"];
 const HOME_TYPES: readonly BodyType[] = ["carbonaceous", "icy"];
 
 function createSystem(config: GameConfig, rules: Rules, seed: string): GameState {
