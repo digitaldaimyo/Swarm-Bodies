@@ -96,6 +96,9 @@ importers:
       '@swarm/bot':
         specifier: workspace:*
         version: link:../../packages/bot
+      '@swarm/content':
+        specifier: workspace:*
+        version: link:../../packages/content
       '@swarm/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
@@ -162,6 +165,9 @@ importers:
       '@swarm/bot':
         specifier: workspace:*
         version: link:../../packages/bot
+      '@swarm/content':
+        specifier: workspace:*
+        version: link:../../packages/content
       '@swarm/sim':
         specifier: workspace:*
         version: link:../../packages/sim
