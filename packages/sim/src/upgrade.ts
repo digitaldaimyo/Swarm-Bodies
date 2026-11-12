@@ -1,3 +1,4 @@
+import { BASE_RULES, type Rules } from "./config";
 import type { Body, Colony, GameState, PlayerState } from "./types";
 
 /**
@@ -10,6 +11,7 @@ export function upgradeState(stored: GameState): GameState {
   const s = stored as Partial<GameState> & GameState;
   return {
     ...s,
+    rules: upgradeRules(s.rules),
     bodies: s.bodies.map((raw) => {
       const b = raw as Partial<Body> & Body;
       return {
@@ -40,5 +42,21 @@ export function upgradeState(stored: GameState): GameState {
     spores: s.spores ?? [],
     nextSporeId: s.nextSporeId ?? 1,
     schedule: s.schedule ?? [],
+  };
+}
+
+/**
+ * Rules stored before M6 lack the newer fields. Missing ones take today's defaults, except where
+ * that would change how an old game plays on: it gets no drafts, and flares behave as before.
+ */
+function upgradeRules(stored: Rules): Rules {
+  const r = stored as Partial<Rules>;
+  return {
+    ...BASE_RULES,
+    ...(r.draftThresholds === undefined ? { draftThresholds: [] } : {}),
+    ...(r.flareMinBiomass === undefined ? { flareMinBiomass: 0 } : {}),
+    ...stored,
+    strains: { ...BASE_RULES.strains, ...(r.strains ?? {}) },
+    mutations: { ...BASE_RULES.mutations, ...(r.mutations ?? {}) },
   };
 }

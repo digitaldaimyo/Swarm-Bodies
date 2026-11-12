@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
-import { getBoard, hashState, playerRules, type GameState, type Hex, type Order } from "@swarm/sim";
+import {
+  getBoard,
+  hashState,
+  playerRules,
+  type GameState,
+  type Hex,
+  type MutationId,
+  type Order,
+} from "@swarm/sim";
 import { audio } from "../audio/sfx";
 import type { Point } from "../game/layout";
 import type { MatchSession, SeatStatus, TurnRecord } from "../game/match-session";
@@ -7,6 +15,7 @@ import { previewPath } from "../game/planner";
 import { buildTimeline, describeEvents, type Frame, type LogEntry } from "../game/timeline";
 import { MatchView } from "../render/view";
 import { BodyStrip, ForecastStrip } from "./SystemHud";
+import { DraftModal, MutationGlyphs } from "./DraftModal";
 import { PLAYER_CSS } from "../render/palette";
 import { OrderDrawer } from "./OrderDrawer";
 import { RadialMenu } from "./RadialMenu";
@@ -60,6 +69,8 @@ export default function Match({ session, onSave, onExit, onFinished }: Props) {
   } | null>(null);
   const launchRef = useRef<typeof launch>(null);
   const [alerts, setAlerts] = useState<ReadonlySet<number>>(new Set());
+  /** The turn whose draft offer the player closed ("Decide later"); reopened from the HUD. */
+  const [draftClosedTurn, setDraftClosedTurn] = useState(-1);
   const multi = session.state.bodies.filter((b) => b.orbit).length > 1;
   const [info, setInfo] = useState<{ text: string; at: Point } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -460,6 +471,9 @@ export default function Match({ session, onSave, onExit, onFinished }: Props) {
 
   const { planner, state } = session;
   const myState = state.players.find((p) => p.id === me);
+  const draft = myState?.draft ?? null;
+  const draftOpen =
+    !!draft && phase === "planning" && !session.submitted && draftClosedTurn !== state.turn;
   const cost = planner.plannedCost;
   const over = cost > planner.banked;
   const lastStats = session.stats[session.stats.length - 1];
@@ -542,7 +556,10 @@ export default function Match({ session, onSave, onExit, onFinished }: Props) {
             remaining={remaining}
             total={session.turnSeconds}
           />
-          <ReadyMarkers seats={seats} />
+          <ReadyMarkers
+            seats={seats}
+            mutations={(seat) => state.players.find((p) => p.id === seat)?.mutations ?? []}
+          />
         </div>
         <button class="btn btn-icon menu-btn" aria-label="Leave match" onClick={onExit}>
           ✕
@@ -550,6 +567,20 @@ export default function Match({ session, onSave, onExit, onFinished }: Props) {
         <DominanceBar dominance={lastStats?.dominance ?? []} names={(s) => session.name(s)} />
       </header>
 
+      {draftOpen && draft && (
+        <DraftModal
+          options={draft.options}
+          picked={planner.draftPick}
+          index={draft.index + 1}
+          onPick={(m) => {
+            const r = planner.pickDraft(m);
+            if (!r.ok) return flash(r.message);
+            refreshPlan();
+            setDraftClosedTurn(state.turn);
+          }}
+          onLater={() => setDraftClosedTurn(state.turn)}
+        />
+      )}
       {radial && phase === "planning" && (
         <RadialMenu
           session={session}
@@ -681,6 +712,15 @@ export default function Match({ session, onSave, onExit, onFinished }: Props) {
         >
           Orders <span class="badge">{planner.orders.length}</span>
         </button>
+        {draft && phase === "planning" && !session.submitted && (
+          <button
+            class={planner.draftPick ? "btn btn-icon draft-btn" : "btn btn-icon draft-btn pending"}
+            aria-label={planner.draftPick ? "Mutation draft (picked)" : "Mutation draft waiting"}
+            onClick={() => setDraftClosedTurn(-1)}
+          >
+            ✦
+          </button>
+        )}
         <button
           class="btn btn-icon"
           aria-label="Undo last order"
@@ -740,7 +780,13 @@ function frameSound(f: Frame): void {
 }
 
 /** Ready markers per player (SPEC §10.2), with bot takeover and connection shown to everyone. */
-function ReadyMarkers({ seats }: { seats: SeatStatus[] }) {
+function ReadyMarkers({
+  seats,
+  mutations,
+}: {
+  seats: SeatStatus[];
+  mutations(seat: number): readonly MutationId[];
+}) {
   return (
     <div class="ready" aria-label="Players">
       {seats.map((s) => {
@@ -753,6 +799,7 @@ function ReadyMarkers({ seats }: { seats: SeatStatus[] }) {
               style={{ "--c": PLAYER_CSS[s.seat % PLAYER_CSS.length] }}
             />
             {s.botControlled && <span class="bot-badge">BOT</span>}
+            <MutationGlyphs ids={mutations(s.seat)} />
           </span>
         );
       })}

@@ -8,6 +8,7 @@ import {
   validateOrder,
   type GameState,
   type Hex,
+  type MutationId,
   type Order,
   type PlayerId,
   type ValidationResult,
@@ -43,6 +44,25 @@ export class Planner {
   remove(index: number): void {
     this.orders = this.orders.filter((_, i) => i !== index);
     this.revalidate();
+  }
+
+  /** The pending draft pick, if one is queued (it is always the first order). */
+  get draftPick(): MutationId | null {
+    const first = this.orders[0];
+    return first?.type === "draft" ? first.mutation : null;
+  }
+
+  /**
+   * Picks a mutation from the pending draft (SPEC §7.2): the pick goes first in the set, so every
+   * other order is judged with it in effect; orders it makes invalid are dropped.
+   */
+  pickDraft(mutation: MutationId): ValidationResult {
+    const order: Order = { type: "draft", mutation };
+    const r = validateOrder(this.state, this.player, order, []);
+    if (!r.ok) return r;
+    this.orders = [order, ...this.orders.filter((o) => o.type !== "draft")];
+    this.revalidate();
+    return r;
   }
 
   undo(): void {

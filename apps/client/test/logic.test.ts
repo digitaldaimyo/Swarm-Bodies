@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createGame, hashState, resolveTurn, type Hex } from "@swarm/sim";
+import { applyDraftPick, createGame, hashState, resolveTurn, type Hex } from "@swarm/sim";
 import { chooseOrders } from "@swarm/bot";
 import { cellAt, grow, reinforce, scenario } from "@swarm/sim/testing";
 import { hexToPixel, pixelToHex } from "../src/game/layout";
@@ -273,5 +273,41 @@ describe("projected income (M5)", () => {
       }
       s = state;
     }
+  });
+});
+
+describe("draft picks in the planner (M6)", () => {
+  it("puts the pick first, applies it to later orders, and replaces an earlier pick", () => {
+    const base = scenario({
+      cells: [
+        { q: 0, r: 0, owner: 0, biomass: 5, core: true },
+        { q: 1, r: 0, owner: 0, biomass: 3 },
+        { q: 2, r: 0, owner: 1, biomass: 3 },
+        { q: -8, r: 0, owner: 1, biomass: 5, core: true },
+      ],
+    });
+    const s = {
+      ...base,
+      players: base.players.map((p) =>
+        p.id === 0
+          ? { ...p, draft: { index: 0, options: ["acid_tendrils", "quorum", "dormancy"] as const } }
+          : p,
+      ),
+    } as typeof base;
+    const planner = new Planner(s, 0);
+    expect(planner.add(grow([0, 0], [-1, 0])).ok).toBe(true);
+    expect(planner.pickDraft("quorum").ok).toBe(true);
+    expect(planner.orders[0]).toEqual({ type: "draft", mutation: "quorum" });
+    expect(planner.pickDraft("acid_tendrils").ok).toBe(true);
+    expect(planner.orders.filter((o) => o.type === "draft")).toHaveLength(1);
+    expect(planner.draftPick).toBe("acid_tendrils");
+    expect(planner.orders).toHaveLength(2);
+    // Acid Tendrils is in effect for the preview of an assault planned after the pick.
+    const preview = previewPath(applyDraftPick(s, 0, "acid_tendrils"), 0, 0, [
+      { q: 1, r: 0 },
+      { q: 2, r: 0 },
+    ]);
+    expect(preview[0]).toMatchObject({ kind: "assault", outcome: "capture" });
+    expect(planner.pickDraft("thick_veins" as never).ok).toBe(false);
   });
 });

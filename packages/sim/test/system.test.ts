@@ -767,3 +767,33 @@ describe("stored states from before M5", () => {
     expect(upgradeState(fresh)).toEqual(fresh);
   });
 });
+
+describe("stored states from before M6", () => {
+  it("keep their rules and gain no drafts", () => {
+    const fresh = createGame({ mode: "system", playerCount: 2 }, "upgrade-m6");
+    const old = JSON.parse(JSON.stringify(fresh)) as GameState;
+    const rules = old.rules as unknown as Record<string, unknown>;
+    for (const k of [
+      "draftThresholds",
+      "draftOptions",
+      "mutationPool",
+      "mutations",
+      "flareMinBiomass",
+      "minDepositYield",
+    ])
+      delete rules[k];
+    for (const p of old.players) {
+      delete (p as Partial<typeof p>).mutations;
+      delete (p as Partial<typeof p>).draft;
+      delete (p as Partial<typeof p>).draftsOffered;
+    }
+    const up = upgradeState(old);
+    expect(up.rules.draftThresholds).toEqual([]);
+    expect(up.rules.flareMinBiomass).toBe(0);
+    expect(up.rules.mutations).toEqual(BASE_RULES.mutations);
+    expect(up.players.every((p) => p.mutations.length === 0 && p.draft === null)).toBe(true);
+    let s = up;
+    for (let t = 0; t < 8; t++) s = resolveTurn(s, {}).state;
+    expect(s.players.every((p) => p.draft === null)).toBe(true);
+  });
+});

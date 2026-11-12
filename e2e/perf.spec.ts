@@ -154,6 +154,9 @@ async function busyGame(
     null,
     { timeout: 30_000, polling: 100 },
   );
+  // A pending mutation draft opens a modal over the board: set it aside before measuring.
+  const later = page.getByRole("button", { name: "Decide later" });
+  if (await later.isVisible()) await later.click();
 }
 
 /** A replay board swap timed directly (median of 7, redraw plus render). */

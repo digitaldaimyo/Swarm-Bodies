@@ -171,3 +171,63 @@ test("system skirmish: body strip, System view, launches, and a finished game (M
   expect(launches).toBeGreaterThan(0);
   expect(errors).toEqual([]);
 });
+
+test("mutation draft: the modal offers three cards, inspect then pick (M6)", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+  await page.goto("/?e2e");
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.getByRole("button", { name: "Play skirmish" }).click();
+  await page.getByRole("radio", { name: /^Predator/ }).click();
+  await page.getByRole("radio", { name: "Hard bot" }).click();
+  await page.getByRole("textbox").fill("draft-1");
+  await page.getByRole("button", { name: "Start" }).click();
+  type Hook = {
+    autoplay: boolean;
+    phase: string;
+    turn: number;
+    session: { state: { players: { draft: unknown }[] }; planner: { orders: { type: string }[] } };
+  };
+  const hook = () => (window as unknown as { __swarm: Hook }).__swarm;
+  await page.waitForFunction(
+    () => (window as unknown as { __swarm?: { view?: unknown } }).__swarm?.view,
+  );
+  // The scripted player grows until our first draft (40 total biomass) is offered.
+  for (let i = 0; i < 40; i++) {
+    if (
+      await page.evaluate(
+        () => !!(window as unknown as { __swarm: Hook }).__swarm.session.state.players[0]!.draft,
+      )
+    )
+      break;
+    const turn = await page.evaluate(() => (window as unknown as { __swarm: Hook }).__swarm.turn);
+    await page.evaluate(() => ((window as unknown as { __swarm: Hook }).__swarm.autoplay = true));
+    await page.waitForFunction(
+      (t) => (window as unknown as { __swarm: Hook }).__swarm.turn > t,
+      turn,
+    );
+    await page.evaluate(() => ((window as unknown as { __swarm: Hook }).__swarm.autoplay = false));
+    await page.waitForFunction(
+      () => (window as unknown as { __swarm: Hook }).__swarm.phase === "planning",
+    );
+  }
+  void hook;
+  const dialog = page.getByRole("dialog", { name: /Mutation draft 1 of 3/ });
+  await expect(dialog).toBeVisible();
+  const cards = dialog.locator(".draft-card");
+  await expect(cards).toHaveCount(3);
+  await cards.nth(2).click();
+  await expect(cards.nth(2)).toContainText("Tap again to pick");
+  await cards.nth(2).click();
+  await expect(dialog).toBeHidden();
+  const first = await page.evaluate(
+    () => (window as unknown as { __swarm: Hook }).__swarm.session.planner.orders[0]?.type,
+  );
+  expect(first).toBe("draft");
+  await page.getByRole("button", { name: "Submit" }).click();
+  await expect(page.getByLabel("What happened")).toContainText("You drafted");
+  await expect(page.getByLabel(/Mutations: /).first()).toBeVisible();
+  expect(errors).toEqual([]);
+});

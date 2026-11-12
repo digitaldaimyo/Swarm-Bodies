@@ -86,7 +86,7 @@ export class SkirmishSession extends SessionBase implements MatchSession {
   get description(): string {
     const n = this.state.players.length - 1;
     const map = this.state.mode === "system" ? "System" : "Single Rock";
-    return `${map} · ${n} ${this.settings.difficulty === "easy" ? "Easy" : "Normal"} bot${n === 1 ? "" : "s"} · seed ${this.settings.seed}`;
+    return `${map} · ${n} ${{ easy: "Easy", normal: "Normal", hard: "Hard" }[this.settings.difficulty]} bot${n === 1 ? "" : "s"} · seed ${this.settings.seed}`;
   }
 
   get submitted(): boolean {
