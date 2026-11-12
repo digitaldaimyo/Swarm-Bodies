@@ -29,6 +29,8 @@ export const TARGETS = {
   mutationMaxPermille: 580,
   /** Picks needed before a mutation's win rate is judged. */
   mutationMinPicks: 30,
+  /** Games per strain pair below which the target lines are only indicative. */
+  judgeGamesPerPair: 100,
 } as const;
 
 export interface PairResult {
@@ -255,7 +257,14 @@ export function formatMatrix(m: MatrixReport): string {
     }),
   ];
   const { targets, gate } = checkTargets(m);
-  lines.push("  targets (SPEC §12.4):");
+  // Below ~100 games a pair, one pair's rate moves several points between seed sets: the
+  // targets are judged on large batches (DECISIONS #70); the CI gate is the enforced check.
+  const perPair = m.pairs.length === 0 ? 0 : m.games / m.pairs.length;
+  lines.push(
+    perPair >= TARGETS.judgeGamesPerPair
+      ? "  targets (SPEC §12.4):"
+      : `  targets (SPEC §12.4), indicative only at ${Math.round(perPair)} games a pair (judge on ${TARGETS.judgeGamesPerPair}+):`,
+  );
   for (const t of [...targets, gate]) lines.push(`    ${t.ok ? "✓" : "✗"} ${t.name}: ${t.detail}`);
   lines.push(`  errors: ${m.errors}, orders rejected at resolution: ${m.rejectedOrders}`);
   return lines.join("\n");
