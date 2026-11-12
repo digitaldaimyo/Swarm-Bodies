@@ -1,5 +1,6 @@
 import { openDatabase } from "./db";
 import { buildApp } from "./app";
+import { Progression } from "./progression";
 import { GameEngine, realScheduler } from "./engine";
 import { webPushFromEnv } from "./push";
 
@@ -21,13 +22,16 @@ const engineLog = {
       }),
     ),
 };
+const clock = { now: () => Date.now() };
+const progression = new Progression(database.db, { clock, log: engineLog });
 const engine = new GameEngine(database.db, {
-  clock: { now: () => Date.now() },
+  clock,
   scheduler: realScheduler(),
   push: webPushFromEnv(process.env),
   log: engineLog,
+  progression,
 });
-const app = await buildApp({ engine, logger: process.env["NODE_ENV"] !== "test" });
+const app = await buildApp({ engine, progression, logger: process.env["NODE_ENV"] !== "test" });
 
 // Catch up on anything that expired while the server was down, then keep sweeping (SPEC §9.4).
 await engine.restore();
