@@ -110,7 +110,7 @@ describe.skipIf(!databaseAvailable)("REST (SPEC §9.4)", () => {
     const state = (await client.type("gameState")).state as GameState;
     expect(state.mode).toBe("system");
     expect(state.players).toHaveLength(3);
-    expect(state.bodies.length).toBeGreaterThanOrEqual(5);
+    expect(state.bodies.length).toBe(3 + state.rules.systemExtraBodies);
     expect(new Set(state.players.map((p) => p.home.body)).size).toBe(3);
     client.close();
   });

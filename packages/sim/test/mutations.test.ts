@@ -92,15 +92,16 @@ describe("SPEC §7.1 Sporer", () => {
     const cells: CellSpec[] = [1, 2, 3, 4].map((q) => ({ q: q - 2, r: 1, owner: 0, biomass: 6 }));
     const s = sporerSystem(["sporer", "base"], [{ q: 1, r: 0, owner: 0, biomass: 6 }, ...cells]);
     expect(playerRules(s, 0)).toMatchObject({
-      fruitCost: 6,
+      fruitCost: BASE_RULES.strains.sporer.fruitCost,
       fruitMatureTurns: 1,
       maxFruiting: 3,
       landingBiomass: 2,
     });
     const f = (q: number, r: number): Order => ({ type: "fruit", body: 0, cell: { q, r } });
-    expect(validateOrder(s, 0, f(1, 0), [])).toEqual({ ok: true, cost: 6 });
+    const cost = playerRules(s, 0).fruitCost;
+    expect(validateOrder(s, 0, f(1, 0), [])).toEqual({ ok: true, cost });
     const three = [f(1, 0), f(-1, 1), f(0, 1)];
-    expect(validateOrderSet(s, 0, three)).toEqual({ ok: true, cost: 18 });
+    expect(validateOrderSet(s, 0, three)).toEqual({ ok: true, cost: 3 * cost });
     expect(validateOrder(s, 0, f(1, 1), three)).toMatchObject({ reason: "tooManyFruiting" });
     const { state } = resolveTurn(s, { 0: [f(1, 0)] });
     // Started at 1 in phase 4, advanced in phase 11: ready to launch next turn.
@@ -144,15 +145,16 @@ describe("SPEC §7.3 mutations", () => {
     expect(playerRules(s, 0).mutations).toEqual(["thick_veins", "acid_tendrils", "quorum"]);
   });
 
-  it("acid_tendrils: +2 attack on assaults", () => {
+  it("acid_tendrils: extra attack on assaults (M6: +1)", () => {
     const { events } = resolveTurn(assault({ mutations: ["acid_tendrils"] }), { 0: [ASSAULT] });
-    expect(ofType(events, "CellCaptured")[0]).toMatchObject({ attack: 5, biomass: 2 });
+    const bonus = BASE_RULES.mutations.acidAttack;
+    expect(ofType(events, "CellCaptured")[0]).toMatchObject({ attack: 3 + bonus, biomass: bonus });
   });
 
   it("acid_tendrils stacks with Predator", () => {
     const s = assault({ strain: "predator", mutations: ["acid_tendrils"] });
     expect(ofType(resolveTurn(s, { 0: [ASSAULT] }).events, "CellCaptured")[0]).toMatchObject({
-      attack: 6,
+      attack: 3 + 1 + BASE_RULES.mutations.acidAttack,
     });
   });
 
@@ -204,13 +206,14 @@ describe("SPEC §7.3 mutations", () => {
     expect(incomeFor(s(50), 1)).toBe(2);
   });
 
-  it("dormancy: cut-off cells skip starvation for 3 turns", () => {
+  it("dormancy: cut-off cells skip starvation for their first disconnected turns", () => {
     let s = scenario({
       cells: [P0_CORE, { q: 5, r: 0, owner: 0, biomass: 2 }, P1_CORE],
       mutations: [["dormancy"], []],
     });
     const seen: string[] = [];
-    for (let t = 0; t < 4; t++) {
+    const grace = BASE_RULES.mutations.dormancyTurns;
+    for (let t = 0; t <= grace; t++) {
       const r = resolveTurn(s, {});
       seen.push(
         ofType(r.events, "Dormant").length > 0
@@ -221,8 +224,8 @@ describe("SPEC §7.3 mutations", () => {
       );
       s = r.state;
     }
-    expect(seen).toEqual(["dormant", "dormant", "dormant", "starved"]);
-    expect(cellAt(s, 5, 0)).toMatchObject({ biomass: 1, cut: 4 });
+    expect(seen).toEqual([...Array<string>(grace).fill("dormant"), "starved"]);
+    expect(cellAt(s, 5, 0)).toMatchObject({ biomass: 1, cut: grace + 1 });
   });
 
   it("dormancy: reconnecting resets the count", () => {
@@ -306,7 +309,7 @@ describe("SPEC §7.3 mutations", () => {
     expect(ofType(shielded.events, "Irradiated")).toEqual([]);
   });
 
-  it("regeneration: on even turns, connected cells below 3 gain 1", () => {
+  it("regeneration: every few turns, connected thin cells regrow", () => {
     const s = (turn: number) =>
       scenario({
         cells: [
@@ -318,11 +321,12 @@ describe("SPEC §7.3 mutations", () => {
         mutations: [["regeneration"], []],
         turn,
       });
-    const even = resolveTurn(s(2), {});
-    expect(cellAt(even.state, 1, 0)).toMatchObject({ biomass: 2 });
-    expect(cellAt(even.state, 2, 0)).toMatchObject({ biomass: 3 });
-    expect(ofType(even.events, "Regenerated")).toHaveLength(1);
-    expect(cellAt(resolveTurn(s(3), {}).state, 1, 0)).toMatchObject({ biomass: 1 });
+    const { regenerationEvery: every, regenerationBelow: below } = BASE_RULES.mutations;
+    const on = resolveTurn(s(every * 2), {});
+    expect(cellAt(on.state, 1, 0)).toMatchObject({ biomass: 2 });
+    expect(cellAt(on.state, 2, 0)).toMatchObject({ biomass: 3 });
+    expect(ofType(on.events, "Regenerated")).toHaveLength(below > 1 ? 1 : 0);
+    expect(cellAt(resolveTurn(s(every * 2 + 1), {}).state, 1, 0)).toMatchObject({ biomass: 1 });
   });
 
   it("thick_veins: cells next to an own core defend at +2", () => {
@@ -398,7 +402,9 @@ describe("SPEC §7.2 drafts", () => {
     expect(ofType(r.events, "DraftPicked")).toEqual([
       { type: "DraftPicked", player: 0, mutation: "acid_tendrils", auto: false },
     ]);
-    expect(ofType(r.events, "CellCaptured")[0]).toMatchObject({ attack: 5 });
+    expect(ofType(r.events, "CellCaptured")[0]).toMatchObject({
+      attack: 3 + BASE_RULES.mutations.acidAttack,
+    });
     expect(r.state.players[0]).toMatchObject({ mutations: ["acid_tendrils"], draft: null });
   });
 

@@ -91,7 +91,7 @@ const INFO: Record<MutationId, Omit<MutationInfo, "id">> = {
   regeneration: {
     name: "Regeneration",
     glyph: "✚",
-    effect: `On even turns, connected cells below biomass ${n.regenerationBelow} gain ${signed(n.regenerationAmount)}.`,
+    effect: `${n.regenerationEvery === 2 ? "On even turns" : `Every ${n.regenerationEvery} turns`}, connected cells below biomass ${n.regenerationBelow} gain ${signed(n.regenerationAmount)}.`,
     flavour: "Every wound closes.",
     note: "Biofilms regrow quickly after damage because surviving cells are fed through shared channels in the matrix.",
   },

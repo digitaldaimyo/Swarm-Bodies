@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  BASE_RULES,
   createGame,
   diskCellCount,
   getBoard,
@@ -61,7 +62,7 @@ describe("SPEC §4.1–4.4 Single Rock generation", () => {
     const body = s.bodies[0]!;
     const board = getBoard(body.radius);
     for (const p of s.players) {
-      expect(p.nutrients).toBe(10);
+      expect(p.nutrients).toBe(BASE_RULES.startNutrients);
       const core = body.colony[board.indexOf(p.home.cell.q, p.home.cell.r)];
       expect(core).toEqual({
         owner: p.id,

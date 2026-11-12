@@ -69,10 +69,24 @@ export function greedyPlan(
   const easy = difficulty === "easy";
   const ignoreThreats = easy && rng.int(2) === 0;
   const analysis = analyse(state, playerId, weights);
+  // When nutrients outrun what 12 orders can spend, the order limit is the binding constraint:
+  // rank by value per order instead of value per N (SPEC §5.1 order limit).
+  const banked = state.players.find((p) => p.id === playerId)?.nutrients ?? 0;
+  const rich = banked >= state.rules.maxOrdersPerSet * RICH_N_PER_ORDER;
   const candidates = generateCandidates(analysis, { ignoreThreats, sever: !easy })
     .filter((c) => c.value > 0)
-    .sort(byRatio);
+    .sort(rich ? byValuePerOrder : byRatio);
   return select(state, playerId, candidates, easy ? rng : null);
+}
+
+/** N per order above which a bot counts as rich (orders, not nutrients, limit it). */
+const RICH_N_PER_ORDER = 6;
+
+function byValuePerOrder(a: Candidate, b: Candidate): number {
+  const ra = a.value / Math.max(1, a.orders.length);
+  const rb = b.value / Math.max(1, b.orders.length);
+  if (ra !== rb) return rb - ra;
+  return byRatio(a, b);
 }
 
 function byRatio(a: Candidate, b: Candidate): number {

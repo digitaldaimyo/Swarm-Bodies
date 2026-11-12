@@ -401,7 +401,8 @@ describe("SPEC §3 victory", () => {
         if (Math.abs(q) + Math.abs(r) + Math.abs(q + r) <= 14)
           cells.push({ q, r, owner: 0, biomass: 2, core: q === 0 && r === 0 });
     cells.push({ q: -9, r: 0, owner: 1, biomass: 5, core: true });
-    return scenario({ cells });
+    // These tests reason about the spec's 60% threshold (M6 ships 50%, DECISIONS).
+    return scenario({ cells, rules: { dominanceWinPermille: 600 } });
   };
 
   it("dominance ≥ 60% at the end of 2 consecutive turns wins", () => {

@@ -69,6 +69,7 @@ function generateReinforce(
   if (opts.ignoreThreats) return;
   const { state, me, weights } = a;
   const { body, board } = ba;
+  const burns = body.type === "irradiated" && !playerRules(state, me).irradiationImmune;
   for (let i = 0; i < body.colony.length; i++) {
     const c = body.colony[i];
     if (!c || c.owner !== me || !c.connected) continue;
@@ -76,7 +77,24 @@ function generateReinforce(
       playerRules(state, me).reinforceAmount,
       maxBiomassFor(state, c, body) - c.biomass,
     );
-    if (add <= 0 || (ba.threatReinforced[i] as number) === 0) continue;
+    if (add <= 0) continue;
+    const h0 = board.cells[i] as Hex;
+    // Irradiated bodies burn biomass-1 cells at the end of the turn (fresh ones get one turn's
+    // grace): reinforcing them now is what keeps the body (SPEC §4.3).
+    if (burns && c.biomass === 1 && !c.core) {
+      out.push({
+        kind: "reinforce",
+        orders: [{ type: "reinforce", body: body.id, cell: { q: h0.q, r: h0.r } }],
+        value: lossValue(a, ba, i, c) * weights.burn,
+        cost: state.rules.reinforceCost,
+        claims: [],
+        start: null,
+        reinforces: `${body.id}:${i}`,
+        key: `rb:${body.id}:${i}`,
+      });
+      continue;
+    }
+    if ((ba.threatReinforced[i] as number) === 0) continue;
     const def = ba.defense[i] as number;
     const t = ba.threat[i] as number;
     const tr = ba.threatReinforced[i] as number;

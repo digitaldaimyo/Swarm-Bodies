@@ -89,7 +89,9 @@ export interface MutationNumbers {
   quorumNeighbours: number;
   quorumAttack: number;
   quorumDefense: number;
-  /** Regeneration: on even turns, connected cells below this biomass gain `regenerationAmount`. */
+  /** Regeneration: every `regenerationEvery` turns, connected cells below this biomass gain
+   * `regenerationAmount`. */
+  regenerationEvery: number;
   regenerationBelow: number;
   regenerationAmount: number;
   deepReservesPerCore: number;
@@ -160,6 +162,13 @@ export interface Rules {
   orbitPeriodMax: number;
   launchRange: number;
   sporeSpeed: number;
+  /** System generation draws up to this many orbit layouts looking for reachable homes. */
+  orbitAttempts: number;
+  /** Every home must have a window to a neutral body by this turn ... */
+  homeFirstWindowMax: number;
+  /** ... and on at least this many of the first `windowHorizon` turns. */
+  homeWindowTurnsMin: number;
+  windowHorizon: number;
   /** SPEC §6 */
   landingBiomass: number;
   /** SPEC §5.1 Fruit */
@@ -174,6 +183,8 @@ export interface Rules {
   flareEveryMin: number;
   flareEveryMax: number;
   flareLoss: number;
+  /** Flares never take a non-core cell below this biomass (0: cells hit at 0 are removed). */
+  flareMinBiomass: number;
   cometEveryMin: number;
   cometEveryMax: number;
   cometYield: number;
@@ -190,7 +201,8 @@ export interface Rules {
 
 export const BASE_RULES: Rules = {
   turnLimit: 40,
-  dominanceWinPermille: 600,
+  // M6 balance (SPEC §12.4, DECISIONS): 60% was rarely reached once two colonies split a system.
+  dominanceWinPermille: 500,
   dominanceWinConsecutiveTurns: 2,
 
   bodyRadius: { small: 5, medium: 7, large: 9 },
@@ -210,7 +222,7 @@ export const BASE_RULES: Rules = {
   startCoreBiomass: 5,
   startAdjacentCells: 2,
   startAdjacentBiomass: 2,
-  startNutrients: 10,
+  startNutrients: 20,
 
   maxOrdersPerSet: 12,
   growReach: 3,
@@ -234,15 +246,16 @@ export const BASE_RULES: Rules = {
 
   strains: {
     base: {},
+    // Numbers from M6 balance runs, see DECISIONS (SPEC §7.1 lists the launch values).
     // Fast, thin, everywhere.
-    swarmer: { growReach: 4, entryCostDelta: -1, maxBiomass: 7 },
+    swarmer: { growReach: 4, maxBiomass: 7 },
     // Slow, dense, immovable.
-    biofilm: { growReach: 2, maxBiomass: 12, defenseSupport: 2, reinforceAmount: 4 },
+    biofilm: { growReach: 2, maxBiomass: 12, defenseSupport: 1, reinforceAmount: 4, fruitCost: 14 },
     // Eats the enemy.
-    predator: { assaultBonus: 1, captureFeeds: true, depositYieldDelta: -1 },
+    predator: { assaultBonus: 1, captureFeeds: true, depositYieldDelta: -1, growReach: 4 },
     // Spreads across the system.
     sporer: {
-      fruitCost: 6,
+      fruitCost: 7,
       fruitMatureTurns: 1,
       maxFruiting: 3,
       launchRangeBonus: 2,
@@ -250,8 +263,10 @@ export const BASE_RULES: Rules = {
     },
   },
 
-  systemExtraBodies: 2,
-  systemMinBodies: 4,
+  // One neutral body per player fewer than the spec's +2: two players then share the contested
+  // neutral instead of each taking their own (DECISIONS).
+  systemExtraBodies: 1,
+  systemMinBodies: 3,
   systemMaxBodies: 7,
   orbitRadiusMin: 3,
   orbitRadiusMax: 12,
@@ -259,6 +274,10 @@ export const BASE_RULES: Rules = {
   orbitPeriodMax: 24,
   launchRange: 6,
   sporeSpeed: 3,
+  orbitAttempts: 32,
+  homeFirstWindowMax: 4,
+  homeWindowTurnsMin: 8,
+  windowHorizon: 20,
   landingBiomass: 3,
   fruitCost: 10,
   fruitMinBiomass: 5,
@@ -268,7 +287,8 @@ export const BASE_RULES: Rules = {
   irradiatedDepositBonusPermille: 500,
   flareEveryMin: 7,
   flareEveryMax: 10,
-  flareLoss: 2,
+  flareLoss: 1,
+  flareMinBiomass: 1,
   cometEveryMin: 10,
   cometEveryMax: 14,
   cometYield: 5,
@@ -279,8 +299,8 @@ export const BASE_RULES: Rules = {
   draftOptions: 3,
   mutationPool: [...MUTATION_IDS],
   mutations: {
-    acidAttack: 2,
-    dormancyTurns: 3,
+    acidAttack: 1,
+    dormancyTurns: 5,
     thickVeinsDefense: 2,
     chemotaxisCostDelta: -1,
     chemotaxisReach: 1,
@@ -291,7 +311,8 @@ export const BASE_RULES: Rules = {
     quorumNeighbours: 3,
     quorumAttack: 1,
     quorumDefense: 1,
-    regenerationBelow: 3,
+    regenerationEvery: 3,
+    regenerationBelow: 2,
     regenerationAmount: 1,
     deepReservesPerCore: 1,
     deepReservesInterestPermille: 100,

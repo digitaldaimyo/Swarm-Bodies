@@ -30,6 +30,8 @@ export interface BotWeights {
   fruitFaith: number;
   /** Worth of each N a Predator capture pays. */
   feed: number;
+  /** Share of a cell's value saved by reinforcing it before Irradiated burns it. */
+  burn: number;
 }
 
 export const NORMAL_WEIGHTS: BotWeights = {
@@ -45,6 +47,7 @@ export const NORMAL_WEIGHTS: BotWeights = {
   expansion: 0.6,
   fruitFaith: 0.6,
   feed: 0.5,
+  burn: 0.6,
 };
 
 export type Personality = "balanced" | "aggressive" | "greedy" | "expansionist" | "saboteur";

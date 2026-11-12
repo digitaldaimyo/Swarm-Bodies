@@ -19,7 +19,10 @@ import type { Candidate, GenerateOptions } from "./candidates";
  * in range, and grow fruiting bodies when nutrients and biomass allow and a launch window is coming.
  */
 
-const FORECAST_TURNS = 6;
+/** Launch windows this far ahead make growing a fruiting body worthwhile now. */
+const FORECAST_TURNS = 12;
+/** A window k turns after maturity is worth this much less per turn of waiting. */
+const WINDOW_DECAY = 0.9;
 
 /** Hex offsets at distance 1–4, with their distance. */
 const NEAR: readonly (readonly [number, number, number])[] = (() => {
@@ -155,18 +158,18 @@ export function generateSporeCandidates(
   const windows = forecast(state, FORECAST_TURNS, me);
   const matureBy = state.turn + pr.fruitMatureTurns;
   for (const body of state.bodies) {
-    const reachable = new Set<number>();
+    // The best launch the forecast opens from this body once a launcher here could be ready,
+    // discounted by how long it would wait.
+    let prospect = 0;
     for (const f of windows) {
       if (f.turn < matureBy) continue;
-      for (const win of f.windows) if (win.from === body.id) reachable.add(win.to);
+      const wait = WINDOW_DECAY ** (f.turn - matureBy);
+      for (const win of f.windows) {
+        if (win.from !== body.id) continue;
+        const land = landingOn(state.bodies.find((b) => b.id === win.to) as Body);
+        prospect = Math.max(prospect, (land?.value ?? 0) * wait);
+      }
     }
-    if (reachable.size === 0) continue;
-    let prospect = 0;
-    for (const id of reachable)
-      prospect = Math.max(
-        prospect,
-        landingOn(state.bodies.find((b) => b.id === id) as Body)?.value ?? 0,
-      );
     if (prospect <= 0) continue;
     const ba = a.bodies.find((x) => x.body.id === body.id);
     const board = getBoard(body.radius);

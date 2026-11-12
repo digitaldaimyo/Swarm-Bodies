@@ -229,7 +229,7 @@ export function resolveTurn(
     }
   }
 
-  // Phase 10: income (per player: strain yields, Deep Reserves), then Regeneration on even turns.
+  // Phase 10: income (per player: strain yields, Deep Reserves), then Regeneration.
   const income = new Map(pids.map((pid) => [pid, incomeFor(next, pid)]));
   for (const pid of pids) {
     const ps = player(pid);
@@ -238,7 +238,7 @@ export function resolveTurn(
     ps.nutrients += amount;
     events.push({ type: "Income", player: pid, amount, nutrients: ps.nutrients });
   }
-  if (state.turn % 2 === 0) {
+  if (state.turn % next.rules.mutations.regenerationEvery === 0) {
     const regen = new Map(pids.map((pid) => [pid, playerRules(next, pid).regeneration]));
     for (const body of next.bodies) {
       body.colony.forEach((c, i) => {
@@ -266,11 +266,21 @@ export function resolveTurn(
   resolveEvents(next, state.turn, events, ref);
 
   // Phase 13: body rules. Irradiated bodies burn away biomass-1 cells (cores are spared).
+  // Cells gained this turn are spared once, so thin new growth can be thickened next turn:
+  // otherwise nothing could ever grow on an Irradiated body (DECISIONS).
   const shielded = new Set(pids.filter((pid) => playerRules(next, pid).irradiationImmune));
+  const fresh = new Set<string>();
+  for (const e of events) {
+    if (e.type === "CellClaimed" || e.type === "CellCaptured" || e.type === "SporeLanded")
+      fresh.add(`${e.cell.body}:${e.cell.q},${e.cell.r}`);
+  }
   for (const body of next.bodies) {
     if (body.type !== "irradiated") continue;
+    const board = getBoard(body.radius);
     body.colony.forEach((c, i) => {
       if (!c || c.core || c.biomass !== 1 || shielded.has(c.owner)) return;
+      const h = board.cells[i] as Hex;
+      if (fresh.has(`${body.id}:${h.q},${h.r}`)) return;
       body.colony[i] = null;
       events.push({ type: "Irradiated", player: c.owner, cell: ref(body, i) });
     });
@@ -769,7 +779,9 @@ function resolveEvents(
           const dot = SQRT3_FX * (2 * h.q + h.r) * -pos.x + 30000 * h.r * -pos.y;
           if (dot < 0) return;
           const left = c.biomass - rules.flareLoss;
-          const biomass = c.core ? Math.max(1, left) : left;
+          const floor = c.core ? 1 : Math.min(c.biomass, rules.flareMinBiomass);
+          const biomass = Math.max(floor, left);
+          if (biomass === c.biomass) return;
           body.colony[i] = biomass > 0 ? { ...c, biomass } : null;
           events.push({
             type: "FlareStruck",
