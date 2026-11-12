@@ -62,29 +62,41 @@ function bestLanding(a: Analysis, target: Body): Landing | null {
   const incomeValue = mineRules.incomePerCore * horizon;
 
   let best: Landing | null = null;
-  const yieldOf = (i: number) => {
-    return cellYield(state, target, i, me);
-  };
+  // Each cell's yield is needed by up to 19 neighbouring candidates: compute it once.
+  const yields: (number | undefined)[] = new Array(target.colony.length);
+  const yieldOf = (i: number) => (yields[i] ??= cellYield(state, target, i, me));
   // Our spores already in flight to this body claim their landing area: a second spore there
   // would only merge into the first.
   const incoming = state.spores
     .filter((sp) => sp.owner === me && sp.targetBody === target.id)
     .map((sp) => sp.targetCell);
-  for (let i = 0; i < target.colony.length; i++) {
+  // Neighbourhood sums, scattered from the few cells that contribute (enemy cells, and empty
+  // cells with a yield) instead of gathered over 60 offsets per candidate. NEAR is symmetric,
+  // so the sums are identical; the values are small multiples of 0.5, so the order is exact.
+  const n = target.colony.length;
+  const enemyNearOf = new Float64Array(n);
+  const depositNearOf = new Float64Array(n);
+  for (let j = 0; j < n; j++) {
+    const o = target.colony[j];
+    const enemy = !!o && o.owner !== me;
+    const y = o ? 0 : yieldOf(j);
+    if (!enemy && y === 0) continue;
+    const hj = board.cells[j] as Hex;
+    for (const [dq, dr, d] of NEAR) {
+      const i = board.indexOf(hj.q + dq, hj.r + dr);
+      if (i < 0) continue;
+      if (enemy) enemyNearOf[i] = (enemyNearOf[i] as number) + (d <= 2 ? 3 : 1);
+      if (y !== 0 && d <= 2)
+        depositNearOf[i] = (depositNearOf[i] as number) + y * (d === 1 ? 1 : 0.5);
+    }
+  }
+  for (let i = 0; i < n; i++) {
     if (target.terrain[i] === "rock") continue;
     const c = target.colony[i] ?? null;
     const h = board.cells[i] as Hex;
     if (incoming.some((t) => hexDistance(t, h) <= 2)) continue;
-    let enemyNear = 0;
-    let depositNear = yieldOf(i) * 2;
-    // Only cells within distance 4 matter: walk those offsets instead of the whole board.
-    for (const [dq, dr, d] of NEAR) {
-      const j = board.indexOf(h.q + dq, h.r + dr);
-      if (j < 0) continue;
-      const o = target.colony[j];
-      if (o && o.owner !== me) enemyNear += d <= 2 ? 3 : 1;
-      if (d <= 2 && !o) depositNear += yieldOf(j) * (d === 1 ? 1 : 0.5);
-    }
+    const enemyNear = enemyNearOf[i] as number;
+    const depositNear = yieldOf(i) * 2 + (depositNearOf[i] as number);
     let value: number;
     if (!c) {
       value = incomeValue + room + depositNear * horizon * 0.3 - enemyNear * 4;

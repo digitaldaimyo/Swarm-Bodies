@@ -1,5 +1,5 @@
 import { getBoard, type Hex } from "./hex";
-import type { DepositKind, MutationId, StrainId } from "./config";
+import type { DepositKind, MutationId, Rules, StrainId } from "./config";
 import { idiv } from "./math";
 import { hookSum, mutationsOf } from "./mutations";
 import type { Body, Colony, GameState, PlayerId } from "./types";
@@ -42,7 +42,28 @@ export function strainOf(state: GameState, player: PlayerId): StrainId {
   return state.players.find((p) => p.id === player)?.strain ?? "base";
 }
 
+/**
+ * Resolved rules are cached per player by their mutations array: the sim only ever replaces
+ * that array (never mutates it), and a player's strain never changes. The rules object and
+ * strain are checked too, so a cached value is only reused for exactly the same inputs. Results
+ * are frozen, so a caller can never change a shared copy. (M8 performance pass: the bot asks
+ * for these thousands of times per turn.)
+ */
+const rulesCache = new WeakMap<
+  readonly MutationId[],
+  { rules: Rules; strain: StrainId; value: PlayerRules }
+>();
+
 export function playerRules(state: GameState, player: PlayerId): PlayerRules {
+  const ps = state.players.find((p) => p.id === player);
+  const cached = ps ? rulesCache.get(ps.mutations) : undefined;
+  if (cached && cached.rules === state.rules && cached.strain === ps?.strain) return cached.value;
+  const value = Object.freeze(computePlayerRules(state, player));
+  if (ps) rulesCache.set(ps.mutations, { rules: state.rules, strain: ps.strain, value });
+  return value;
+}
+
+function computePlayerRules(state: GameState, player: PlayerId): PlayerRules {
   const { rules } = state;
   const strain = strainOf(state, player);
   const m = rules.strains[strain] ?? {};
