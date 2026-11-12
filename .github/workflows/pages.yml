@@ -1,0 +1,50 @@
+name: Pages
+
+# A static copy of the client on GitHub Pages. It plays offline modes on its own and calls the
+# game server (Render) for online play; the server allows this origin with CORS_ORIGINS.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build the client for /<repo>/
+        env:
+          VITE_BASE: /${{ github.event.repository.name }}/
+          # Set the repository variable API_ORIGIN to point at another server.
+          VITE_API_ORIGIN: ${{ vars.API_ORIGIN || 'https://swarm-bodies.onrender.com' }}
+        run: pnpm --filter @swarm/client build
+      # Pages has no SPA fallback: its 404 page is the app, so /replay/:id links still open.
+      - run: cp apps/client/dist/index.html apps/client/dist/404.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/client/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

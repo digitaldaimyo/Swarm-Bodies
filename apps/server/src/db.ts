@@ -15,7 +15,10 @@ const MIGRATIONS = fileURLToPath(new URL("../drizzle", import.meta.url));
 
 /** Connects and applies migrations (idempotent). */
 export async function openDatabase(url: string): Promise<Database> {
-  const client = postgres(url, { max: 10, onnotice: () => undefined });
+  // Hosted Postgres behind PgBouncer in transaction mode (Neon's "-pooler" hosts) cannot keep
+  // named prepared statements across transactions; plain queries work everywhere.
+  const pooled = /-pooler\./.test(new URL(url).hostname);
+  const client = postgres(url, { max: 10, onnotice: () => undefined, prepare: !pooled });
   const db = drizzle(client, { schema });
   await migrate(db, { migrationsFolder: MIGRATIONS });
   return { db, close: () => client.end({ timeout: 5 }) };

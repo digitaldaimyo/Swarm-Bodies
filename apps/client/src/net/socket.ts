@@ -1,4 +1,5 @@
 import { parseServerMessage, type ClientMessage, type ServerMessage } from "@swarm/protocol";
+import { wsUrl } from "./origin";
 import { ensureGuest } from "./api";
 
 type Listener = (msg: ServerMessage) => void;
@@ -119,8 +120,7 @@ export class GameSocket {
 }
 
 function defaultUrl(): string {
-  const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  return `${proto}//${location.host}/ws`;
+  return wsUrl();
 }
 
 let shared: GameSocket | null = null;

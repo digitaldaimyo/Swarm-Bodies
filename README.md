@@ -36,6 +36,31 @@ TEST_DATABASE_URL=postgres://swarm:swarm@localhost:5432/postgres pnpm test   # i
 pnpm dev     # client on :5173 and server on :8787 (DATABASE_URL, default postgres://swarm:swarm@localhost:5432/swarm)
 ```
 
+## Deploying
+
+**Render** (game server, also serving the client). Use these settings on the web service:
+
+| Setting       | Value                                                                                                 |
+| ------------- | ----------------------------------------------------------------------------------------------------- |
+| Build command | `corepack enable && pnpm install --frozen-lockfile --prod=false && pnpm --filter @swarm/client build` |
+| Start command | `pnpm --filter @swarm/server start`                                                                   |
+| Health check  | `/api/health`                                                                                         |
+
+`--prod=false` is required: with `NODE_ENV=production`, pnpm would otherwise skip the dev tools the build and `tsx` need.
+
+Environment variables:
+
+| Variable       | Value                                                                                        |
+| -------------- | -------------------------------------------------------------------------------------------- |
+| `DATABASE_URL` | The Neon connection string, with `?sslmode=require`. Pooled (`-pooler`) or direct both work. |
+| `HOST`         | `0.0.0.0`                                                                                    |
+| `NODE_ENV`     | `production`                                                                                 |
+| `CORS_ORIGINS` | `https://<user>.github.io`, to allow the Pages copy                                          |
+
+Render provides `PORT` itself. Migrations run on start.
+
+**GitHub Pages** (static client, optional). Set Settings → Pages → Source to **GitHub Actions**. The `Pages` workflow builds and publishes on every push to `main`. It points at `https://swarm-bodies.onrender.com`; set the repository variable `API_ORIGIN` to use another server.
+
 ## Stack
 
 TypeScript (pnpm monorepo), PixiJS v8 with Preact for the client, Node with Fastify, WebSockets and Postgres for the server, and Vitest and Playwright for tests.

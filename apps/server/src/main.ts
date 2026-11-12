@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { openDatabase } from "./db";
 import { buildApp } from "./app";
 import { Progression } from "./progression";
@@ -31,7 +33,19 @@ const engine = new GameEngine(database.db, {
   log: engineLog,
   progression,
 });
-const app = await buildApp({ engine, progression, logger: process.env["NODE_ENV"] !== "test" });
+// The built client is served from the same origin when present (Render runs `pnpm build`).
+const clientDir =
+  process.env["CLIENT_DIR"] ?? fileURLToPath(new URL("../../client/dist", import.meta.url));
+const app = await buildApp({
+  engine,
+  progression,
+  logger: process.env["NODE_ENV"] !== "test",
+  clientDir: existsSync(`${clientDir}/index.html`) ? clientDir : undefined,
+  corsOrigins: (process.env["CORS_ORIGINS"] ?? "")
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean),
+});
 
 // Catch up on anything that expired while the server was down, then keep sweeping (SPEC §9.4).
 await engine.restore();

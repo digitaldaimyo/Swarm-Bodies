@@ -55,7 +55,11 @@ function serverProxy() {
   };
 }
 
+// GitHub Pages serves the app under /<repo>/ (VITE_BASE); everywhere else it is at "/".
+const base = process.env["VITE_BASE"] ?? "/";
+
 export default defineConfig({
+  base,
   plugins: [
     preact(),
     generatedIcons(),
@@ -70,25 +74,27 @@ export default defineConfig({
         background_color: "#070b1a",
         display: "standalone",
         orientation: "any",
-        start_url: "/",
+        // Relative to the manifest, so the app installs at "/" or under a base path.
+        start_url: "./",
+        scope: "./",
         icons: [
-          { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
-          { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+          { src: "icons/icon-192.png", sizes: "192x192", type: "image/png" },
+          { src: "icons/icon-512.png", sizes: "512x512", type: "image/png" },
           {
-            src: "/icons/maskable-512.png",
+            src: "icons/maskable-512.png",
             sizes: "512x512",
             type: "image/png",
             purpose: "maskable",
           },
-          { src: "/icon.svg", sizes: "any", type: "image/svg+xml" },
+          { src: "icon.svg", sizes: "any", type: "image/svg+xml" },
         ],
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,svg,png,webmanifest}"],
-        navigateFallback: "/index.html",
+        navigateFallback: `${base}index.html`,
         navigateFallbackDenylist: [/^\/api\//, /^\/ws/],
         // Web Push handlers (public/push-sw.js) live alongside the generated worker.
-        importScripts: ["/push-sw.js"],
+        importScripts: [`${base}push-sw.js`],
         runtimeCaching: [
           {
             urlPattern: ({ url }) =>

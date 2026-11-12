@@ -11,6 +11,8 @@
     "start:e2e": "tsx scripts/ensure-db.ts && tsx src/main.ts"
   },
   "dependencies": {
+    "@fastify/cors": "11.1.0",
+    "@fastify/static": "8.2.0",
     "@fastify/websocket": "11.3.4",
     "@swarm/bot": "workspace:*",
     "@swarm/content": "workspace:*",

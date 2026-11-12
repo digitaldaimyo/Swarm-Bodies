@@ -2,6 +2,7 @@ import { z } from "zod";
 import { OrderSetSchema, ordersBySeat, type ReplayResponse } from "@swarm/protocol";
 import type { GameConfig, Order, Rules, StrainId } from "@swarm/sim";
 import type { MatchSession, TurnRecord } from "./match-session";
+import { appLink } from "../net/origin";
 
 /**
  * Shareable replays (SPEC §12): a game is its seed, config and orders, so a replay is tiny and
@@ -110,5 +111,5 @@ export function downloadReplay(file: ReplayFile): void {
 
 /** The shareable link of a finished online game. */
 export function replayLink(gameId: string): string {
-  return `${location.origin}/replay/${gameId}`;
+  return appLink(`replay/${gameId}`);
 }
