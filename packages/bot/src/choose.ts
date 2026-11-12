@@ -13,7 +13,13 @@ import { analyse } from "./analysis";
 import { generateCandidates, type Candidate } from "./candidates";
 import { pickMutation, withPick } from "./drafts";
 import { hardPlan } from "./hard";
-import { NORMAL_WEIGHTS, PERSONALITIES, type BotWeights, type Personality } from "./weights";
+import {
+  HARD_WEIGHTS,
+  NORMAL_WEIGHTS,
+  PERSONALITIES,
+  type BotWeights,
+  type Personality,
+} from "./weights";
 
 export type Difficulty = "easy" | "normal" | "hard";
 
@@ -38,7 +44,12 @@ export function chooseOrders(
   const me = state.players.find((p) => p.id === playerId);
   if (!me || me.eliminated || state.result) return [];
   const weights =
-    options.weights ?? PERSONALITIES[options.personality ?? "balanced"] ?? NORMAL_WEIGHTS;
+    options.weights ??
+    (options.personality
+      ? PERSONALITIES[options.personality]
+      : difficulty === "hard"
+        ? HARD_WEIGHTS
+        : NORMAL_WEIGHTS);
   // A pending draft is picked first; the rest of the plan is made with the mutation in effect.
   const pick = pickMutation(state, playerId);
   const planState = withPick(state, playerId, pick);

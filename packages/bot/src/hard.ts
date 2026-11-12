@@ -18,6 +18,8 @@ import { PERSONALITIES, type BotWeights } from "./weights";
  * against the sampled replies.
  */
 export const HARD_SAMPLES = 8;
+/** How much safer (in evaluation points) an alternative's worst case must be to replace the plan. */
+const VETO_MARGIN = 12;
 
 const OPPONENT_STYLES: readonly BotWeights[] = [
   PERSONALITIES.balanced,
@@ -43,8 +45,9 @@ export function hardPlan(
   };
   add(greedyPlan(state, me, "normal", seed, weights));
   add(greedyPlan(state, me, "normal", seed, { ...weights, threat: weights.threat * 2 }));
-  add(greedyPlan(state, me, "normal", seed, PERSONALITIES.aggressive));
-  add(greedyPlan(state, me, "normal", seed, PERSONALITIES.expansionist));
+  // Alternatives stay close to the base weights: whole-personality swaps did worse in tests.
+  add(greedyPlan(state, me, "normal", seed, { ...weights, capture: weights.capture * 1.5 }));
+  add(greedyPlan(state, me, "normal", seed, { ...weights, expansion: weights.expansion * 1.5 }));
   // Randomised variants only in 1v1: with several opponents every plan costs 8 resolutions
   // of a bigger board, and the time budget is per turn (SPEC §13.1).
   const multi = state.players.filter((p) => p.id !== me && !p.eliminated).length > 1;
@@ -87,10 +90,10 @@ export function hardPlan(
     samples.push(sample);
   }
 
-  let best = plans[0] as Order[];
-  let bestWorst = -Infinity;
-  let bestMean = -Infinity;
-  for (const plan of plans) {
+  // Robustness as a veto: the base plan stands unless an alternative is clearly safer in the
+  // worst sampled case and no worse on average. A one-turn look-ahead misjudges long-term
+  // value, so letting it pick freely did worse than the base plan in self-play.
+  const scored = plans.map((plan) => {
     let worst = Infinity;
     let total = 0;
     for (const sample of samples) {
@@ -98,14 +101,14 @@ export function hardPlan(
       worst = Math.min(worst, v);
       total += v;
     }
-    const mean = total / samples.length;
-    if (worst > bestWorst || (worst === bestWorst && mean > bestMean)) {
-      best = plan;
-      bestWorst = worst;
-      bestMean = mean;
-    }
+    return { plan, worst, mean: total / samples.length };
+  });
+  const base = scored[0] as (typeof scored)[number];
+  let best = base;
+  for (const c of scored.slice(1)) {
+    if (c.worst >= best.worst + VETO_MARGIN && c.mean >= base.mean) best = c;
   }
-  return best;
+  return best.plan;
 }
 
 /**
@@ -125,12 +128,15 @@ export function evaluate(state: GameState, me: PlayerId): number {
     let cells = 0;
     let biomass = 0;
     let cores = 0;
+    let fruiting = 0;
     for (const b of state.bodies)
       for (const c of b.colony) {
         if (!c || c.owner !== id) continue;
         cells += c.connected ? 1 : 0.4;
         biomass += c.connected ? c.biomass : 0;
         if (c.core) cores++;
+        // Launchers are investments a one-turn look-ahead would otherwise read as lost N.
+        if (c.fruiting !== null) fruiting += c.fruiting === 0 ? 1.5 : 1;
       }
     const spores = state.spores.filter((s) => s.owner === id).length;
     return (
@@ -138,8 +144,9 @@ export function evaluate(state: GameState, me: PlayerId): number {
       biomass * 0.6 +
       cores * 12 +
       incomeFor(state, id) * horizon * 0.8 +
-      ps.nutrients * 0.4 +
-      spores * 10
+      ps.nutrients * 0.2 +
+      fruiting * 14 +
+      spores * 18
     );
   };
   let rival = -Infinity;

@@ -89,3 +89,22 @@ describe("SPEC §13.2 Hard", () => {
     }
   });
 });
+
+describe("SPEC §13.2 Hard is stronger than Normal", () => {
+  it("wins most of a deterministic Single Rock batch", () => {
+    let wins = 0;
+    const games = 16;
+    for (let g = 0; g < games; g++) {
+      const hard = g % 2;
+      let s = createGame({ mode: "singleRock", playerCount: 2 }, `hard-vs-normal-${g}`);
+      while (!s.result) {
+        const sets: Record<PlayerId, OrderSet> = {};
+        for (const p of s.players)
+          sets[p.id] = chooseOrders(s, p.id, p.id === hard ? "hard" : "normal", `hn-${g}`);
+        s = resolveTurn(s, sets).state;
+      }
+      if (s.result.winner === hard) wins++;
+    }
+    expect(wins).toBeGreaterThanOrEqual(10);
+  }, 120_000);
+});
