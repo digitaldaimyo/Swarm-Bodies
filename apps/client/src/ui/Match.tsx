@@ -579,7 +579,7 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
       )}
 
       <header class="hud-top">
-        <div class="hud-stats" aria-label="Nutrients">
+        <div class="hud-stats" role="group" aria-label="Nutrients">
           <span class="stat" title="Nutrients banked">
             <span class="stat-label">N</span>
             <span class="num">{myState?.nutrients ?? 0}</span>
@@ -663,7 +663,7 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
       )}
 
       {phase === "replay" && (
-        <div class="replay-controls" aria-label="Replay controls">
+        <div class="replay-controls" role="group" aria-label="Replay controls">
           <button
             class="btn btn-icon"
             aria-label={paused ? "Play" : "Pause"}
@@ -864,12 +864,12 @@ function ReadyMarkers({
   mutations(seat: number): readonly MutationId[];
 }) {
   return (
-    <div class="ready" aria-label="Players">
+    <div class="ready" role="group" aria-label="Players">
       {seats.map((s) => {
         const status = s.ready ? "ready" : s.thinking ? "thinking" : "planning";
         const label = `${s.name}: ${status}${s.botControlled ? ", bot playing" : ""}${s.connected ? "" : ", offline"}`;
         return (
-          <span key={s.seat} class="ready-item" title={label} aria-label={label}>
+          <span key={s.seat} class="ready-item" role="img" title={label} aria-label={label}>
             <span
               class={`ready-dot ${s.ready ? "on" : s.thinking ? "thinking" : ""} ${s.connected ? "" : "offline"}`}
               style={{ "--c": playerCss(s.seat) }}
@@ -888,7 +888,7 @@ function DominanceBar({ dominance, names }: { dominance: number[]; names(seat: n
   if (dominance.length > 2) {
     // 3–4 players: one thin row each, all measured against the same goal line.
     return (
-      <div class="dominance multi" aria-label={`Dominance: ${parts}`}>
+      <div class="dominance multi" role="img" aria-label={`Dominance: ${parts}`}>
         {dominance.map((d, i) => (
           <span key={i} class="dom-row">
             <span style={{ width: `${d / 10}%`, background: playerCss(i) }} />
@@ -899,7 +899,7 @@ function DominanceBar({ dominance, names }: { dominance: number[]; names(seat: n
     );
   }
   return (
-    <div class="dominance" aria-label={`Dominance: ${parts}`}>
+    <div class="dominance" role="img" aria-label={`Dominance: ${parts}`}>
       <span style={{ width: `${(dominance[0] ?? 0) / 10}%`, background: playerCss(0) }} />
       <span class="dom-goal" />
       <span style={{ width: `${(dominance[1] ?? 0) / 10}%`, background: playerCss(1) }} />
@@ -929,7 +929,12 @@ function TurnRing({
       ? `Turn ${turn} of ${limit}`
       : `Turn ${turn} of ${limit}, ${remaining >= 3600 ? `${Math.floor(remaining / 3600)} h` : `${remaining} s`} left`;
   return (
-    <div class={urgent ? "turn-ring urgent" : "turn-ring"} aria-label={label} title={label}>
+    <div
+      class={urgent ? "turn-ring urgent" : "turn-ring"}
+      role="img"
+      aria-label={label}
+      title={label}
+    >
       <svg viewBox="0 0 44 44" width="44" height="44" aria-hidden="true">
         <circle cx="22" cy="22" r={r} class="ring-bg" />
         <circle

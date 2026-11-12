@@ -78,9 +78,7 @@ export function Lobby({ meta: initial, onBack, onStarted }: Props) {
       </header>
       <section class="card code-card">
         <span class="muted">Invite code</span>
-        <span class="invite-code" aria-label={`Invite code ${meta.code.split("").join(" ")}`}>
-          {meta.code}
-        </span>
+        <span class="invite-code">{meta.code}</span>
         <button class="btn" onClick={() => void share()}>
           {copied ? "Link copied" : "Share invite"}
         </button>

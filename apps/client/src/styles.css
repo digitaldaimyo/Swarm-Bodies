@@ -1329,7 +1329,7 @@ h3 {
   color: var(--good);
 }
 .galaxy-node.locked {
-  opacity: 0.55;
+  border-style: dashed;
 }
 @keyframes node-pulse {
   50% {
@@ -1388,8 +1388,9 @@ h3 {
   margin-right: auto;
 }
 
+/* Locked and unearned entries are dimmed by border, never by opacity (text contrast, §10.8). */
 .codex-entry.locked {
-  opacity: 0.75;
+  border-style: dashed;
 }
 .codex-entry p {
   margin: 0;
@@ -1415,11 +1416,10 @@ h3 {
   padding: 10px 12px;
   border-radius: 10px;
   background: var(--panel);
-  border: 1px solid var(--line);
-  opacity: 0.7;
+  border: 1px dashed var(--line);
 }
 .achievement.got {
-  opacity: 1;
+  border-style: solid;
   border-color: var(--warn);
 }
 .ach-mark {
