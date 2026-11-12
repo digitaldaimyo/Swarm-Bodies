@@ -7,8 +7,9 @@ import {
   type Order,
 } from "@swarm/sim";
 import type { Analysis, BodyAnalysis } from "./analysis";
+import { generateSporeCandidates } from "./spores";
 
-export type CandidateKind = "grow" | "assault" | "reinforce";
+export type CandidateKind = "grow" | "assault" | "reinforce" | "fruit" | "launch";
 
 export interface Candidate {
   kind: CandidateKind;
@@ -53,6 +54,7 @@ export function generateCandidates(a: Analysis, opts: GenerateOptions): Candidat
     generateReinforce(a, ba, opts, out);
     generatePaths(a, ba, opts, out);
   }
+  generateSporeCandidates(a, opts, out);
   return out;
 }
 

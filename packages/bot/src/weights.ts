@@ -24,6 +24,10 @@ export interface BotWeights {
   threat: number;
   /** Value multiplier for an empty cell an enemy could also claim this turn. */
   contestRisk: number;
+  /** Worth of each unclaimed cell on a body a spore could open up (SPEC §6, §13.2). */
+  expansion: number;
+  /** Fraction of a future launch's value credited to growing a fruiting body now. */
+  fruitFaith: number;
 }
 
 export const NORMAL_WEIGHTS: BotWeights = {
@@ -36,6 +40,8 @@ export const NORMAL_WEIGHTS: BotWeights = {
   coreKill: 40,
   threat: 1,
   contestRisk: 0.5,
+  expansion: 0.6,
+  fruitFaith: 0.6,
 };
 
 export type Personality = "balanced" | "aggressive" | "greedy" | "expansionist" | "saboteur";
@@ -45,6 +51,6 @@ export const PERSONALITIES: Record<Personality, BotWeights> = {
   balanced: NORMAL_WEIGHTS,
   aggressive: { ...NORMAL_WEIGHTS, capture: 4, coreKill: 80, threat: 0.5 },
   greedy: { ...NORMAL_WEIGHTS, incomeHorizon: 16, potential: 1 },
-  expansionist: { ...NORMAL_WEIGHTS, cell: 3, potential: 0.3 },
+  expansionist: { ...NORMAL_WEIGHTS, cell: 3, potential: 0.3, expansion: 1.2, fruitFaith: 0.9 },
   saboteur: { ...NORMAL_WEIGHTS, sever: 4, capture: 3 },
 };

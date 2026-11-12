@@ -1,12 +1,13 @@
 /**
- * Headless batch runner (SPEC §12.4) on Single Rock.
+ * Headless batch runner (SPEC §12.4), two-player, on Single Rock or a generated system.
  *
- *   pnpm balance -- --games 200 [--players normal,random] [--seed prefix] [--strains a,b] [--json]
+ *   pnpm balance -- --games 200 [--players normal,random] [--seed prefix] [--strains a,b]
+ *                   [--map singleRock|system] [--json]
  *
  * Seats alternate every game so neither policy always moves as player 0. `--strains a,b` gives
  * side A strain a and side B strain b; each strain follows its side when seats swap.
  */
-import { STRAIN_IDS, type StrainId } from "@swarm/sim";
+import { STRAIN_IDS, type GameMode, type StrainId } from "@swarm/sim";
 import { isPolicyName, playGame, policyByName, type PlayedGame, type PolicyName } from "./play";
 
 interface Options {
@@ -14,6 +15,7 @@ interface Options {
   seed: string;
   players: [PolicyName, PolicyName];
   strains: [StrainId, StrainId];
+  map: GameMode;
   json: boolean;
 }
 
@@ -23,6 +25,7 @@ export function parseArgs(argv: readonly string[]): Options {
     seed: "balance",
     players: ["normal", "normal"],
     strains: ["base", "base"],
+    map: "singleRock",
     json: false,
   };
   const args = argv.filter((a) => a !== "--");
@@ -66,13 +69,21 @@ export function parseArgs(argv: readonly string[]): Options {
         opts.strains = names as [StrainId, StrainId];
         break;
       }
+      case "--map": {
+        const m = value();
+        if (m !== "singleRock" && m !== "system") {
+          throw new Error("--map takes singleRock or system");
+        }
+        opts.map = m;
+        break;
+      }
       case "--json":
         opts.json = true;
         break;
       case "--help":
       case "-h":
         console.log(
-          "Usage: pnpm balance -- --games N [--players a,b] [--seed PREFIX] [--strains a,b] [--json]",
+          "Usage: pnpm balance -- --games N [--players a,b] [--seed PREFIX] [--strains a,b] [--map singleRock|system] [--json]",
         );
         process.exit(0);
         break;
@@ -100,11 +111,16 @@ export interface Report {
   averageTurns: number;
   turnLimitBelow40Pct: number;
   rejectedOrders: number;
+  /** Spore launches across all games (system maps only). */
+  launches: number;
   errors: { seed: string; message: string }[];
 }
 
 export function runBatch(
-  opts: Pick<Options, "games" | "seed" | "players"> & { strains?: [StrainId, StrainId] },
+  opts: Pick<Options, "games" | "seed" | "players"> & {
+    strains?: [StrainId, StrainId];
+    map?: GameMode;
+  },
 ): Report {
   const strains = opts.strains ?? ["base", "base"];
   const sides = opts.players.map((policy, i) => ({
@@ -124,6 +140,7 @@ export function runBatch(
     averageTurns: 0,
     turnLimitBelow40Pct: 0,
     rejectedOrders: 0,
+    launches: 0,
     errors: [],
   };
   let turnSum = 0;
@@ -137,7 +154,7 @@ export function runBatch(
     try {
       const seatStrains = sideOfSeat.map((side) => strains[side] as StrainId);
       game = playGame(
-        { mode: "singleRock", playerCount: 2, strains: seatStrains },
+        { mode: opts.map ?? "singleRock", playerCount: 2, strains: seatStrains },
         seed,
         policies,
         (seat, ms) => {
@@ -166,6 +183,10 @@ export function runBatch(
       if (Math.max(...last) < 400) report.turnLimitBelow40Pct++;
     }
     report.rejectedOrders += game.rejected;
+    for (const t of game.turns) {
+      for (const set of Object.values(t))
+        report.launches += set.filter((o) => o.type === "launch").length;
+    }
   }
   sides.forEach(
     (s, i) =>
@@ -187,7 +208,7 @@ function main(): void {
     const pct = (n: number) => `${((100 * n) / report.games).toFixed(1)}%`;
     const [a, b] = report.sides;
     console.log(
-      `Single Rock, ${a.policy}/${a.strain} vs ${b.policy}/${b.strain} — ${report.games} games in ${ms} ms (seats alternate)`,
+      `${opts.map === "system" ? "System" : "Single Rock"}, ${a.policy}/${a.strain} vs ${b.policy}/${b.strain} — ${report.games} games in ${ms} ms (seats alternate)`,
     );
     for (const [label, s] of [
       ["A", a],
@@ -207,6 +228,7 @@ function main(): void {
       `  turn limit with nobody above 40%: ${report.turnLimitBelow40Pct} (${pct(report.turnLimitBelow40Pct)})`,
     );
     console.log(`  orders rejected at resolution: ${report.rejectedOrders}`);
+    if (opts.map === "system") console.log(`  spore launches: ${report.launches}`);
     console.log(`  errors: ${report.errors.length}`);
   }
   for (const e of report.errors) console.error(`\n[${e.seed}] ${e.message}`);
