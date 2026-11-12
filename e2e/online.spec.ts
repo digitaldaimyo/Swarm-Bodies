@@ -1,4 +1,5 @@
-import { expect, test, type Browser, type Page } from "@playwright/test";
+import { type Browser, type Page } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 // SPEC §15 M4 acceptance, end to end: two real browsers against the real server.
 test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
@@ -115,27 +116,36 @@ test("a deliberate hash mismatch is detected and recovered", async ({ browser })
   );
 });
 
-test("a dropped connection reconnects and catches up", async ({ browser }) => {
-  const [a, b] = await startOnlineGame(browser);
-  // A goes offline; B plays on alone is not possible (A must submit), so drop A after submitting.
-  await a.evaluate(() => (window as unknown as { __swarm: Hook }).__swarm.session?.submit());
-  await a.context().setOffline(true);
-  await a.evaluate(() => {
-    // Simulate the network blip on the open socket too.
-    const s = (window as unknown as { __swarmSocket?: { dropConnection(): void } }).__swarmSocket;
-    s?.dropConnection();
+test.describe("connection loss", () => {
+  // The test takes the browser offline on purpose: a reconnect attempt that fires before it
+  // comes back makes Chromium log the failed WebSocket handshake. That error, and only it, is
+  // expected here (the M8 console guard fails every other).
+  test.use({
+    allowConsoleErrors: /WebSocket connection to .* failed: .*ERR_INTERNET_DISCONNECTED/,
   });
-  await b.evaluate(() => (window as unknown as { __swarm: Hook }).__swarm.session?.submit());
-  await b.waitForFunction(
-    () => (window as unknown as { __swarm: Hook }).__swarm.session?.state.turn === 2,
-  );
-  await a.context().setOffline(false);
-  await a.waitForFunction(
-    () => (window as unknown as { __swarm: Hook }).__swarm.session?.state.turn === 2,
-    null,
-    { timeout: 20_000 },
-  );
-  expect(await a.evaluate(() => (window as unknown as { __swarm: Hook }).__swarm.hash?.())).toBe(
-    await b.evaluate(() => (window as unknown as { __swarm: Hook }).__swarm.hash?.()),
-  );
+
+  test("a dropped connection reconnects and catches up", async ({ browser }) => {
+    const [a, b] = await startOnlineGame(browser);
+    // A goes offline; B plays on alone is not possible (A must submit), so drop A after submitting.
+    await a.evaluate(() => (window as unknown as { __swarm: Hook }).__swarm.session?.submit());
+    await a.context().setOffline(true);
+    await a.evaluate(() => {
+      // Simulate the network blip on the open socket too.
+      const s = (window as unknown as { __swarmSocket?: { dropConnection(): void } }).__swarmSocket;
+      s?.dropConnection();
+    });
+    await b.evaluate(() => (window as unknown as { __swarm: Hook }).__swarm.session?.submit());
+    await b.waitForFunction(
+      () => (window as unknown as { __swarm: Hook }).__swarm.session?.state.turn === 2,
+    );
+    await a.context().setOffline(false);
+    await a.waitForFunction(
+      () => (window as unknown as { __swarm: Hook }).__swarm.session?.state.turn === 2,
+      null,
+      { timeout: 20_000 },
+    );
+    expect(await a.evaluate(() => (window as unknown as { __swarm: Hook }).__swarm.hash?.())).toBe(
+      await b.evaluate(() => (window as unknown as { __swarm: Hook }).__swarm.hash?.()),
+    );
+  });
 });

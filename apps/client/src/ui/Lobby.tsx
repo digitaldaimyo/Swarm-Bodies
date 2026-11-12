@@ -71,16 +71,14 @@ export function Lobby({ meta: initial, onBack, onStarted }: Props) {
   return (
     <main class="panel-screen">
       <header class="screen-header">
-        <button class="btn btn-icon" onClick={onBack} aria-label="Back">
+        <button class="btn btn-icon" onClick={onBack} aria-label="Back" title="Back">
           ←
         </button>
         <h2>Lobby</h2>
       </header>
       <section class="card code-card">
         <span class="muted">Invite code</span>
-        <span class="invite-code" aria-label={`Invite code ${meta.code.split("").join(" ")}`}>
-          {meta.code}
-        </span>
+        <span class="invite-code">{meta.code}</span>
         <button class="btn" onClick={() => void share()}>
           {copied ? "Link copied" : "Share invite"}
         </button>

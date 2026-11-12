@@ -21,7 +21,7 @@ import { localCosmetics } from "./Cosmetics";
 import { OrderDrawer } from "./OrderDrawer";
 import { RadialMenu } from "./RadialMenu";
 import { getSettings, haptic, updateSettings, useSettings } from "./settings";
-import type { TutorialStep } from "@swarm/content";
+import { tutorialReady, type TutorialStep } from "@swarm/content";
 
 interface Props {
   session: MatchSession;
@@ -262,6 +262,7 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
     }).then((v) => {
       if (disposed) return v.destroy();
       view.current = v;
+      v.setPatterns(getSettings().patterns);
       v.reduceMotion = getSettings().reduceMotion;
       v.setViewer(me);
       if (bodyRef.current !== 0) v.showBody(bodyRef.current);
@@ -309,6 +310,7 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
       setDrawer(false);
       if (launchRef.current) setLaunch(null);
       setPhase("replay");
+      audio.setDuck(true);
       // Off-screen action this turn lights the body strip (SPEC §10.5).
       for (const e of record.events)
         if ("player" in e && e.player === me) tutorialSignals.current.add(`event:${e.type}`);
@@ -342,6 +344,7 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
     view.current?.setState(session.state);
     view.current?.setInputEnabled(true);
     playing.current = false;
+    audio.setDuck(false);
     onSave?.();
     if (session.finished) {
       setTimeout(onFinished, window.__swarm?.autoplay ? 0 : 900);
@@ -389,6 +392,9 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
     return () => clearInterval(id);
   }, [session]);
 
+  // Colourblind patterns follow the setting live (SPEC §10.8).
+  useEffect(() => view.current?.setPatterns(settings.patterns), [settings.patterns]);
+
   useEffect(() => {
     audio.setPad(true, (session.state.turn - 1) / session.state.rules.turnLimit);
     return () => audio.setPad(false);
@@ -400,7 +406,7 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
     setInfo(null);
     setDrawer(false);
     haptic("submit");
-    audio.click();
+    audio.submit();
     view.current?.cancelPaint();
     setPhase("waiting");
     tutorialSignals.current.add("submit");
@@ -499,9 +505,14 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
 
   // Advances the tutorial when its step's trigger has happened; anything else is forgotten so a
   // stale submit or capture never completes a later step.
-  const step = tutorial?.[tutorialStep];
+  // A step waits, hidden, until the player can do what it asks (M8 pacing).
+  const pending = tutorial?.[tutorialStep];
+  const step = pending && tutorialReady(session.state, me, pending.when) ? pending : undefined;
   useEffect(() => {
-    if (!step) return;
+    if (!step) {
+      tutorialSignals.current.clear();
+      return;
+    }
     const u = step.until;
     const signals = tutorialSignals.current;
     const hit =
@@ -579,7 +590,7 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
       )}
 
       <header class="hud-top">
-        <div class="hud-stats" aria-label="Nutrients">
+        <div class="hud-stats" role="group" aria-label="Nutrients">
           <span class="stat" title="Nutrients banked">
             <span class="stat-label">N</span>
             <span class="num">{myState?.nutrients ?? 0}</span>
@@ -605,7 +616,12 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
             mutations={(seat) => state.players.find((p) => p.id === seat)?.mutations ?? []}
           />
         </div>
-        <button class="btn btn-icon menu-btn" aria-label="Leave match" onClick={onExit}>
+        <button
+          class="btn btn-icon menu-btn"
+          aria-label="Leave match"
+          title="Leave match"
+          onClick={onExit}
+        >
           ✕
         </button>
         <DominanceBar dominance={lastStats?.dominance ?? []} names={(s) => session.name(s)} />
@@ -663,10 +679,11 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
       )}
 
       {phase === "replay" && (
-        <div class="replay-controls" aria-label="Replay controls">
+        <div class="replay-controls" role="group" aria-label="Replay controls">
           <button
             class="btn btn-icon"
             aria-label={paused ? "Play" : "Pause"}
+            title={paused ? "Play" : "Pause"}
             onClick={() => {
               ctl.current.paused = !ctl.current.paused;
               setPaused(ctl.current.paused);
@@ -677,6 +694,7 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
           <button
             class="btn btn-icon"
             aria-label="Replay speed"
+            title="Replay speed"
             onClick={() => updateSettings({ replaySpeed: settings.replaySpeed === 1 ? 2 : 1 })}
           >
             {settings.replaySpeed}×
@@ -684,6 +702,7 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
           <button
             class="btn btn-icon"
             aria-label="Skip replay"
+            title="Skip replay"
             onClick={() => (ctl.current.skipped = true)}
           >
             ⏭
@@ -765,17 +784,18 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
             >
               Skip tutorial
             </button>
-            {step.until.kind === "next" && (
-              <button
-                class="btn btn-primary small-btn"
-                onClick={() => {
-                  audio.click();
-                  setTutorialStep((i) => i + 1);
-                }}
-              >
-                Got it
-              </button>
-            )}
+            {/* Action steps can be skipped one at a time, so none can block the game. */}
+            <button
+              class={
+                step.until.kind === "next" ? "btn btn-primary small-btn" : "btn btn-ghost small-btn"
+              }
+              onClick={() => {
+                audio.click();
+                setTutorialStep((i) => i + 1);
+              }}
+            >
+              {step.until.kind === "next" ? "Got it" : "Skip step"}
+            </button>
           </div>
         </aside>
       )}
@@ -792,6 +812,7 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
           <button
             class={planner.draftPick ? "btn btn-icon draft-btn" : "btn btn-icon draft-btn pending"}
             aria-label={planner.draftPick ? "Mutation draft (picked)" : "Mutation draft waiting"}
+            title={planner.draftPick ? "Mutation draft (picked)" : "Mutation draft waiting"}
             onClick={() => setDraftClosedTurn(-1)}
           >
             ✦
@@ -800,6 +821,7 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
         <button
           class="btn btn-icon"
           aria-label="Undo last order"
+          title="Undo last order"
           disabled={planner.orders.length === 0 || phase !== "planning" || session.submitted}
           onClick={() => {
             planner.undo();
@@ -811,6 +833,7 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
         <button
           class="btn btn-icon"
           aria-label="Whole body"
+          title="Whole body"
           onClick={() => view.current?.showWholeBody()}
         >
           ⤢
@@ -819,6 +842,7 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
           <button
             class="btn btn-icon"
             aria-label="What happened last turn"
+            title="What happened last turn"
             onClick={() => setShowLog(true)}
           >
             ☰
@@ -837,22 +861,33 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
 }
 
 function frameSound(f: Frame): void {
-  if (f.phase === "launch") {
-    if (f.effects.some((e) => e.kind === "launch" && !e.fizzled)) audio.launch();
-    if (f.effects.some((e) => e.kind === "land")) setTimeout(() => audio.squelch(), 380);
-    return;
+  const has = (k: string) => f.effects.some((e) => e.kind === k);
+  switch (f.phase) {
+    case "launch":
+      if (f.effects.some((e) => e.kind === "launch" && !e.fizzled)) audio.launch();
+      if (has("land")) setTimeout(() => audio.squelch(), 380);
+      return;
+    case "starve":
+      if (has("fade")) audio.starve();
+      return;
+    case "income":
+      if (has("income")) audio.income();
+      return;
+    case "events":
+      if (has("flare")) audio.flare();
+      else if (has("flash")) audio.thud();
+      return;
+    case "growth": {
+      const kinds = new Set(f.effects.map((e) => (e.kind === "tendril" ? e.outcome : e.kind)));
+      setTimeout(() => {
+        if (kinds.has("capture") || kinds.has("coreLost")) audio.crunch();
+        else if (kinds.has("claim")) audio.squelch();
+        if (kinds.has("repelled") || kinds.has("splash")) audio.thud();
+      }, 380);
+      return;
+    }
+    default:
   }
-  if (f.phase === "events" && f.effects.some((e) => e.kind === "flash")) {
-    audio.thud();
-    return;
-  }
-  if (f.phase !== "growth") return;
-  const kinds = new Set(f.effects.map((e) => (e.kind === "tendril" ? e.outcome : e.kind)));
-  setTimeout(() => {
-    if (kinds.has("capture") || kinds.has("coreLost")) audio.crunch();
-    else if (kinds.has("claim")) audio.squelch();
-    if (kinds.has("repelled") || kinds.has("splash")) audio.thud();
-  }, 380);
 }
 
 /** Ready markers per player (SPEC §10.2), with bot takeover and connection shown to everyone. */
@@ -864,12 +899,12 @@ function ReadyMarkers({
   mutations(seat: number): readonly MutationId[];
 }) {
   return (
-    <div class="ready" aria-label="Players">
+    <div class="ready" role="group" aria-label="Players">
       {seats.map((s) => {
         const status = s.ready ? "ready" : s.thinking ? "thinking" : "planning";
         const label = `${s.name}: ${status}${s.botControlled ? ", bot playing" : ""}${s.connected ? "" : ", offline"}`;
         return (
-          <span key={s.seat} class="ready-item" title={label} aria-label={label}>
+          <span key={s.seat} class="ready-item" role="img" title={label} aria-label={label}>
             <span
               class={`ready-dot ${s.ready ? "on" : s.thinking ? "thinking" : ""} ${s.connected ? "" : "offline"}`}
               style={{ "--c": playerCss(s.seat) }}
@@ -888,7 +923,7 @@ function DominanceBar({ dominance, names }: { dominance: number[]; names(seat: n
   if (dominance.length > 2) {
     // 3–4 players: one thin row each, all measured against the same goal line.
     return (
-      <div class="dominance multi" aria-label={`Dominance: ${parts}`}>
+      <div class="dominance multi" role="img" aria-label={`Dominance: ${parts}`}>
         {dominance.map((d, i) => (
           <span key={i} class="dom-row">
             <span style={{ width: `${d / 10}%`, background: playerCss(i) }} />
@@ -899,7 +934,7 @@ function DominanceBar({ dominance, names }: { dominance: number[]; names(seat: n
     );
   }
   return (
-    <div class="dominance" aria-label={`Dominance: ${parts}`}>
+    <div class="dominance" role="img" aria-label={`Dominance: ${parts}`}>
       <span style={{ width: `${(dominance[0] ?? 0) / 10}%`, background: playerCss(0) }} />
       <span class="dom-goal" />
       <span style={{ width: `${(dominance[1] ?? 0) / 10}%`, background: playerCss(1) }} />
@@ -929,7 +964,12 @@ function TurnRing({
       ? `Turn ${turn} of ${limit}`
       : `Turn ${turn} of ${limit}, ${remaining >= 3600 ? `${Math.floor(remaining / 3600)} h` : `${remaining} s`} left`;
   return (
-    <div class={urgent ? "turn-ring urgent" : "turn-ring"} aria-label={label} title={label}>
+    <div
+      class={urgent ? "turn-ring urgent" : "turn-ring"}
+      role="img"
+      aria-label={label}
+      title={label}
+    >
       <svg viewBox="0 0 44 44" width="44" height="44" aria-hidden="true">
         <circle cx="22" cy="22" r={r} class="ring-bg" />
         <circle

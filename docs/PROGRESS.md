@@ -1,6 +1,36 @@
 # Progress
 
-**Current milestone:** M7, Progression and replayability: complete (branch `m7-progression`, PR pending review). **Next:** M8, Polish (SPEC §15).
+**Current milestone:** M8, Polish: complete (branch `m8-polish`, PR pending review). **All milestones M1–M8 are done.** Next: playtests and the open items below, then §17's open questions.
+
+## M8: Polish: done
+
+Scope (§15): audio mix pass, tutorial pacing, accessibility audit against §10.8, performance pass on target devices, landscape and portrait layouts, error states, empty states, and loading states.
+
+- [x] **Acceptance: Lighthouse PWA and accessibility ≥ 90.** `e2e/lighthouse.spec.ts` (Lighthouse 11, mobile emulation) scores PWA 100, accessibility 100 and best practices 100. `e2e/a11y.spec.ts` runs axe (WCAG 2.1 AA) on every screen at 390×844, the match HUD and results included.
+- [x] **Acceptance: no console errors in the Playwright suite.** A shared fixture fails any test with an uncaught exception or `console.error` on any page. All 22 Chromium e2e tests pass with it (DECISIONS #95).
+- [x] **Accessibility (§10.8):**
+  - Colourblind pattern overlays per seat.
+  - Text size 100%, 125% and 150%.
+  - Contrast fixes.
+  - Zoom is no longer blocked.
+  - Roles on the labelled HUD elements, and tooltips on icon buttons.
+  - The HUD is reachable by keyboard, and tested.
+- [x] **Layouts:** landscape phones put the HUD at the sides and the title beside its menu. Tested at 844×390.
+- [x] **Error, empty and loading states:**
+  - An error boundary turns a crash, or a screen that cannot load offline, into a recoverable message.
+  - An unreachable server shows Retry and explains that the leaderboards are unavailable.
+  - An unknown replay link fails politely.
+  - Tested with route blocking.
+- [x] **Audio mix:** a limiter, voice dedupe and cap, rebalanced levels, new sounds (submit, starvation, income, flare, stingers), pad ducking during replays, and suspend in background tabs.
+- [x] **Tutorial pacing:** the fruit, launch and capture steps wait until the player can do them, and every action step can be skipped.
+- [x] **Performance:** Hard on 4-player systems: mean 54 → 39 ms, p95 133 → 103 ms. Bot decisions are identical before and after; golden replays are unchanged.
+
+**Open items for the user:**
+
+- **Real devices:** a mid-range Android and an iPhone 12 are still unmeasured. The 4× CPU-throttle tests stand in for them (DECISIONS #102).
+- **WebKit:** the new a11y and state tests are written to handle WebKit (DECISIONS #103), but WebKit runs only in CI here.
+- **Unplaytested:** campaign difficulty and tutorial pacing with real players, and 3–4 player balance.
+- **§17 open questions** are unchanged, ready for playtests.
 
 ## M7: Progression and replayability: done
 

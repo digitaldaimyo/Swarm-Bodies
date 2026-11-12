@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 /*
  * SPEC §10.7 / §15 M3: 60 fps on a mid-range phone profile.

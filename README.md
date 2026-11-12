@@ -7,15 +7,14 @@ A simultaneous-turn strategy game for web and mobile web. Rival colonies of slim
 
 ## Status
 
-Milestones 1–7 are complete:
+All eight milestones (M1–M8) are complete:
 
 - the deterministic simulation core, and the Easy, Normal and Hard bots;
 - a playable client (a PWA) with offline skirmish and online multiplayer;
 - the multi-body star system;
 - four strains with 12 drafted mutations, balanced to the spec's targets;
-- progression: a 12-node campaign with a tutorial, the codex and achievements, cosmetics, the Daily Seed with a server-validated leaderboard, a Glicko-2 ranked ladder with seasons, and shareable replays.
-
-Next is M8: polish. See [docs/PROGRESS.md](docs/PROGRESS.md) for details, and [docs/DECISIONS.md](docs/DECISIONS.md) for rulings on ambiguous spec points.
+- progression: a 12-node campaign with a tutorial, the codex and achievements, cosmetics, the Daily Seed with a server-validated leaderboard, a Glicko-2 ranked ladder with seasons, and shareable replays;
+- polish: accessibility (colourblind patterns, text size, keyboard), landscape layouts, error and offline states, an audio mix pass, and Lighthouse PWA and accessibility scores of 100. See [docs/PROGRESS.md](docs/PROGRESS.md) for details, and [docs/DECISIONS.md](docs/DECISIONS.md) for rulings on ambiguous spec points.
 
 ## Getting started
 
@@ -23,7 +22,7 @@ Next is M8: polish. See [docs/PROGRESS.md](docs/PROGRESS.md) for details, and [d
 pnpm install
 pnpm dev                     # the client at http://localhost:5173
 pnpm test                    # Vitest: sim rules, property tests, golden replays
-pnpm test:e2e                # Playwright: golden replays, client smoke, frame budget, online play
+pnpm test:e2e                # Playwright: golden replays, smoke, frame budget, online, a11y, Lighthouse
 pnpm typecheck && pnpm lint
 pnpm balance -- --games 200 --players normal,random  # headless batch on Single Rock
 pnpm balance -- --matrix --games 960 --map system --jobs 4   # strain matrix vs the §12.4 targets

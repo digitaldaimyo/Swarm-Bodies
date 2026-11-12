@@ -37,7 +37,7 @@ export default function Campaign({ onBack, onPlay }: Props) {
   return (
     <main class="panel-screen campaign">
       <header class="screen-header">
-        <button class="btn btn-icon" onClick={onBack} aria-label="Back">
+        <button class="btn btn-icon" onClick={onBack} aria-label="Back" title="Back">
           ←
         </button>
         <h2>Campaign</h2>
@@ -129,7 +129,12 @@ function Briefing({
         <h3>
           {node.index}. {node.name}
         </h3>
-        <button class="btn btn-icon small-btn" onClick={onClose} aria-label="Close briefing">
+        <button
+          class="btn btn-icon small-btn"
+          onClick={onClose}
+          aria-label="Close briefing"
+          title="Close briefing"
+        >
           ×
         </button>
       </header>

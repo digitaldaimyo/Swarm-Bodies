@@ -1,4 +1,5 @@
-import { expect, test, type Browser, type Page } from "@playwright/test";
+import { type Browser, type Page } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 // SPEC §15 M7 acceptance: the campaign is completable (node 1 opens node 2 through the UI),
 // the Daily leaderboard works, and a replay link plays back a finished online game.

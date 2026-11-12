@@ -19,6 +19,7 @@
     "golden:update": "pnpm --filter @swarm/balance golden"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.10.2",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "1.63.0",
     "@types/node": "^22.20.5",
@@ -27,6 +28,7 @@
     "eslint-config-prettier": "^10.1.8",
     "fast-check": "^4.10.2",
     "globals": "^17.14.0",
+    "lighthouse": "11.7.1",
     "prettier": "^3.10.0",
     "tsx": "^4.23.15",
     "typescript": "~5.9.3",

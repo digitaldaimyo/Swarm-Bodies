@@ -28,7 +28,7 @@ export default function Codex({ onBack }: { onBack(): void }) {
   return (
     <main class="panel-screen codex">
       <header class="screen-header">
-        <button class="btn btn-icon" onClick={onBack} aria-label="Back">
+        <button class="btn btn-icon" onClick={onBack} aria-label="Back" title="Back">
           ←
         </button>
         <h2>Codex</h2>

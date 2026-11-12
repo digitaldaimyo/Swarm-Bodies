@@ -35,6 +35,8 @@ export function Online({ onBack, onOpen }: Props) {
   // Ranked (SPEC §11.2): a duel, or a 3- or 4-player free-for-all.
   const [rankedPlayers, setRankedPlayers] = useState(2);
   const [ladder, setLadder] = useState<LadderResponse | null>(null);
+  const [ladderFailed, setLadderFailed] = useState(false);
+  const [listFailed, setListFailed] = useState(false);
   const ladderMode = rankedPlayers === 2 ? "duel" : "ffa";
   const [status, setStatus] = useState(gameSocket().status);
   const [push, setPush] = useState(pushState());
@@ -43,8 +45,14 @@ export function Online({ onBack, onOpen }: Props) {
   const refresh = () =>
     api
       .listGames()
-      .then(setGames)
-      .catch((e: unknown) => setError(e instanceof ApiError ? e.message : String(e)));
+      .then((g) => {
+        setGames(g);
+        setListFailed(false);
+      })
+      .catch((e: unknown) => {
+        setListFailed(true);
+        setError(e instanceof ApiError ? e.message : String(e));
+      });
 
   useEffect(() => {
     void ensureGuest()
@@ -65,8 +73,12 @@ export function Online({ onBack, onOpen }: Props) {
     let live = true;
     void api
       .ladder(ladderMode)
-      .then((l) => live && setLadder(l))
-      .catch(() => undefined);
+      .then((l) => {
+        if (!live) return;
+        setLadder(l);
+        setLadderFailed(false);
+      })
+      .catch(() => live && setLadderFailed(true));
     return () => {
       live = false;
     };
@@ -132,7 +144,7 @@ export function Online({ onBack, onOpen }: Props) {
   return (
     <main class="panel-screen">
       <header class="screen-header">
-        <button class="btn btn-icon" onClick={onBack} aria-label="Back">
+        <button class="btn btn-icon" onClick={onBack} aria-label="Back" title="Back">
           ←
         </button>
         <h2>Online</h2>
@@ -152,8 +164,23 @@ export function Online({ onBack, onOpen }: Props) {
 
       <section class="card">
         <h3>Your games</h3>
-        {games === null ? (
-          <p class="muted">Loading…</p>
+        {games === null && listFailed ? (
+          <div class="empty-state">
+            <p class="hint">Your games will appear here once the server is reachable.</p>
+            <button
+              class="btn"
+              onClick={() => {
+                setError(null);
+                void refresh();
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        ) : games === null ? (
+          <p class="muted" role="status">
+            Loading…
+          </p>
         ) : games.length === 0 ? (
           <p class="muted">No games yet. Create one and share the code, or find a quick match.</p>
         ) : (
@@ -284,7 +311,13 @@ export function Online({ onBack, onOpen }: Props) {
               : `provisional (${ladder.me.games} game${ladder.me.games === 1 ? "" : "s"})`}
           </p>
         )}
-        {ladder && ladder.entries.length > 0 ? (
+        {ladderFailed && !ladder ? (
+          <p class="hint">The ladder is unavailable offline.</p>
+        ) : !ladder ? (
+          <p class="muted" role="status">
+            Loading the ladder…
+          </p>
+        ) : ladder.entries.length > 0 ? (
           <table class="stats leaderboard" aria-label="Ranked leaderboard">
             <tbody>
               {ladder.entries.slice(0, 10).map((e) => (

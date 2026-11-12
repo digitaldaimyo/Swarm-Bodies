@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 // SPEC §14 client smoke flow, at the primary phone viewport (CLAUDE.md: 390×844, touch).
 test.use({
@@ -70,10 +71,6 @@ test("skirmish: paint, submit, replay, and finish against the Easy bot", async (
   page,
   browserName,
 }) => {
-  const errors: string[] = [];
-  page.on("pageerror", (e) => errors.push(e.message));
-  page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
-
   await page.goto("/?e2e");
   await page.evaluate(() => localStorage.clear());
   await page.reload();
@@ -117,8 +114,6 @@ test("skirmish: paint, submit, replay, and finish against the Easy bot", async (
   });
   await expect(page.getByRole("img", { name: /Dominance over \d+ turns/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Rematch" })).toBeVisible();
-
-  expect(errors).toEqual([]);
 });
 
 test("system skirmish: body strip, System view, launches, and a finished game (M5)", async ({
@@ -126,9 +121,6 @@ test("system skirmish: body strip, System view, launches, and a finished game (M
 }) => {
   // A whole 3-player game: headroom for starved CI runners (PR #6: ~3.7× slower than usual).
   test.setTimeout(300_000);
-  const errors: string[] = [];
-  page.on("pageerror", (e) => errors.push(e.message));
-  page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
 
   await page.goto("/?e2e");
   await page.evaluate(() => localStorage.clear());
@@ -180,13 +172,9 @@ test("system skirmish: body strip, System view, launches, and a finished game (M
       .filter((e: { type: string }) => e.type === "SporeLaunched").length;
   });
   expect(launches).toBeGreaterThan(0);
-  expect(errors).toEqual([]);
 });
 
 test("mutation draft: the modal offers three cards, inspect then pick (M6)", async ({ page }) => {
-  const errors: string[] = [];
-  page.on("pageerror", (e) => errors.push(e.message));
-  page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
   await page.goto("/?e2e");
   await page.evaluate(() => localStorage.clear());
   await page.reload();
@@ -243,5 +231,4 @@ test("mutation draft: the modal offers three cards, inspect then pick (M6)", asy
   await page.getByRole("button", { name: "Submit" }).click();
   await expect(page.getByLabel("What happened")).toContainText("You drafted");
   await expect(page.getByLabel(/Mutations: /).first()).toBeVisible();
-  expect(errors).toEqual([]);
 });

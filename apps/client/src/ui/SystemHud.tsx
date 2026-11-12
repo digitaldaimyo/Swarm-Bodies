@@ -59,6 +59,7 @@ export function BodyStrip({
         class={system ? "body-thumb system on" : "body-thumb system"}
         aria-pressed={system}
         aria-label="System view"
+        title="System view"
         onClick={onSystem}
       >
         <span class="sun" aria-hidden="true" />
@@ -111,7 +112,7 @@ export function ForecastStrip({ state, me }: { state: GameState; me: PlayerId })
         const comet = f.events.find((e) => e.kind === "comet");
         const label = `Turn ${f.turn}: ${targets.length > 0 ? `launch windows to bodies ${targets.join(", ")}` : "no launch windows"}${flare ? ", solar flare" : ""}${comet && comet.kind === "comet" ? `, comet on body ${comet.body + 1}` : ""}`;
         return (
-          <div key={f.turn} class="forecast-turn" title={label} aria-label={label}>
+          <div key={f.turn} class="forecast-turn" role="img" title={label} aria-label={label}>
             <span class="num forecast-n">{f.turn}</span>
             <span class={targets.length > 0 ? "forecast-win on" : "forecast-win"}>
               {targets.length > 0 ? `⇡${targets.join(",")}` : "·"}

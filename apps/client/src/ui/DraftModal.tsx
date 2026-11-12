@@ -73,7 +73,7 @@ export function MutationGlyphs({ ids }: { ids: readonly MutationId[] }) {
   if (ids.length === 0) return null;
   const names = ids.map((m) => mutationInfo(m).name).join(", ");
   return (
-    <span class="mutation-glyphs" aria-label={`Mutations: ${names}`} title={names}>
+    <span class="mutation-glyphs" role="img" aria-label={`Mutations: ${names}`} title={names}>
       {ids.map((m) => (
         <span key={m} aria-hidden="true">
           {mutationInfo(m).glyph}

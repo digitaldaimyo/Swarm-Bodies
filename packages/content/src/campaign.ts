@@ -1,4 +1,14 @@
-import type { GameConfig, MutationId, Rules, StrainId } from "@swarm/sim";
+import {
+  getBoard,
+  validateOrder,
+  type GameConfig,
+  type Hex,
+  type GameState,
+  type MutationId,
+  type PlayerId,
+  type Rules,
+  type StrainId,
+} from "@swarm/sim";
 import { MODIFIERS, type ModifierId } from "./modifiers";
 import type { GameSummary } from "./summary";
 
@@ -58,9 +68,24 @@ export type TutorialTrigger =
   | { kind: "event"; event: "CellCaptured" | "SporeLaunched" | "SporeLanded" | "FruitMatured" }
   | { kind: "systemView" };
 
+/**
+ * When a step may appear (M8 tutorial pacing): it waits until the player can actually do what
+ * it asks, instead of asking on turn 1 for something only possible on turn 4.
+ */
+export type TutorialCondition =
+  | { kind: "always" }
+  /** An own connected cell is thick enough to fruit. */
+  | { kind: "canFruit" }
+  /** An own fruiting body is ripe. */
+  | { kind: "canLaunch" }
+  /** An enemy cell touches one of yours. */
+  | { kind: "contact" };
+
 export interface TutorialStep {
   text: string;
   until: TutorialTrigger;
+  /** Defaults to always. */
+  when?: TutorialCondition;
 }
 
 export interface CampaignNode {
@@ -151,6 +176,7 @@ export const CAMPAIGN: readonly CampaignNode[] = [
       {
         text: "Cells cut off from every core starve. Cutting the enemy's vein is often better than fighting the front. Capture a cell to continue.",
         until: { kind: "event", event: "CellCaptured" },
+        when: { kind: "contact" },
       },
     ],
   },
@@ -175,12 +201,14 @@ export const CAMPAIGN: readonly CampaignNode[] = [
         until: { kind: "systemView" },
       },
       {
-        text: "Tap a thick cell (biomass 5+) and choose Fruit. It grows into a launcher.",
+        text: "That cell is thick enough now (biomass 5+). Tap it and choose Fruit: it grows into a launcher.",
         until: { kind: "order", order: "fruit" },
+        when: { kind: "canFruit" },
       },
       {
-        text: "When it is ripe and the other body is in range, tap it and Launch. A spore lands as a new core.",
+        text: "Your fruiting body is ripe. When the other body is in range, tap it and Launch. A spore lands as a new core.",
         until: { kind: "event", event: "SporeLaunched" },
+        when: { kind: "canLaunch" },
       },
     ],
   },
@@ -376,4 +404,40 @@ export function nodeConfig(
     ],
     ...(Object.keys(rules).length > 0 ? { rules } : {}),
   };
+}
+
+/** Whether a tutorial step's condition holds for `player` in `state` (client and tests). */
+export function tutorialReady(
+  state: GameState,
+  player: PlayerId,
+  when: TutorialCondition | undefined,
+): boolean {
+  if (!when || when.kind === "always") return true;
+  for (const body of state.bodies) {
+    const board = getBoard(body.radius);
+    for (const [i, c] of body.colony.entries()) {
+      if (!c || c.owner !== player) continue;
+      // The sim's own check, so the step appears exactly when a Fruit order would be legal.
+      if (
+        when.kind === "canFruit" &&
+        validateOrder(
+          state,
+          player,
+          { type: "fruit", body: body.id, cell: board.cells[i] as Hex },
+          [],
+        ).ok
+      )
+        return true;
+      if (when.kind === "canLaunch" && c.fruiting === 0) return true;
+      if (
+        when.kind === "contact" &&
+        (board.neighbours[i] ?? []).some((n) => {
+          const o = body.colony[n];
+          return !!o && o.owner !== player;
+        })
+      )
+        return true;
+    }
+  }
+  return false;
 }

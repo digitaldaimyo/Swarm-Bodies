@@ -198,3 +198,26 @@ describe("Daily Seed and seasons", () => {
     expect(sectorFor(SECTORS.length)).toBe(SECTORS[0]);
   });
 });
+
+describe("M8 tutorial pacing", () => {
+  it("fruit and launch steps wait until they can be done; contact waits for an enemy", async () => {
+    const { CAMPAIGN, nodeConfig, tutorialReady } = await import("../src");
+    const { createGame } = await import("@swarm/sim");
+    const c03 = CAMPAIGN.find((n) => n.id === "c03")!;
+    const s = createGame(nodeConfig(c03, "sporer"), c03.seed);
+    expect(tutorialReady(s, 0, undefined)).toBe(true);
+    expect(tutorialReady(s, 0, { kind: "canFruit" })).toBe(false);
+    expect(tutorialReady(s, 0, { kind: "canLaunch" })).toBe(false);
+    expect(tutorialReady(s, 0, { kind: "contact" })).toBe(false);
+    const home = s.bodies.find((b) => b.colony.some((c) => c?.owner === 0))!;
+    const i = home.colony.findIndex((c) => c?.owner === 0 && !c.core);
+    home.colony[i] = { ...home.colony[i]!, biomass: s.rules.fruitMinBiomass };
+    expect(tutorialReady(s, 0, { kind: "canFruit" })).toBe(true);
+    home.colony[i] = { ...home.colony[i]!, fruiting: 0 };
+    expect(tutorialReady(s, 0, { kind: "canLaunch" })).toBe(true);
+    // Every step's condition is satisfiable data (no typos): the steps that wait say why.
+    for (const n of CAMPAIGN)
+      for (const st of n.tutorial)
+        if (st.when) expect(["always", "canFruit", "canLaunch", "contact"]).toContain(st.when.kind);
+  });
+});
