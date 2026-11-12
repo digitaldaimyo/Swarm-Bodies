@@ -20,6 +20,7 @@ import {
 } from "./progress";
 import { audio } from "../audio/sfx";
 import { loadSkirmish, saveSkirmish } from "./storage";
+import { ErrorBoundary } from "./ErrorBoundary";
 import { Lobby } from "./Lobby";
 import { Online } from "./Online";
 import { SettingsScreen } from "./SettingsScreen";
@@ -297,117 +298,124 @@ export function App() {
           {error}
         </div>
       )}
-      {screen.name === "title" && (
-        <Title
-          hasSave={hasSave}
-          onPlay={() => setScreen({ name: "setup" })}
-          onOnline={() => setScreen({ name: "online" })}
-          onContinue={() => void startSkirmish(null)}
-          onSettings={() => setScreen({ name: "settings" })}
-          onCampaign={() => setScreen({ name: "campaign" })}
-          onDaily={() => setScreen({ name: "daily" })}
-          onCodex={() => setScreen({ name: "codex" })}
-        />
-      )}
-      {screen.name === "setup" && (
-        <Setup
-          defaultSeed={randomSeed()}
-          onBack={toTitle}
-          onStart={(settings) => void startSkirmish(settings)}
-        />
-      )}
-      {screen.name === "settings" && (
-        <SettingsScreen onBack={toTitle} onReplayFile={(f) => void openReplay(async () => f)} />
-      )}
-      {screen.name === "online" && <Online onBack={toTitle} onOpen={(id) => void openGame(id)} />}
-      {screen.name === "lobby" && (
-        <Lobby
-          meta={screen.meta}
-          onBack={() => setScreen({ name: "online" })}
-          onStarted={(m, s) => void started(m, s)}
-        />
-      )}
-      <Suspense fallback={fallback}>
-        {screen.name === "campaign" && <Campaign onBack={toTitle} onPlay={playNode} />}
-        {screen.name === "codex" && <Codex onBack={toTitle} />}
-        {screen.name === "daily" && <Daily onBack={toTitle} onPlay={playDaily} />}
-        {screen.name === "match" && (
-          <Match
-            session={screen.session}
-            tutorial={nodeOf(screen.session)?.tutorial}
-            onSave={
-              screen.session.kind === "skirmish"
-                ? () => saveSkirmish((screen.session as SkirmishSession).save())
-                : undefined
-            }
-            onExit={() => leave(screen.session)}
-            onFinished={() =>
-              void busy(async () => {
+      <ErrorBoundary
+        onReset={() => {
+          if (location.pathname !== "/") history.replaceState(null, "", "/");
+          toTitle();
+        }}
+      >
+        {screen.name === "title" && (
+          <Title
+            hasSave={hasSave}
+            onPlay={() => setScreen({ name: "setup" })}
+            onOnline={() => setScreen({ name: "online" })}
+            onContinue={() => void startSkirmish(null)}
+            onSettings={() => setScreen({ name: "settings" })}
+            onCampaign={() => setScreen({ name: "campaign" })}
+            onDaily={() => setScreen({ name: "daily" })}
+            onCodex={() => setScreen({ name: "codex" })}
+          />
+        )}
+        {screen.name === "setup" && (
+          <Setup
+            defaultSeed={randomSeed()}
+            onBack={toTitle}
+            onStart={(settings) => void startSkirmish(settings)}
+          />
+        )}
+        {screen.name === "settings" && (
+          <SettingsScreen onBack={toTitle} onReplayFile={(f) => void openReplay(async () => f)} />
+        )}
+        {screen.name === "online" && <Online onBack={toTitle} onOpen={(id) => void openGame(id)} />}
+        {screen.name === "lobby" && (
+          <Lobby
+            meta={screen.meta}
+            onBack={() => setScreen({ name: "online" })}
+            onStarted={(m, s) => void started(m, s)}
+          />
+        )}
+        <Suspense fallback={fallback}>
+          {screen.name === "campaign" && <Campaign onBack={toTitle} onPlay={playNode} />}
+          {screen.name === "codex" && <Codex onBack={toTitle} />}
+          {screen.name === "daily" && <Daily onBack={toTitle} onPlay={playDaily} />}
+          {screen.name === "match" && (
+            <Match
+              session={screen.session}
+              tutorial={nodeOf(screen.session)?.tutorial}
+              onSave={
+                screen.session.kind === "skirmish"
+                  ? () => saveSkirmish((screen.session as SkirmishSession).save())
+                  : undefined
+              }
+              onExit={() => leave(screen.session)}
+              onFinished={() =>
+                void busy(async () => {
+                  const s = screen.session;
+                  if (s.kind === "skirmish") saveSkirmish(null);
+                  else await (s as OnlineSession).loadFullHistory().catch(() => undefined);
+                  setScreen({ name: "results", session: s, rewards: await finish(s) });
+                })
+              }
+            />
+          )}
+          {screen.name === "results" && (
+            <Results
+              session={screen.session}
+              rewards={screen.rewards}
+              againLabel={
+                nodeOf(screen.session)
+                  ? "Retry"
+                  : screen.session.kind === "skirmish"
+                    ? "Rematch"
+                    : "Play again"
+              }
+              onTitle={() => {
+                screen.session.dispose();
+                toTitle();
+              }}
+              onCampaign={
+                nodeOf(screen.session)
+                  ? () => {
+                      screen.session.dispose();
+                      setScreen({ name: "campaign" });
+                    }
+                  : undefined
+              }
+              onRematch={() => {
                 const s = screen.session;
-                if (s.kind === "skirmish") saveSkirmish(null);
-                else await (s as OnlineSession).loadFullHistory().catch(() => undefined);
-                setScreen({ name: "results", session: s, rewards: await finish(s) });
-              })
-            }
-          />
-        )}
-        {screen.name === "results" && (
-          <Results
-            session={screen.session}
-            rewards={screen.rewards}
-            againLabel={
-              nodeOf(screen.session)
-                ? "Retry"
-                : screen.session.kind === "skirmish"
-                  ? "Rematch"
-                  : "Play again"
-            }
-            onTitle={() => {
-              screen.session.dispose();
-              toTitle();
-            }}
-            onCampaign={
-              nodeOf(screen.session)
-                ? () => {
-                    screen.session.dispose();
-                    setScreen({ name: "campaign" });
-                  }
-                : undefined
-            }
-            onRematch={() => {
-              const s = screen.session;
-              s.dispose();
-              if (s.kind === "online") return setScreen({ name: "online" });
-              const settings = (s as SkirmishSession).settings;
-              // Campaign nodes replay their fixed seed; skirmishes get a fresh one.
-              void startSkirmish(
-                settings.campaign ? settings : { ...settings, seed: randomSeed() },
-              );
-            }}
-            onWatch={() =>
-              setScreen({ name: "replay", session: screen.session, rewards: screen.rewards })
-            }
-          />
-        )}
-        {screen.name === "shared" && (
-          <ReplayViewer
-            history={screen.history}
-            title={screen.title}
-            onClose={() => {
-              if (location.pathname !== "/") history.replaceState(null, "", "/");
-              toTitle();
-            }}
-          />
-        )}
-        {screen.name === "replay" && (
-          <ReplayViewer
-            history={screen.session.history}
-            onClose={() =>
-              setScreen({ name: "results", session: screen.session, rewards: screen.rewards })
-            }
-          />
-        )}
-      </Suspense>
+                s.dispose();
+                if (s.kind === "online") return setScreen({ name: "online" });
+                const settings = (s as SkirmishSession).settings;
+                // Campaign nodes replay their fixed seed; skirmishes get a fresh one.
+                void startSkirmish(
+                  settings.campaign ? settings : { ...settings, seed: randomSeed() },
+                );
+              }}
+              onWatch={() =>
+                setScreen({ name: "replay", session: screen.session, rewards: screen.rewards })
+              }
+            />
+          )}
+          {screen.name === "shared" && (
+            <ReplayViewer
+              history={screen.history}
+              title={screen.title}
+              onClose={() => {
+                if (location.pathname !== "/") history.replaceState(null, "", "/");
+                toTitle();
+              }}
+            />
+          )}
+          {screen.name === "replay" && (
+            <ReplayViewer
+              history={screen.session.history}
+              onClose={() =>
+                setScreen({ name: "results", session: screen.session, rewards: screen.rewards })
+              }
+            />
+          )}
+        </Suspense>
+      </ErrorBoundary>
     </div>
   );
 }

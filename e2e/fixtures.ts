@@ -7,10 +7,11 @@ import { expect, test as base, type Page } from "@playwright/test";
  * purpose lists it with `allowConsoleErrors`.
  */
 export const test = base.extend<{
-  allowConsoleErrors: RegExp[];
+  /** Errors this test provokes on purpose (one pattern; arrays read as fixture tuples). */
+  allowConsoleErrors: RegExp | null;
   consoleGuard: undefined;
 }>({
-  allowConsoleErrors: [[], { option: true }],
+  allowConsoleErrors: [null, { option: true }],
   consoleGuard: [
     async ({ browser, context, allowConsoleErrors }, use) => {
       const errors: string[] = [];
@@ -30,7 +31,7 @@ export const test = base.extend<{
       };
       await use(undefined);
       browser.newContext = created;
-      const unexpected = errors.filter((e) => !allowConsoleErrors.some((re) => re.test(e)));
+      const unexpected = errors.filter((e) => !allowConsoleErrors?.test(e));
       expect(unexpected, "console errors during the test").toEqual([]);
     },
     { auto: true },
