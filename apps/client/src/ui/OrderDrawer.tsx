@@ -7,11 +7,17 @@ interface Props {
   orders: readonly Order[];
   session: MatchSession;
   onToggle(): void;
-  onFocus(h: Hex): void;
+  onFocus(h: Hex, body: number): void;
   onRemove(index: number): void;
 }
 
 function describe(state: GameState, me: number, o: Order): { title: string; cell: Hex } {
+  const where = state.bodies.length > 1 ? ` · body ${o.body + 1}` : "";
+  const d = describeOrder(state, me, o);
+  return { ...d, title: d.title + where };
+}
+
+function describeOrder(state: GameState, me: number, o: Order): { title: string; cell: Hex } {
   switch (o.type) {
     case "grow": {
       // Count new cells only: passing through your own cells is free and claims nothing.
@@ -61,7 +67,7 @@ export function OrderDrawer({ open, orders, session, onToggle, onFocus, onRemove
             <SwipeRow key={`${i}:${JSON.stringify(o)}`} onDelete={() => onRemove(i)}>
               <button
                 class="order-main"
-                onClick={() => onFocus(describe(session.state, session.me, o).cell)}
+                onClick={() => onFocus(describe(session.state, session.me, o).cell, o.body)}
               >
                 <span>{describe(session.state, session.me, o).title}</span>
                 <span class="num muted">{o.type === "retract" ? "+1 N" : `${costs[i]} N`}</span>

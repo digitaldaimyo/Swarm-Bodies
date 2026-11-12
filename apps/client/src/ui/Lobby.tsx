@@ -88,7 +88,10 @@ export function Lobby({ meta: initial, onBack, onStarted }: Props) {
           {meta.settings.pace === "live"
             ? `Live · ${meta.settings.turnSeconds} s turns`
             : `Async · ${meta.settings.turnSeconds / 3600} h turns`}{" "}
-          · Single Rock
+          ·{" "}
+          {meta.settings.map === "system"
+            ? `System, ${meta.settings.players} players`
+            : "Single Rock"}
         </span>
       </section>
       {error && (

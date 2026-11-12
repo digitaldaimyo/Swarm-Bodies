@@ -1,11 +1,10 @@
 import { lazy, Suspense } from "preact/compat";
 import { useEffect, useState } from "preact/hooks";
-import type { Difficulty } from "@swarm/bot";
-import type { GameMeta, Strain } from "@swarm/protocol";
+import type { GameMeta } from "@swarm/protocol";
 import type { GameState } from "@swarm/sim";
 import type { MatchSession } from "../game/match-session";
 import type { OnlineSession } from "../game/online-session";
-import type { SkirmishSession } from "../game/session";
+import type { SkirmishSession, SkirmishSettings } from "../game/session";
 import { audio } from "../audio/sfx";
 import { loadSkirmish, saveSkirmish } from "./storage";
 import { Lobby } from "./Lobby";
@@ -32,21 +31,17 @@ type Screen =
   | { name: "results"; session: MatchSession }
   | { name: "replay"; session: MatchSession };
 
-async function newSkirmish(
-  seed: string,
-  difficulty: Difficulty,
-  strain: Strain,
-  botStrain: Strain,
-  restore = false,
-): Promise<SkirmishSession> {
+async function newSkirmish(settings: SkirmishSettings | null): Promise<SkirmishSession> {
   const [{ SkirmishSession }, { workerBot }] = await Promise.all([
     import("../game/session"),
     import("../game/bot-client"),
   ]);
-  const saved = restore ? loadSkirmish() : null;
-  return saved
-    ? SkirmishSession.restore(saved, workerBot())
-    : new SkirmishSession({ seed, difficulty, strain, botStrain }, workerBot());
+  const saved = settings ? null : loadSkirmish();
+  if (saved) return SkirmishSession.restore(saved, workerBot());
+  return new SkirmishSession(
+    settings ?? { seed: "fallback", difficulty: "easy", strain: "swarmer", botStrain: "biofilm" },
+    workerBot(),
+  );
 }
 
 function randomSeed(): string {
@@ -92,15 +87,10 @@ export function App() {
     }
   };
 
-  const startSkirmish = (
-    seed: string,
-    difficulty: Difficulty,
-    strain: Strain,
-    botStrain: Strain,
-    restore = false,
-  ) =>
+  /** `null` continues the saved skirmish. */
+  const startSkirmish = (settings: SkirmishSettings | null) =>
     busy(async () => {
-      const session = await newSkirmish(seed, difficulty, strain, botStrain, restore);
+      const session = await newSkirmish(settings);
       setScreen(session.finished ? { name: "results", session } : { name: "match", session });
     });
 
@@ -176,7 +166,7 @@ export function App() {
           hasSave={hasSave}
           onPlay={() => setScreen({ name: "setup" })}
           onOnline={() => setScreen({ name: "online" })}
-          onContinue={() => void startSkirmish("", "easy", "swarmer", "biofilm", true)}
+          onContinue={() => void startSkirmish(null)}
           onSettings={() => setScreen({ name: "settings" })}
         />
       )}
@@ -184,7 +174,7 @@ export function App() {
         <Setup
           defaultSeed={randomSeed()}
           onBack={toTitle}
-          onStart={(seed, d, s, b) => void startSkirmish(seed, d, s, b)}
+          onStart={(settings) => void startSkirmish(settings)}
         />
       )}
       {screen.name === "settings" && <SettingsScreen onBack={toTitle} />}
@@ -228,8 +218,7 @@ export function App() {
               const s = screen.session;
               s.dispose();
               if (s.kind === "online") return setScreen({ name: "online" });
-              const { difficulty, strain, botStrain } = (s as SkirmishSession).settings;
-              void startSkirmish(randomSeed(), difficulty, strain, botStrain);
+              void startSkirmish({ ...(s as SkirmishSession).settings, seed: randomSeed() });
             }}
             onWatch={() => setScreen({ name: "replay", session: screen.session })}
           />

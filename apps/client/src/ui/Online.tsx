@@ -26,6 +26,7 @@ export function Online({ onBack, onOpen }: Props) {
   const [strain, setStrain] = useState<Strain>(loadStrain);
   const [pace, setPace] = useState<GameSettings["pace"]>("live");
   const [timer, setTimer] = useState<number>(60);
+  const [players, setPlayers] = useState(2);
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -76,7 +77,7 @@ export function Online({ onBack, onOpen }: Props) {
   const create = () =>
     run(async () => {
       const { gameId } = await api.createGame(
-        { pace, turnSeconds: timer, map: "singleRock", players: 2 },
+        { pace, turnSeconds: timer, map: "system", players },
         strain,
       );
       onOpen(gameId);
@@ -198,6 +199,20 @@ export function Online({ onBack, onOpen }: Props) {
             </button>
           ))}
         </div>
+        <div class="segmented" role="radiogroup" aria-label="Players (new game)">
+          {[2, 3, 4].map((n) => (
+            <button
+              key={n}
+              role="radio"
+              aria-checked={players === n}
+              class={players === n ? "seg active" : "seg"}
+              onClick={() => setPlayers(n)}
+            >
+              {n} players
+            </button>
+          ))}
+        </div>
+        <p class="hint">Create game uses this; quick match is always 2 players.</p>
         <div class="button-row">
           <button class="btn btn-primary" disabled={busy || queued} onClick={() => void create()}>
             Create game

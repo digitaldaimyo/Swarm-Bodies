@@ -78,6 +78,7 @@ test("skirmish: paint, submit, replay, and finish against the Easy bot", async (
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await page.getByRole("button", { name: "Play skirmish" }).click();
+  await page.getByRole("radio", { name: "Single Rock" }).click();
   // A Biofilm mirror: long enough games, and base entry costs (2 N per cell).
   await page.getByRole("radio", { name: /^Biofilm/ }).click();
   await page.getByRole("radio", { name: "Bot plays Biofilm" }).click();
@@ -117,5 +118,56 @@ test("skirmish: paint, submit, replay, and finish against the Easy bot", async (
   await expect(page.getByRole("img", { name: /Dominance over \d+ turns/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Rematch" })).toBeVisible();
 
+  expect(errors).toEqual([]);
+});
+
+test("system skirmish: body strip, System view, launches, and a finished game (M5)", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+
+  await page.goto("/?e2e");
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.getByRole("button", { name: "Play skirmish" }).click();
+  await page.getByRole("radio", { name: "Asteroid system" }).click();
+  await page.getByRole("radio", { name: "2 bots" }).click();
+  await page.getByRole("radio", { name: "Easy bot" }).click();
+  await page.getByRole("textbox").fill("smoke-sys");
+  await page.getByRole("button", { name: "Start" }).click();
+  await page.waitForFunction(
+    () => (window as unknown as { __swarm?: { view?: unknown } }).__swarm?.view,
+  );
+
+  // The body strip lists every body; three players get five bodies (SPEC §4.1).
+  const strip = page.getByRole("navigation", { name: "Bodies" });
+  await expect(strip.getByRole("button", { name: /^Body \d+,/ })).toHaveCount(5);
+  await expect(strip.getByRole("button", { name: /^Body \d+, .*yours/ })).toHaveCount(1);
+
+  // System view with the launch-window forecast, then open another body from the strip.
+  await strip.getByRole("button", { name: "System view" }).click();
+  await expect(page.getByLabel("Forecast, next 6 turns")).toBeVisible();
+  const other = strip.getByRole("button", { name: /^Body \d+,/ }).filter({ hasNotText: "yours" });
+  await other.first().click();
+  await expect(page.getByLabel("Forecast, next 6 turns")).toBeHidden();
+  await expect(strip.locator('[aria-current="true"]')).toHaveCount(1);
+
+  // The scripted player (Normal policy) finishes the game; spores fly along the way.
+  await page.evaluate(
+    () => ((window as unknown as { __swarm: { autoplay: boolean } }).__swarm.autoplay = true),
+  );
+  await expect(page.getByRole("heading", { name: /Victory|Defeat|Draw/ })).toBeVisible({
+    timeout: 170_000,
+  });
+  const launches = await page.evaluate(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const s = (window as any).__swarm.session;
+    return s.history
+      .flatMap((h: { events: { type: string }[] }) => h.events)
+      .filter((e: { type: string }) => e.type === "SporeLaunched").length;
+  });
+  expect(launches).toBeGreaterThan(0);
   expect(errors).toEqual([]);
 });

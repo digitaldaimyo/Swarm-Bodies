@@ -158,6 +158,71 @@ describe("replay timeline (SPEC §10.5)", () => {
     }
   });
 
+  it("folds system turns (spores, flares, comets) into the same boards as the sim (M5)", () => {
+    const seen = new Set<string>();
+    for (const seed of ["sys-a", "sys-b"]) {
+      let s = createGame({ mode: "system", playerCount: 3 }, seed);
+      while (!s.result) {
+        const orders = {
+          0: chooseOrders(s, 0, "normal", "a"),
+          1: chooseOrders(s, 1, "normal", "b"),
+          2: chooseOrders(s, 2, "easy", "c"),
+        };
+        const { state, events } = resolveTurn(s, orders);
+        const frames = buildTimeline(s, state, events, orders);
+        for (const f of frames) for (const e of f.effects) seen.add(e.kind);
+        const lastEvent = frames.filter((f) => f.phase !== "final").at(-1);
+        if (lastEvent) {
+          // Fruiting progress (phase 11) has no event; the final frame carries it.
+          const strip = (cs: (typeof state.bodies)[0]["colony"]) =>
+            cs.map((c) => (c ? { ...c, connected: false, fruiting: null } : null));
+          for (const b of state.bodies)
+            expect(strip(lastEvent.colony.get(b.id)!)).toEqual(strip(b.colony));
+        }
+        // Phases play in resolution order (SPEC §10.5).
+        const order = ["prep", "growth", "launch", "starve", "income", "events", "final"];
+        const idx = frames.map((f) => order.indexOf(f.phase));
+        expect(idx).toEqual([...idx].sort((x, y) => x - y));
+        s = state;
+      }
+    }
+    for (const k of ["fruit", "launch", "land", "flash", "flare"]) expect(seen).toContain(k);
+  });
+
+  it("logs launches and landings", () => {
+    let s = createGame({ mode: "system", playerCount: 2 }, "log-sys");
+    const texts: string[] = [];
+    while (!s.result && !texts.some((t) => t.includes("launched a spore"))) {
+      const orders = { 0: chooseOrders(s, 0, "normal", "a"), 1: chooseOrders(s, 1, "normal", "b") };
+      const { state, events } = resolveTurn(s, orders);
+      texts.push(...describeEvents(events, 0, () => "Bot").map((l) => l.text));
+      s = state;
+    }
+    expect(texts.some((t) => /launched a spore toward body \d+ \(lands turn \d+\)/.test(t))).toBe(
+      true,
+    );
+  });
+
+  it("plays multi-bot system skirmishes", async () => {
+    const s = new SkirmishSession(
+      {
+        seed: "multi",
+        difficulty: "easy",
+        strain: "swarmer",
+        botStrain: "biofilm",
+        map: "system",
+        bots: 3,
+        size: "compact",
+      },
+      syncBot,
+    );
+    expect(s.state.players).toHaveLength(4);
+    expect(s.state.bodies).toHaveLength(Math.max(s.state.rules.systemMinBodies, 5));
+    await s.submitAndWait();
+    expect(s.state.turn).toBe(2);
+    expect(s.seats().map((x) => x.name)).toEqual(["You", "Bot 1", "Bot 2", "Bot 3"]);
+  });
+
   it("describes key events for the log", () => {
     const s = duel();
     const { events } = resolveTurn(s, { 0: [grow([1, 0], [2, 0])] });

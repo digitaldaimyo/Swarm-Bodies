@@ -1,5 +1,13 @@
 import type { Difficulty } from "@swarm/bot";
-import { createGame, type Order, type OrderSet, type PlayerId, type StrainId } from "@swarm/sim";
+import {
+  createGame,
+  type GameConfig,
+  type GameMode,
+  type Order,
+  type OrderSet,
+  type PlayerId,
+  type StrainId,
+} from "@swarm/sim";
 import type { BotRunner } from "./bot-client";
 import { SessionBase, type MatchSession, type SeatStatus } from "./match-session";
 
@@ -14,6 +22,27 @@ export interface SkirmishSettings {
   /** Your strain and the bot's (SPEC §7.1). */
   strain: Exclude<StrainId, "base">;
   botStrain: Exclude<StrainId, "base">;
+  /** M5: map and bot count (saves from earlier versions are 1-bot Single Rock games). */
+  map?: GameMode;
+  bots?: number;
+  /** System size (SPEC §10.1): extra bodies beyond one per player. */
+  size?: SystemSize;
+}
+
+export type SystemSize = "compact" | "standard" | "wide";
+export const SYSTEM_EXTRA_BODIES: Record<SystemSize, number> = { compact: 1, standard: 2, wide: 3 };
+
+/** The sim config for a skirmish: you in seat 0, bots after you (SPEC §3). */
+export function skirmishConfig(s: SkirmishSettings): GameConfig {
+  const bots = s.map === "system" ? Math.max(1, Math.min(3, s.bots ?? 1)) : 1;
+  return {
+    mode: s.map ?? "singleRock",
+    playerCount: bots + 1,
+    strains: [s.strain, ...Array.from({ length: bots }, () => s.botStrain)],
+    ...(s.map === "system"
+      ? { rules: { systemExtraBodies: SYSTEM_EXTRA_BODIES[s.size ?? "standard"] } }
+      : {}),
+  };
 }
 
 /** The saved form of a skirmish: the seed plus every turn's orders (SPEC §9.4: reconstructable). */
@@ -32,7 +61,7 @@ export class SkirmishSession extends SessionBase implements MatchSession {
   readonly kind = "skirmish" as const;
   readonly deadline = null;
   readonly turnSeconds = null;
-  private botOrders: Promise<OrderSet> | null = null;
+  private botOrders: Promise<Record<PlayerId, OrderSet>> | null = null;
   botReady = false;
   private resolving = false;
 
@@ -41,13 +70,7 @@ export class SkirmishSession extends SessionBase implements MatchSession {
     private readonly bot: BotRunner,
     startBot = true,
   ) {
-    super(
-      createGame(
-        { mode: "singleRock", playerCount: 2, strains: [settings.strain, settings.botStrain] },
-        settings.seed,
-      ),
-      HUMAN,
-    );
+    super(createGame(skirmishConfig(settings), settings.seed), HUMAN);
     if (startBot) this.startBot();
   }
 
@@ -61,7 +84,9 @@ export class SkirmishSession extends SessionBase implements MatchSession {
   }
 
   get description(): string {
-    return `${this.settings.difficulty === "easy" ? "Easy" : "Normal"} bot · seed ${this.settings.seed}`;
+    const n = this.state.players.length - 1;
+    const map = this.state.mode === "system" ? "System" : "Single Rock";
+    return `${map} · ${n} ${this.settings.difficulty === "easy" ? "Easy" : "Normal"} bot${n === 1 ? "" : "s"} · seed ${this.settings.seed}`;
   }
 
   get submitted(): boolean {
@@ -69,7 +94,8 @@ export class SkirmishSession extends SessionBase implements MatchSession {
   }
 
   name(seat: PlayerId): string {
-    return seat === HUMAN ? "You" : "Bot";
+    if (seat === HUMAN) return "You";
+    return this.state.players.length > 2 ? `Bot ${seat}` : "Bot";
   }
 
   seats(): SeatStatus[] {
@@ -79,7 +105,7 @@ export class SkirmishSession extends SessionBase implements MatchSession {
       strain: p.strain,
       you: p.id === HUMAN,
       ready: p.id === HUMAN ? this.resolving : this.botReady,
-      thinking: p.id === BOT && !this.botReady,
+      thinking: p.id !== HUMAN && !this.botReady,
       botControlled: false,
       connected: true,
     }));
@@ -99,12 +125,18 @@ export class SkirmishSession extends SessionBase implements MatchSession {
     if (this.finished) return;
     this.botReady = false;
     const turn = this.state.turn;
-    const promise = this.bot.choose(
-      this.state,
-      BOT,
-      this.settings.difficulty,
-      `${this.settings.seed}:bot`,
-    );
+    const state = this.state;
+    const seats = state.players.filter((p) => p.id !== HUMAN && !p.eliminated).map((p) => p.id);
+    const promise = Promise.all(
+      seats.map((seat) =>
+        this.bot.choose(
+          state,
+          seat,
+          this.settings.difficulty,
+          seat === BOT ? `${this.settings.seed}:bot` : `${this.settings.seed}:bot${seat}`,
+        ),
+      ),
+    ).then((sets) => Object.fromEntries(seats.map((seat, i) => [seat, sets[i] ?? []])));
     this.botOrders = promise;
     void promise.then(() => {
       if (this.botOrders === promise && this.state.turn === turn) {
@@ -120,7 +152,7 @@ export class SkirmishSession extends SessionBase implements MatchSession {
     this.resolving = true;
     this.notify();
     void this.botOrders.then((bot) => {
-      const record = this.applyTurn({ [HUMAN]: this.planner.orders, [BOT]: bot });
+      const record = this.applyTurn({ ...bot, [HUMAN]: this.planner.orders });
       this.resolving = false;
       this.startBot();
       this.emitTurn(record);
