@@ -7,14 +7,15 @@ A simultaneous-turn strategy game for web and mobile web. Rival colonies of slim
 
 ## Status
 
-Milestones 1 (the deterministic simulation core) and 2 (the Easy and Normal bot) are complete. Next is M3, the playable client. See [docs/PROGRESS.md](docs/PROGRESS.md) for details, and [docs/DECISIONS.md](docs/DECISIONS.md) for rulings on ambiguous spec points.
+Milestones 1–3 are complete: the deterministic simulation core, the Easy and Normal bot, and a playable offline skirmish client (a PWA). Next is M4, online multiplayer. See [docs/PROGRESS.md](docs/PROGRESS.md) for details, and [docs/DECISIONS.md](docs/DECISIONS.md) for rulings on ambiguous spec points.
 
 ## Getting started
 
 ```
 pnpm install
+pnpm dev                     # the client at http://localhost:5173
 pnpm test                    # Vitest: sim rules, property tests, golden replays
-pnpm test:e2e                # Playwright: golden replays in the browser
+pnpm test:e2e                # Playwright: golden replays, client smoke test, frame budget
 pnpm typecheck && pnpm lint
 pnpm balance -- --games 200 --players normal,random  # headless batch on Single Rock
 ```

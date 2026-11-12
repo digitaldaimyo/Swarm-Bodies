@@ -1,6 +1,31 @@
 # Progress
 
-**Current milestone:** M2, Bot: complete. **Next:** M3, Playable client vs bot (SPEC §15).
+**Current milestone:** M3, Playable client vs bot: complete. **Next:** M4, Online multiplayer (SPEC §15).
+
+## M3: Playable client vs bot: done
+
+Scope (§15): Vite, Pixi and Preact client; Body view, path painting, radial menu, order drawer, submit, turn replay, results; skirmish against the bot in a Web Worker; procedural art for the asteroid, cells, veins and cores; synthesized SFX; PWA shell.
+
+- [x] `apps/client`: Vite 8, PixiJS 8.22, Preact 10. `pnpm dev` serves it. The initial bundle is about 17 KB gzipped. The match, results and replay viewer (with PixiJS) are lazy-loaded chunks (§10.7: under 400 KB).
+- [x] Screens: title (animated SVG slime), skirmish setup (Easy or Normal bot, seed), settings (audio levels, haptics, reduce motion, replay speed), match, results (dominance graph, stats, watch replay, rematch), and a full-game replay viewer. A skirmish in progress is saved and can be continued.
+- [x] Body view (§10.2–10.4): seeded procedural asteroid (noisy rim, craters, grit), boulder rock, crystal, pod and fleck deposits, and a two-layer parallax starfield. Colonies have biomass-thick veins, glow by biomass, pulsing cores, flow motes travelling toward cores, and desaturated, slowly pulsing disconnected cells. Hex outlines fade in when zoomed; biomass numbers show when zoomed or on long-press.
+- [x] Input (§10.3): Pointer Events. One finger paints from own connected cells or pans; pinch zooms; two fingers pan. Wheel zoom, right-drag pan, Esc, Z (undo) and Enter (submit) on desktop. Haptic ticks while painting and on submit.
+- [x] Planning: live sim validation and cost, a ghost path with assault previews ("9 vs 3", green or red, "?" when uncertain), a radial menu with reasons for illegal actions, the order drawer (tap to focus, swipe or ✕ to delete), undo, and HUD (nutrients, planned cost, income, turn ring, ready markers, dominance bar with the 60% mark).
+- [x] Turn replay (§10.5): frames built from sim events: prep, each growth step (tendrils, collision splashes, capture flips, core bursts), starvation fades, and income "+N". Pause, 1×/2× and skip; reduce-motion mode; auto-framing; a "what happened" log where tapping an entry focuses the camera. The last frame is always the real resolved state.
+- [x] Bot in a Web Worker (§9.5). It plans as soon as a turn starts, and its orders stay sealed until submit.
+- [x] Synthesized audio (§10.6): squelch, crunch, thud, click and tick, plus an ambient pad that brightens as the game goes on. Master, effects and ambience sliders. Audio starts on the first gesture.
+- [x] PWA (§10.7): manifest, icons rasterised at build time from one SVG (`apps/client/build/icon.svg`), and a Workbox service worker precaching the app shell. Safe-area insets; portrait and landscape layouts.
+- [x] Acceptance: a full Single Rock game is playable to the end at 390×844 (Playwright smoke test, plus manual screenshot review at 390×844, 844×390 and 1440×900).
+- [x] Acceptance: Playwright smoke test (`e2e/smoke.spec.ts`). It uses a real touch drag (CDP) to paint, then submits, watches the replay, and finishes against the Easy bot with an accelerated scripted player.
+- [~] Acceptance: 60 fps on a mid-range phone profile. `e2e/perf.spec.ts` passes: under 4× CPU throttle, the frame CPU median is about 1.5–2.5 ms and p95 is about 11–14 ms (replay board swaps), within one 16.7 ms frame. This container has no GPU, so raw frame rates here only reflect software WebGL (see DECISIONS #29). **Open item: confirm 60 fps on a real mid-range Android phone and an iPhone 12.**
+- [x] Client unit tests (`apps/client/test/logic.test.ts`): hex layout, path painting (including routing around rock), the planner and assault preview against the sim, replay timeline reconstruction over whole games, the event log, and skirmish save/restore.
+
+## Next: M4, Online multiplayer
+
+- `packages/protocol` (zod message schemas), `apps/server` (Fastify, WebSocket, Postgres via Drizzle).
+- Guest accounts; create and join by code; live and async timers; sealed orders; hash verification; reconnects; Web Push; bot takeover after 3 missed turns.
+- Swarmer and Biofilm strains in the sim (§7.1), and strain support in `tools/balance`.
+- Acceptance: two browsers complete a live game; an async game survives a server restart; a deliberate hash mismatch is detected and recovered; server tests pass.
 
 ## M2: Bot: done
 
@@ -26,12 +51,6 @@ Reference batch results (200 games each, seats alternating):
 | Easy vs random   | 200–0                                                                    | ~15 turns  |
 | Normal vs Easy   | 171–29 (85.5%)                                                           | ~26 turns  |
 | Normal vs Normal | 85–115; seat 0 won 46.6% of 399 separate games (no meaningful seat bias) | ~28 turns  |
-
-## Next: M3, Playable client vs bot
-
-- `apps/client`: Vite, PixiJS v8 and Preact. Body view, path painting, radial menu, order drawer, submit, turn replay (§10.5), and results.
-- Skirmish against `@swarm/bot` in a Web Worker. Procedural art for the asteroid, cells, veins and cores. Synthesized SFX. PWA shell.
-- Acceptance: a full Single Rock game is playable on a phone-size viewport (390×844 first); 60 fps on a mid-range phone profile; the Playwright smoke test passes.
 
 ## M1: Simulation core: done
 
