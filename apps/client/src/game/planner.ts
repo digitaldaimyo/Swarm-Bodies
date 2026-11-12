@@ -69,7 +69,7 @@ export class Planner {
     return total;
   }
 
-  /** Income if the board stayed as it is: 2 N per core plus connected deposit yields. */
+  /** Income if the board stayed as it is: 2 N per core plus connected deposit and comet yields. */
   get projectedIncome(): number {
     return incomeOf(this.state, this.player);
   }
@@ -94,6 +94,7 @@ export function incomeOf(state: GameState, player: PlayerId): number {
       if (c.core) n += state.rules.incomePerCore;
       const d = body.deposits[i];
       if (d) n += state.rules.depositYield[d];
+      for (const comet of body.comets) if (comet.cell === i) n += comet.yield;
     });
   }
   return n;

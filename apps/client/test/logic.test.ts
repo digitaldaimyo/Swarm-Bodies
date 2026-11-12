@@ -254,3 +254,24 @@ describe("skirmish session", () => {
     expect(b.stats).toHaveLength(3);
   });
 });
+
+describe("projected income (M5)", () => {
+  it("counts comet deposits under connected cells, like the sim", async () => {
+    const { incomeOf } = await import("../src/game/planner");
+    let s = createGame({ mode: "system", playerCount: 2 }, "income-comets");
+    for (let t = 0; t < 30 && !s.result; t++) {
+      const orders = { 0: chooseOrders(s, 0, "normal", "a"), 1: chooseOrders(s, 1, "normal", "b") };
+      const { state, events } = resolveTurn(s, orders);
+      // Income this turn is paid on the board after starvation, which is the next state's board
+      // except for fruiting and event-phase changes; compare where no event phase touched cells.
+      const touched = events.some((e) =>
+        ["FlareStruck", "CometArrived", "CometFaded", "Irradiated"].includes(e.type),
+      );
+      if (!touched) {
+        for (const e of events)
+          if (e.type === "Income") expect(incomeOf(state, e.player)).toBe(e.amount);
+      }
+      s = state;
+    }
+  });
+});

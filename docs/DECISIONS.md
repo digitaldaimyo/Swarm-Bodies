@@ -87,3 +87,23 @@ Rulings on ambiguous or unspecified points in `docs/SPEC.md`, as CLAUDE.md requi
 47. **Perf test in M4.** The method is the one in #33 (it began on this branch and was backported to M3 when PR #3's CI failed). M4 adds only what its features need: the test plays a Biofilm mirror, so games last past turn 13 despite the Swarmer imbalance (#36), and it waits for the bot via the new ready markers.
 
 48. **Deep links.** `/?join=CODE` (shared invite) joins and opens the lobby; `/?game=ID` (push notification click) opens that game.
+
+## 2026-11-12 — M5 the system
+
+49. **Fruit timing (§5.2, §6).** Fruit orders apply in phase 4, right after Reinforce and before growth. The cell starts maturing that turn: `fruitMatureTurns` counts down in phase 11, and a Launch is legal once it reaches 0. A fruiting cell cannot also be retracted in the same set.
+50. **Launch legality (§6).** A Launch needs a mature fruiting body. Its target must be another body (`sameBody`) whose distance at the current turn is within range, compared exactly in integers. Fruit and Launch are rejected on Single Rock (`noLaunches`).
+51. **Launch resolution (§6).** The launcher drops to biomass 1 and stops fruiting. If it was captured during growth, the launch fizzles. Travel time is computed at the launch turn and never changes.
+52. **Landings (§6).** Spores aimed at the same cell on the same turn all die (`collided`). Otherwise a spore lands as a core:
+    - On an empty cell or an own cell, at the landing biomass (an own cell keeps its biomass if higher).
+    - On an enemy cell, against that cell's full defense, including support from connected neighbours. If the landing beats it, the spore captures the cell as a core at `landing − defense` (minimum 1), and a captured core counts as destroyed. If not, the defender loses 1 biomass (minimum 1).
+53. **Irradiated bodies (§4.3).** The burn in phase 13 removes non-core cells at biomass 1; cores are spared, so a lone core cannot burn away.
+54. **Flares (§8).** A cell is sun-facing when it lies on the star's side of the line through the body's centre, perpendicular to the star direction. The boundary is inclusive, and hex axes are fixed to the system's axes; the test is in integers. Struck cells lose 2 biomass; cores stop at 1, other cells die at 0.
+55. **Comets (§8).** The struck cell is chosen at arrival, not at warning: a random empty, non-rock cell without a deposit, from the stream `comet:<turn>:<body>`. If there is none, the comet misses. Its yield counts as income only while the cell is connected.
+56. **Spore targets are hidden in the UI only.** The lockstep state is shared, so every client holds every spore. The client shows the landing cell only for your own spores; everyone sees the target body.
+57. **Homes and generation (§4.1).** Homes are chosen by brute force over all assignments: the one with the smallest spread of nearest-neutral distance at turn 1 wins. Ties go to the first in canonical order. Flares and comets are scheduled only in system games.
+58. **Bot spore play (§13.2).** The bot values a launch by the target's income horizon, its unclaimed room and nearby deposits, and capture value. It values Fruit as a share (`fruitFaith`) of the best launch the forecast opens after maturity. When no cell has biomass 5, it reinforces the best fruit site toward it. Both weights live in `weights.ts`, next to the other bot weights.
+59. **Maps online (supersedes #44).** Games are `singleRock` (2 players, a test map, §4.1) or `system` (2–4 players). New games and quick match default to a 2-player system. Replays carry the map.
+60. **Stored states.** Snapshots written before M5 lack the system fields. `upgradeState` fills them with Single Rock defaults, so the state equals what a fresh game would hold and resolves identically. Stored hashes for those old turns no longer match the upgraded states; the server logs this and carries on. A game that still cannot load is logged and skipped at startup, so the server stays up.
+61. **Skirmish options (§10.1).** "System size" maps to `systemExtraBodies` (compact 1, standard 2, wide 3), within the 4–7 clamp. All bots play the chosen bot strain. Saved skirmishes from earlier versions load as 1-bot Single Rock games.
+62. **System view rendering.** The System view is drawn in screen space in Pixi, in the same canvas as the Body view, so there is no second WebGL context. Only one of the two is visible at a time. The body strip and forecast are DOM. Pinching out (or scrolling out on desktop) past the whole body opens the System view.
+63. **Body art seeds.** Each body's art is seeded with `seed:bodyId`, so bodies in one system differ. This changed Single Rock's look, but not its rules.
