@@ -9,7 +9,7 @@ type Hook = {
   autoplay: boolean;
   phase: string;
   turn: number;
-  view?: { depositBadges: number };
+  view?: { depositBadges: number; vessels: number };
 };
 /**
  * Small reads from the e2e hook. Never return `__swarm` itself: it holds the live view and
@@ -46,8 +46,16 @@ test("a turn's replay tours every body with action, then returns to yours", asyn
   await page.waitForFunction(
     () => (window as unknown as { __swarm: Hook }).__swarm.phase === "planning",
   );
+  // Autoplay can stop with a mutation draft pending (drafts follow biomass, so it depends on
+  // the turn it stops at). Its dialog covers the board and Submit: set it aside first.
+  const later = page.getByRole("button", { name: "Decide later" });
+  if (await later.isVisible()) await later.click();
   // Resources stay visible under the colony: occupied deposit cells carry a badge.
   expect(await depositBadges(page)).toBeGreaterThan(0);
+  // Colony life, phase 1: the supply tree is drawn as vessels over the colony body.
+  expect(
+    await page.evaluate(() => (window as unknown as { __swarm: Hook }).__swarm.view?.vessels ?? 0),
+  ).toBeGreaterThan(5);
 
   const strip = page.getByRole("navigation", { name: "Bodies" });
   const current = async (): Promise<string> =>
