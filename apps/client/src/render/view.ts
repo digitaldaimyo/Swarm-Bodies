@@ -10,6 +10,7 @@ import {
 } from "pixi.js";
 import {
   bodyPosition,
+  cellYield,
   getBoard,
   HEX_DIRECTIONS as HEX_DIRS,
   type Body,
@@ -36,6 +37,7 @@ import {
 } from "./palette";
 import { SpritePool } from "./pool";
 import { drawPattern } from "./patterns";
+import { vascular, vesselWidth } from "../game/vascular";
 import { SystemLayer } from "./system";
 
 export interface ViewCallbacks {
@@ -92,6 +94,11 @@ export class MatchView {
   private bandPool!: SpritePool;
   private readonly blobLayer = new Container();
   private readonly sheenLayer = new Container();
+  /** Supply-tree vessels over the colony body (colony life, phase 1). */
+  private readonly vesselLayer = new Container();
+  private vesselPool!: SpritePool;
+  /** How many vessels the board shows (tests read this; the canvas cannot be queried). */
+  vessels = 0;
   /** Colourblind pattern overlays (SPEC §10.4, §10.8): one pool per seat pattern. */
   private readonly patternLayer = new Container();
   private patternPools: SpritePool[] = [];
@@ -233,8 +240,13 @@ export class MatchView {
       this.bandLayer,
       this.blobLayer,
       this.sheenLayer,
+      this.vesselLayer,
       this.patternLayer,
     );
+    // The colony body, vessels included, is cached as one texture: fading it is even (no
+    // triangle mosaic), lets the ground show through, and adds no per-frame cost
+    // (colony life, phase 1).
+    this.goo.alpha = 0.86;
     this.world.addChild(
       this.goo,
       this.depositMarks,
@@ -284,6 +296,14 @@ export class MatchView {
     this.triPool = new SpritePool(this.triLayer, tri);
     this.blobPool = new SpritePool(this.blobLayer, disc);
     this.sheenPool = new SpritePool(this.sheenLayer, soft);
+    // A capsule, stretched along each vessel: rounded ends make joints read as one vessel.
+    this.vesselPool = new SpritePool(
+      this.vesselLayer,
+      this.app.renderer.generateTexture({
+        target: new Graphics().roundRect(0, 0, 32, 8, 4).fill(0xffffff),
+        resolution: 2,
+      }),
+    );
     this.patternPools = PLAYER_PATTERNS.map(
       (p) =>
         new SpritePool(
@@ -749,6 +769,43 @@ export class MatchView {
     }
   }
 
+  /**
+   * Supply-tree vessels (colony life, phase 1): each connected cell's vein toward its core is
+   * drawn as a vessel over the colony body, thicker the more cells it feeds. Other links stay
+   * as the body's webbing; cut-off cells carry no vessels. Static: part of the cached texture.
+   */
+  private drawVessels(
+    colony: readonly (Colony | null)[],
+    body: Body,
+    board: ReturnType<typeof getBoard>,
+    state: GameState,
+  ): void {
+    const v = vascular(body.radius, colony, (i, owner) => cellYield(state, body, i, owner));
+    this.vessels = 0;
+    for (let i = 0; i < colony.length; i++) {
+      const p = v.parent[i] as number;
+      const c = colony[i];
+      // Leaf twigs (feeding only themselves) are left to the body's webbing: they were all
+      // but invisible, and skipping them halves the sprites drawn every frame.
+      if (p < 0 || !c || (v.load[i] as number) < 2) continue;
+      const a = hexToPixel(board.cells[i] as Hex);
+      const b = hexToPixel(board.cells[p] as Hex);
+      const w = vesselWidth(v.load[i] as number) * veinScale(c.owner);
+
+      // Arteries stand out; capillaries toward the edges all but vanish.
+      const load = v.load[i] as number;
+      const alpha = 0.16 + 0.36 * Math.min(1, Math.log2(load) / 5);
+      const s = this.vesselPool.takeRaw(lighten(playerColor(c.owner), 0.45), alpha);
+      s.anchor.set(0.5);
+      s.position.set((a.x + b.x) / 2, (a.y + b.y) / 2);
+      s.rotation = Math.atan2(b.y - a.y, b.x - a.x);
+      // Overshoot by the width so neighbouring vessels overlap into one continuous line.
+      s.width = Math.hypot(b.x - a.x, b.y - a.y) + w;
+      s.height = w;
+      this.vessels++;
+    }
+  }
+
   /** Turns the colourblind pattern overlays on or off (Settings). */
   setPatterns(on: boolean): void {
     if (on === this.patterns) return;
@@ -781,6 +838,7 @@ export class MatchView {
     this.bandPool.begin();
     this.blobPool.begin();
     this.sheenPool.begin();
+    this.vesselPool.begin();
     for (const pool of this.patternPools) pool.begin();
     const colorOf = (c: Colony) =>
       c.connected ? playerColor(c.owner) : desaturate(playerColor(c.owner), 0.65);
@@ -826,12 +884,15 @@ export class MatchView {
         const o = colony[n];
         if (!o || o.owner !== c.owner) continue;
         const q = hexToPixel(board.cells[n] as Hex);
-        const bar = this.bandPool.takeRaw(colorOf(c.connected ? c : o));
+        // Severed veins (both ends cut off) thin out and fade: nothing flows through them.
+        const severed = !c.connected && !o.connected;
+        const bar = this.bandPool.takeRaw(colorOf(c.connected ? c : o), severed ? 0.5 : 1);
         bar.anchor.set(0.5);
         bar.position.set((p.x + q.x) / 2, (p.y + q.y) / 2);
         bar.rotation = Math.atan2(q.y - p.y, q.x - p.x);
         bar.width = Math.hypot(q.x - p.x, q.y - p.y);
-        bar.height = (12 + 1.6 * Math.min(c.biomass, o.biomass)) * veinScale(c.owner);
+        bar.height =
+          (12 + 1.6 * Math.min(c.biomass, o.biomass)) * veinScale(c.owner) * (severed ? 0.55 : 1);
       }
     });
     colony.forEach((c, i) => {
@@ -854,6 +915,8 @@ export class MatchView {
         pool.take(p.x, p.y, Math.max(8, r * 0.8), 0x061018, 0.72);
       }
     });
+    this.drawVessels(colony, body, board, state);
+    this.vesselPool.end();
     for (const pool of this.patternPools) pool.end();
     this.glowPool.end();
     this.triPool.end();
