@@ -261,3 +261,15 @@ Rulings on ambiguous or unspecified points in `docs/SPEC.md`, as CLAUDE.md requi
      - **Codex:** a "How to play" tab, now the first tab, covers the goal, turns, growing, combat, supply lines, nutrients, spores and mutations.
      - **Generated text:** the rule numbers and the combat formula are generated from `BASE_RULES` (`content/guide.ts`), so the text follows any retune.
      - **Card position:** the tutorial card moved from the bottom to just under the HUD, so it no longer covers the turn log or the order controls.
+
+## 2026-11-13 — Playtest feedback: resources, turn tour, replay controls
+
+106. **Resources stay visible under colonies.** Every occupied deposit or comet cell gets a small badge drawn above the colony: a diamond for ice, a circle for organic, a square for mineral, a star for a comet. The shapes read without colour too. Empty deposit cells keep their full terrain art.
+107. **A turn's replay tours every body with action.**
+     - **Order:** the body in view plays first, with full timing and sound. Then each other body with action plays in id order, showing only its own frames, so the tour stays short. The system-wide flash plays once.
+     - **Control:** input stays off during the tour, then control returns to the starting body (and the System view, if that was open).
+     - **Skip:** it ends the whole tour. Bodies it did not reach keep their alert dot on the strip.
+108. **Replay viewer controls.**
+     - **Transport:** previous, play/pause, next, and a turn scrubber that seeks to any turn, including the final position.
+     - **Bodies:** the body strip switches asteroids and the System view; picking a body replays the current turn on it.
+     - **Seat:** a local replay opens on your home body; a shared one opens on the first colonised body.

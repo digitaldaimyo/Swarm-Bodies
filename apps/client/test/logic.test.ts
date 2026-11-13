@@ -5,7 +5,13 @@ import { cellAt, grow, reinforce, scenario } from "@swarm/sim/testing";
 import { hexToPixel, pixelToHex } from "../src/game/layout";
 import { PathPainter } from "../src/game/painter";
 import { Planner, previewPath } from "../src/game/planner";
-import { buildTimeline, describeEvents, timelineDuration } from "../src/game/timeline";
+import {
+  buildTimeline,
+  describeEvents,
+  framesFor,
+  replayBodies,
+  timelineDuration,
+} from "../src/game/timeline";
 import { neutralBodies, SkirmishSession, type SavedSkirmish } from "../src/game/session";
 import type { BotRunner } from "../src/game/bot-client";
 
@@ -309,5 +315,53 @@ describe("draft picks in the planner (M6)", () => {
     ]);
     expect(preview[0]).toMatchObject({ kind: "assault", outcome: "capture" });
     expect(planner.pickDraft("thick_veins" as never).ok).toBe(false);
+  });
+});
+
+describe("turn replay tour (playtest)", () => {
+  /** Plays a 3-player system until a turn has action on more than one body. */
+  function busyTurn() {
+    let s = createGame(
+      { mode: "system", playerCount: 3, strains: ["swarmer", "biofilm", "sporer"] },
+      "tour-1",
+    );
+    for (let t = 0; t < 40; t++) {
+      const orders: Record<number, ReturnType<typeof chooseOrders>> = {};
+      for (const p of s.players) orders[p.id] = chooseOrders(s, p.id, "normal", `tour-${p.id}`);
+      const r = resolveTurn(s, orders);
+      const frames = buildTimeline(s, r.state, r.events, orders);
+      const bodies = new Set(
+        frames.flatMap((f) => f.effects.map((e) => e.body)).filter((b) => b >= 0),
+      );
+      if (bodies.size > 1) return { frames, bodies };
+      s = r.state;
+    }
+    throw new Error("no busy turn");
+  }
+
+  it("visits the body in view first, then every other body with action, in id order", () => {
+    const { frames, bodies } = busyTurn();
+    const sorted = [...bodies].sort((a, b) => a - b);
+    const current = sorted[1] as number;
+    expect(replayBodies(frames, current)).toEqual([
+      current,
+      ...sorted.filter((b) => b !== current),
+    ]);
+    // A quiet body in view is skipped; with no action anywhere, the view stays put.
+    const quiet = 99;
+    expect(replayBodies(frames, quiet)).toEqual(sorted);
+    expect(replayBodies([], 2)).toEqual([2]);
+  });
+
+  it("a later pass plays only that body's frames, without the system-wide effects", () => {
+    const { frames, bodies } = busyTurn();
+    const b = [...bodies][0] as number;
+    const pass = framesFor(frames, b);
+    expect(pass.length).toBeGreaterThan(0);
+    expect(pass.length).toBeLessThanOrEqual(frames.length);
+    for (const f of pass) {
+      expect(f.effects.length).toBeGreaterThan(0);
+      expect(f.effects.every((e) => e.body === b)).toBe(true);
+    }
   });
 });
