@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createGame, getBoard, PLAYABLE_STRAINS, resolveTurn } from "@swarm/sim";
 import { chooseOrders } from "@swarm/bot";
 import { scenario } from "@swarm/sim/testing";
-import { isTrunk, trunkLoad, vascular, vesselWidth } from "../src/game/vascular";
+import { isTrunk, resourceRoutes, trunkLoad, vascular, vesselWidth } from "../src/game/vascular";
 
 describe("supply tree (colony life, phase 1)", () => {
   // A core with a straight line of three cells, plus a cut-off cell of the same owner.
@@ -105,5 +105,51 @@ describe("heartbeat (colony life, phase 2)", async () => {
     expect(starveTurnsLeft({ ...c, biomass: 1 }, 0, 1)).toBe(1);
     expect(starveTurnsLeft({ ...c, cut: 2 }, 5, 1)).toBe(6);
     expect(starveTurnsLeft({ ...c, cut: 7 }, 5, 1)).toBe(3);
+  });
+});
+
+describe("resource routes (colony life, phase 3)", () => {
+  // A core with a line of three cells (a deposit at the tip), and a cut-off patch of two cells
+  // holding a deposit, whose nearer cell is where its route breaks.
+  const s = scenario({
+    cells: [
+      { q: 0, r: 0, owner: 0, biomass: 5, core: true },
+      { q: 1, r: 0, owner: 0, biomass: 3 },
+      { q: 2, r: 0, owner: 0, biomass: 2 },
+      { q: 3, r: 0, owner: 0, biomass: 1 },
+      { q: -3, r: 3, owner: 0, biomass: 2 },
+      { q: -2, r: 2, owner: 0, biomass: 2 },
+      { q: 0, r: -3, owner: 1, biomass: 5, core: true },
+    ],
+  });
+  const body = s.bodies[0]!;
+  const board = getBoard(body.radius);
+  const at = (q: number, r: number) => board.indexOf(q, r);
+  const yields = new Map([
+    [at(3, 0), 2],
+    [at(-3, 3), 1],
+    [at(0, 0), 3],
+  ]);
+  const yieldOf = (i: number) => yields.get(i) ?? 0;
+  const v = vascular(body.radius, body.colony, yieldOf);
+  const routes = resourceRoutes(body.radius, body.colony, v, yieldOf);
+
+  it("a connected deposit's route follows the supply tree to its core", () => {
+    const r = routes.find((x) => x.from === at(3, 0))!;
+    expect(r.broken).toBe(false);
+    expect(r.yield).toBe(2);
+    expect(r.path).toEqual([at(3, 0), at(2, 0), at(1, 0), at(0, 0)]);
+  });
+
+  it("a cut-off deposit's route is broken at the patch cell nearest a core", () => {
+    const r = routes.find((x) => x.from === at(-3, 3))!;
+    expect(r.broken).toBe(true);
+    expect(r.path).toEqual([at(-3, 3), at(-2, 2)]);
+  });
+
+  it("cores and cells without yield send nothing", () => {
+    expect(routes.map((r) => r.from).sort((a, b) => a - b)).toEqual(
+      [at(3, 0), at(-3, 3)].sort((a, b) => a - b),
+    );
   });
 });

@@ -271,6 +271,7 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
       view.current = v;
       v.setPatterns(getSettings().patterns);
       v.reduceMotion = getSettings().reduceMotion;
+      v.calm = getSettings().colonyDetail === "calm";
       v.setViewer(me);
       if (bodyRef.current !== 0) v.showBody(bodyRef.current);
       if (e2e && window.__swarm) window.__swarm.view = v;
@@ -288,6 +289,10 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
   useEffect(() => {
     if (view.current) view.current.reduceMotion = settings.reduceMotion;
   }, [settings.reduceMotion]);
+
+  useEffect(() => {
+    if (view.current) view.current.calm = settings.colonyDetail === "calm";
+  }, [settings.colonyDetail]);
 
   useEffect(() => {
     const l = launchRef.current;

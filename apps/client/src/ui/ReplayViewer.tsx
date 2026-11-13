@@ -64,6 +64,8 @@ export default function ReplayViewer({
       if (ctl.current.closed) return created.destroy();
       created.setInputEnabled(false);
       created.setPatterns(getSettings().patterns);
+      created.reduceMotion = getSettings().reduceMotion;
+      created.calm = getSettings().colonyDetail === "calm";
       if (me >= 0) created.setViewer(me);
       created.showBody(body);
       created.showWholeBody();
