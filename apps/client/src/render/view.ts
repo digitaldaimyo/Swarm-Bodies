@@ -129,6 +129,7 @@ export class MatchView {
   private grid: Graphics | null = null;
   private ground: Container | null = null;
   private dot: Texture | null = null;
+  private moteTex: Texture | null = null;
   private readonly stalks = new Graphics();
   private readonly sun = new Graphics();
   private readonly flash = new Graphics();
@@ -321,6 +322,16 @@ export class MatchView {
       .circle(16, 16, 9)
       .fill(0xffffff);
     this.dot = this.app.renderer.generateTexture({ target: g, resolution: 2 });
+    // Nutrient motes: a bright bead with a dark rim (like the deposit badges), so a mote reads
+    // on any colony colour. Tinting keeps the rim dark.
+    this.moteTex = this.app.renderer.generateTexture({
+      target: new Graphics()
+        .circle(8, 8, 8)
+        .fill({ color: 0x070b1a, alpha: 0.7 })
+        .circle(8, 8, 5.5)
+        .fill(0xffffff),
+      resolution: 2,
+    });
     // Per-cell discs are sprites from pre-rendered textures, not tessellated circles.
     const disc = this.app.renderer.generateTexture({
       target: new Graphics().circle(32, 32, 32).fill(0xffffff),
@@ -1146,7 +1157,7 @@ export class MatchView {
 
   /** Moves the motes along their routes; spawns from the pool as each deposit's timer fires. */
   private tickMotes(dt: number): void {
-    const off = this.calm || this.reduceMotion || !this.dot;
+    const off = this.calm || this.reduceMotion || !this.moteTex;
     this.moteLayer.visible = !off;
     if (off) {
       if (this.motesLive.length) this.rebuildMotesPool();
@@ -1211,10 +1222,9 @@ export class MatchView {
   private takeMote(): Sprite | null {
     let s = this.moteSprites.pop();
     if (!s) {
-      if (this.moteLayer.children.length >= MOTE.cap || !this.dot) return null;
-      s = new Sprite(this.dot);
+      if (this.moteLayer.children.length >= MOTE.cap || !this.moteTex) return null;
+      s = new Sprite(this.moteTex);
       s.anchor.set(0.5);
-      s.blendMode = "add";
       this.moteLayer.addChild(s);
     }
     s.visible = true;
@@ -1846,7 +1856,7 @@ const MOTE = {
   speed: 2.5,
   /** Seconds between motes for a deposit yielding 1 a turn; higher yields send more. */
   everyPerYield: 2.4,
-  size: 0.3,
+  size: 0.5,
   fizzle: 0.45,
   fizzleColor: 0xff5a4a,
   feed: 0.45,
