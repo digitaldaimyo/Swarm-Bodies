@@ -410,6 +410,7 @@ export function App() {
           {screen.name === "replay" && (
             <ReplayViewer
               history={screen.session.history}
+              me={screen.session.me}
               onClose={() =>
                 setScreen({ name: "results", session: screen.session, rewards: screen.rewards })
               }

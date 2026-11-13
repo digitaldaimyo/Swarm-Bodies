@@ -108,9 +108,12 @@ test("a deliberate hash mismatch is detected and recovered", async ({ browser })
   // And the game carries on normally afterwards.
   for (const p of [a, b])
     await p.evaluate(() => (window as unknown as { __swarm: Hook }).__swarm.session?.submit());
-  await a.waitForFunction(
-    () => (window as unknown as { __swarm: Hook }).__swarm.session?.state.turn === 3,
-  );
+  // Each browser applies the turn when its own message arrives: wait for both, as for turn 2
+  // above, before comparing (PR #11 CI: WebKit B was still on turn 2 when A reached 3).
+  for (const p of [a, b])
+    await p.waitForFunction(
+      () => (window as unknown as { __swarm: Hook }).__swarm.session?.state.turn === 3,
+    );
   expect(await a.evaluate(() => (window as unknown as { __swarm: Hook }).__swarm.hash?.())).toBe(
     await b.evaluate(() => (window as unknown as { __swarm: Hook }).__swarm.hash?.()),
   );

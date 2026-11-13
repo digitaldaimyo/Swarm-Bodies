@@ -101,6 +101,10 @@ export class MatchView {
   private sheenPool!: SpritePool;
   private readonly flow = new Container();
   private readonly cores = new Container();
+  /** Deposit badges on occupied cells, so resources stay readable under a colony (playtest). */
+  private readonly depositMarks = new Graphics();
+  /** How many deposit badges the board shows (tests read this; the canvas cannot be queried). */
+  depositBadges = 0;
   private readonly numbers = new Container();
   private readonly planG = new Graphics();
   private readonly paintG = new Graphics();
@@ -233,6 +237,7 @@ export class MatchView {
     );
     this.world.addChild(
       this.goo,
+      this.depositMarks,
       this.flow,
       this.cores,
       this.stalkGlow,
@@ -703,6 +708,47 @@ export class MatchView {
   // ---------------------------------------------------------------------------------------
   // Board
 
+  /**
+   * A small badge on every deposit or comet cell a colony covers, so resources stay visible once
+   * a cell is taken. Ice is a diamond, organic a circle, mineral a square, comets a star, so they
+   * read without colour too. Empty deposit cells keep their full terrain art.
+   */
+  private drawDepositMarks(colony: readonly (Colony | null)[], body: Body): void {
+    const g = this.depositMarks;
+    g.clear();
+    this.depositBadges = 0;
+    const board = getBoard(body.radius);
+    const comets = new Set(body.comets.map((c) => c.cell));
+    for (let i = 0; i < colony.length; i++) {
+      if (!colony[i]) continue;
+      const kind = body.deposits[i];
+      const comet = comets.has(i);
+      if (!kind && !comet) continue;
+      this.depositBadges++;
+      const p = hexToPixel(board.cells[i] as Hex);
+      // Upper right of the cell, clear of the core nucleus and the biomass number.
+      const x = p.x + HEX_SIZE * 0.42;
+      const y = p.y - HEX_SIZE * 0.42;
+      const r = 6;
+      g.circle(x, y, r + 3).fill({ color: 0x070b1a, alpha: 0.85 });
+      if (comet) {
+        const pts: number[] = [];
+        for (let k = 0; k < 10; k++) {
+          const a = -Math.PI / 2 + (k * Math.PI) / 5;
+          const rr = k % 2 === 0 ? r + 1 : r * 0.45;
+          pts.push(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+        }
+        g.poly(pts).fill(0xffe28a);
+      } else if (kind === "ice") {
+        g.poly([x, y - r, x + r, y, x, y + r, x - r, y]).fill(DEPOSIT_COLORS.ice);
+      } else if (kind === "organic") {
+        g.circle(x, y, r * 0.85).fill(0x5fbf5c);
+      } else if (kind === "mineral") {
+        g.rect(x - r * 0.75, y - r * 0.75, r * 1.5, r * 1.5).fill(DEPOSIT_COLORS.mineral);
+      }
+    }
+  }
+
   /** Turns the colourblind pattern overlays on or off (Settings). */
   setPatterns(on: boolean): void {
     if (on === this.patterns) return;
@@ -818,6 +864,7 @@ export class MatchView {
     if (this.goo.isCachedAsTexture) this.goo.updateCacheTexture();
     else this.goo.cacheAsTexture({ resolution: this.cacheResolution, antialias: true });
 
+    this.drawDepositMarks(colony, body);
     this.rebuildFlow(colony, board);
     this.rebuildCores(colony, board);
     this.rebuildStalks(colony, board, body, state);

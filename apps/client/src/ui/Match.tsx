@@ -12,7 +12,14 @@ import { audio } from "../audio/sfx";
 import type { Point } from "../game/layout";
 import type { MatchSession, SeatStatus, TurnRecord } from "../game/match-session";
 import { previewPath } from "../game/planner";
-import { buildTimeline, describeEvents, type Frame, type LogEntry } from "../game/timeline";
+import {
+  buildTimeline,
+  describeEvents,
+  framesFor,
+  replayBodies,
+  type Frame,
+  type LogEntry,
+} from "../game/timeline";
 import { MatchView } from "../render/view";
 import { BodyStrip, ForecastStrip } from "./SystemHud";
 import { DraftModal, MutationGlyphs } from "./DraftModal";
@@ -311,13 +318,8 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
       if (launchRef.current) setLaunch(null);
       setPhase("replay");
       audio.setDuck(true);
-      // Off-screen action this turn lights the body strip (SPEC §10.5).
       for (const e of record.events)
         if ("player" in e && e.player === me) tutorialSignals.current.add(`event:${e.type}`);
-      const touched = new Set<number>();
-      for (const e of record.events)
-        if ("cell" in e && e.cell.body !== bodyRef.current) touched.add(e.cell.body);
-      if (touched.size > 0) setAlerts(touched);
       view.current?.setInputEnabled(false);
       view.current?.setPlan([], me, []);
       view.current?.setState(record.before);
@@ -329,16 +331,31 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
       ctl.current = { paused: false, skipped: window.__swarm?.autoplay ?? false };
       setPaused(false);
       const frames = buildTimeline(record.before, record.after, record.events, record.orders);
-      await view.current?.playTimeline(
-        frames,
-        {
-          speed: () => getSettings().replaySpeed,
-          paused: () => ctl.current.paused,
-          skipped: () => ctl.current.skipped,
-          reduceMotion: getSettings().reduceMotion,
-        },
-        frameSound,
-      );
+      const control = {
+        speed: () => getSettings().replaySpeed,
+        paused: () => ctl.current.paused,
+        skipped: () => ctl.current.skipped,
+        reduceMotion: getSettings().reduceMotion,
+      };
+      // Show the turn on every body where something happened (playtest), then hand control
+      // back where the player was. Input stays off throughout; Skip ends the whole tour.
+      const startBody = bodyRef.current;
+      const startSystem = systemRef.current;
+      const tour = multi ? replayBodies(frames, startBody) : [startBody];
+      // Bodies the tour does not reach (Skip) keep their alert dot on the strip (SPEC §10.5).
+      setAlerts(new Set(tour.filter((b) => b !== startBody)));
+      for (const [i, b] of tour.entries()) {
+        if (i > 0 && ctl.current.skipped) break;
+        view.current?.setState(record.before);
+        if (b !== bodyRef.current || systemRef.current) openBody(b);
+        await view.current?.playTimeline(
+          i === 0 ? frames : framesFor(frames, b),
+          control,
+          frameSound,
+        );
+      }
+      if (bodyRef.current !== startBody) openBody(startBody);
+      if (startSystem) setSystemView(true);
     }
     shown.current = session.state;
     view.current?.setState(session.state);

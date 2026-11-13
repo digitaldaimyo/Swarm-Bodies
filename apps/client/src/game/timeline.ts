@@ -554,3 +554,25 @@ export function describeEvents(
     }));
   return [...growth, ...out];
 }
+
+/**
+ * Bodies to show while a turn replays (playtest): the one in view first if anything happened on
+ * it, then every other body with action, in id order. Never empty: with no action anywhere, the
+ * body in view is shown.
+ */
+export function replayBodies(frames: readonly Frame[], current: number): number[] {
+  const active = new Set<number>();
+  for (const f of frames) for (const e of f.effects) if (e.body >= 0) active.add(e.body);
+  const others = [...active].filter((b) => b !== current).sort((a, b) => a - b);
+  return active.has(current) || others.length === 0 ? [current, ...others] : others;
+}
+
+/**
+ * The frames a later pass plays on `body`: only those with action there, and without the
+ * system-wide effects (the solar flash), which the first pass already showed.
+ */
+export function framesFor(frames: readonly Frame[], body: number): Frame[] {
+  return frames
+    .filter((f) => f.effects.some((e) => e.body === body))
+    .map((f) => ({ ...f, effects: f.effects.filter((e) => e.body === body) }));
+}
