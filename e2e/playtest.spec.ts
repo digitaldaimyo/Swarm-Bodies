@@ -11,7 +11,14 @@ type Hook = {
   turn: number;
   view?: { depositBadges: number };
 };
-const hook = (p: Page) => p.evaluate(() => (window as unknown as { __swarm: Hook }).__swarm);
+/**
+ * Small reads from the e2e hook. Never return `__swarm` itself: it holds the live view and
+ * session, and serialising those per poll takes seconds in WebKit (PR #11 CI).
+ */
+const phase = (p: Page) => p.evaluate(() => (window as unknown as { __swarm: Hook }).__swarm.phase);
+const turn = (p: Page) => p.evaluate(() => (window as unknown as { __swarm: Hook }).__swarm.turn);
+const depositBadges = (p: Page) =>
+  p.evaluate(() => (window as unknown as { __swarm: Hook }).__swarm.view?.depositBadges ?? 0);
 
 /** A 3-player system skirmish whose game ends by turn ~20 (see smoke.spec.ts). */
 async function systemGame(page: Page): Promise<void> {
@@ -40,7 +47,7 @@ test("a turn's replay tours every body with action, then returns to yours", asyn
     () => (window as unknown as { __swarm: Hook }).__swarm.phase === "planning",
   );
   // Resources stay visible under the colony: occupied deposit cells carry a badge.
-  expect((await hook(page)).view?.depositBadges).toBeGreaterThan(0);
+  expect(await depositBadges(page)).toBeGreaterThan(0);
 
   const strip = page.getByRole("navigation", { name: "Bodies" });
   const current = async (): Promise<string> =>
@@ -48,19 +55,30 @@ test("a turn's replay tours every body with action, then returns to yours", asyn
       ",",
     )[0] ?? "";
   const start = await current();
+  const before = await turn(page);
+  // Sample the body on screen inside the page: the tour lasts seconds, and polling from the
+  // test is too coarse on a slow engine to be sure of seeing it.
+  await page.evaluate(() => {
+    const seen = new Set<string>();
+    (window as unknown as { __tour: Set<string> }).__tour = seen;
+    setInterval(() => {
+      const label = document
+        .querySelector('nav[aria-label="Bodies"] [aria-current="true"]')
+        ?.getAttribute("aria-label");
+      if (label) seen.add(label.split(",")[0] ?? "");
+    }, 50);
+  });
   await page.getByRole("button", { name: "Submit" }).click();
-  const seen = new Set<string>();
   await expect
-    .poll(
-      async () => {
-        seen.add(await current());
-        return (await hook(page)).phase === "planning" && seen.size > 1;
-      },
-      { timeout: 90_000, intervals: [100] },
-    )
+    .poll(async () => (await turn(page)) > before && (await phase(page)) === "planning", {
+      timeout: 90_000,
+    })
     .toBe(true);
+  const seen = await page.evaluate(() => [
+    ...(window as unknown as { __tour: Set<string> }).__tour,
+  ]);
   // Other bodies were shown during the replay, and control came back to the starting body.
-  expect([...seen].filter((b) => b !== start).length).toBeGreaterThan(0);
+  expect(seen.filter((b) => b !== start).length).toBeGreaterThan(0);
   expect(await current()).toBe(start);
   await expect(page.getByRole("button", { name: "Submit" })).toBeEnabled();
 });
