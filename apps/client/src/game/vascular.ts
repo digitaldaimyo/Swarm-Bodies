@@ -13,6 +13,8 @@ export interface Vascular {
   parent: Int32Array;
   /** Steps from the nearest core along the tree; -1 outside it. */
   depth: Int32Array;
+  /** The core each cell is fed from (itself for a core); -1 outside the tree. */
+  root: Int32Array;
   /** Cells that depend on each cell for supply, itself included (0 outside the tree). */
   load: Int32Array;
   /** Income (deposit and comet yield) that flows through each cell to its core. */
@@ -28,12 +30,14 @@ export function vascular(
   const n = colony.length;
   const parent = new Int32Array(n).fill(-1);
   const depth = new Int32Array(n).fill(-1);
+  const root = new Int32Array(n).fill(-1);
   const load = new Int32Array(n);
   const income = new Float64Array(n);
   const order: number[] = [];
   for (let i = 0; i < n; i++) {
     if (colony[i]?.core) {
       depth[i] = 0;
+      root[i] = i;
       order.push(i);
     }
   }
@@ -44,6 +48,7 @@ export function vascular(
       if (depth[j] !== -1 || colony[j]?.owner !== owner) continue;
       depth[j] = (depth[i] as number) + 1;
       parent[j] = i;
+      root[j] = root[i] as number;
       order.push(j);
     }
   }
@@ -59,7 +64,7 @@ export function vascular(
       income[p] = (income[p] as number) + (income[i] as number);
     }
   }
-  return { parent, depth, load, income };
+  return { parent, depth, root, load, income };
 }
 
 /** Whether the vein between adjacent cells a and b is a supply-tree vein (a trunk). */
