@@ -44,6 +44,17 @@ say something true about the game state. No decoration that carries no informati
    - **Strain styles:** Swarmer has thin, quick veins; Biofilm thick and slow; Predator dark and slightly jagged; Sporer has drifting specks.
    - **Frontier feelers:** they twitch toward empty cells within grow reach.
 
+## Progress
+
+**Phase 1 is done.**
+
+- **Supply tree:** `apps/client/src/game/vascular.ts`, unit tested. It matches the sim's own connectivity on real 3-player games: a cell is in the tree exactly when the sim calls it connected.
+- **Vessels:** they follow load, from bright arteries at the core to faint branches; leaf twigs are left to the webbing.
+- **Severed webbing:** it thins to 55% and fades.
+- **Colony body:** about 86% opaque.
+- **Performance:** measured as an A/B against `main` with the 4×-throttle spec. Vessels drawn as their own uncached layer cost about +0.6–1.2 ms per replay frame, and a separate cached layer added a full-body blit every frame. So vessels are drawn inside the colony body's cached texture: replay frames match `main`, and a board swap costs about 1 ms more.
+- **One opacity, not one per triangle:** the body's translucency is applied to the whole cached texture, not to each triangle. Per-triangle opacity produced a visible triangle mosaic.
+
 ## Constraints for every phase
 
 - **Performance:** static parts go in the cached colony texture. Moving parts use pooled sprites with fixed caps. The 4×-throttle frame-budget tests keep passing.
