@@ -11,7 +11,10 @@ import {
 import {
   bodyPosition,
   cellYield,
+  defenseOf,
   getBoard,
+  maxBiomassFor,
+  playerRules,
   HEX_DIRECTIONS as HEX_DIRS,
   type Body,
   type Colony,
@@ -37,7 +40,8 @@ import {
 } from "./palette";
 import { SpritePool } from "./pool";
 import { drawPattern } from "./patterns";
-import { vascular, vesselWidth } from "../game/vascular";
+import { vascular, vesselWidth, type Vascular } from "../game/vascular";
+import { beat, pulse, starveTurnsLeft, strength, WAVE_STEP } from "../game/heartbeat";
 import { SystemLayer } from "./system";
 
 export interface ViewCallbacks {
@@ -134,8 +138,25 @@ export class MatchView {
 
   private state!: GameState;
   private colony: (Colony | null)[] = [];
-  private flowSprites: { sprite: Sprite; dist: number; connected: boolean }[] = [];
-  private coreSprites: Graphics[] = [];
+  /**
+   * One heartbeat dot per colony cell (colony life, phase 2). A connected cell swells as the
+   * beat from its core reaches it (`depth` steps out); `full` cells glow steadily instead.
+   */
+  private flowSprites: {
+    sprite: Sprite;
+    depth: number;
+    period: number;
+    depthAmp: number;
+    own: number;
+    base: number;
+    connected: boolean;
+    full: boolean;
+  }[] = [];
+  private coreSprites: { g: Graphics; period: number; depthAmp: number }[] = [];
+  /** Draining rims on cut-off cells: the turns each has left before it starves. */
+  private readonly starveMarks = new Graphics();
+  /** How many starvation rims the board shows (tests read this). */
+  starveRims = 0;
   private zoom = 1;
   private minZoom = 0.4;
   private readonly maxZoom = 2.6;
@@ -250,6 +271,7 @@ export class MatchView {
     this.world.addChild(
       this.goo,
       this.depositMarks,
+      this.starveMarks,
       this.flow,
       this.cores,
       this.stalkGlow,
@@ -775,12 +797,10 @@ export class MatchView {
    * as the body's webbing; cut-off cells carry no vessels. Static: part of the cached texture.
    */
   private drawVessels(
+    v: Vascular,
     colony: readonly (Colony | null)[],
-    body: Body,
     board: ReturnType<typeof getBoard>,
-    state: GameState,
   ): void {
-    const v = vascular(body.radius, colony, (i, owner) => cellYield(state, body, i, owner));
     this.vessels = 0;
     for (let i = 0; i < colony.length; i++) {
       const p = v.parent[i] as number;
@@ -915,7 +935,10 @@ export class MatchView {
         pool.take(p.x, p.y, Math.max(8, r * 0.8), 0x061018, 0.72);
       }
     });
-    this.drawVessels(colony, body, board, state);
+    const v = vascular(body.radius, colony, (i, owner) => cellYield(state, body, i, owner));
+    const flags = colony.map((c) => !!c?.connected);
+    const defense = colony.map((c, i) => (c ? defenseOf(state, body, colony, flags, i) : 0));
+    this.drawVessels(v, colony, board);
     this.vesselPool.end();
     for (const pool of this.patternPools) pool.end();
     this.glowPool.end();
@@ -928,37 +951,30 @@ export class MatchView {
     else this.goo.cacheAsTexture({ resolution: this.cacheResolution, antialias: true });
 
     this.drawDepositMarks(colony, body);
-    this.rebuildFlow(colony, board);
-    this.rebuildCores(colony, board);
+    this.rebuildFlow(v, defense, colony, board, body, state);
+    this.rebuildCores(defense, colony, board);
+    this.drawStarveMarks(colony, board, state);
     this.rebuildStalks(colony, board, body, state);
     this.numbersDirty = true;
     if (this.numbers.visible) this.rebuildNumbers();
   }
 
-  /** Flow motes: a pulse that travels along connected veins toward cores (SPEC §10.4). */
+  /**
+   * Heartbeat dots (colony life, phase 2): one per cell. A connected cell beats with its core's
+   * rhythm, delayed by its distance out along the supply tree, so each beat flows outward; how
+   * much it swells follows its own defense. Cells at maximum biomass glow steadily.
+   */
   private rebuildFlow(
+    v: Vascular,
+    defense: readonly number[],
     colony: readonly (Colony | null)[],
     board: ReturnType<typeof getBoard>,
+    body: Body,
+    state: GameState,
   ): void {
     // Sprites are pooled: replays redraw the board several times per turn.
     const pool = this.flowSprites.map((f) => f.sprite);
     this.flowSprites = [];
-    const dist = new Array<number>(colony.length).fill(-1);
-    const queue: number[] = [];
-    colony.forEach((c, i) => {
-      if (c?.core) {
-        dist[i] = 0;
-        queue.push(i);
-      }
-    });
-    for (let h = 0; h < queue.length; h++) {
-      const i = queue[h] as number;
-      for (const n of board.neighbours[i] as readonly number[]) {
-        if (dist[n] !== -1 || colony[n]?.owner !== colony[i]?.owner) continue;
-        dist[n] = (dist[i] as number) + 1;
-        queue.push(n);
-      }
-    }
     let used = 0;
     colony.forEach((c, i) => {
       if (!c || !this.dot) return;
@@ -972,18 +988,42 @@ export class MatchView {
       s.visible = true;
       const p = hexToPixel(board.cells[i] as Hex);
       s.position.set(p.x, p.y);
-      s.scale.set(0.35 + c.biomass * 0.02);
+      const base = 0.35 + c.biomass * 0.02;
+      s.scale.set(base);
       s.tint = c.connected ? lighten(playerColor(c.owner), 0.5) : 0x9aa3ad;
-      this.flowSprites.push({ sprite: s, dist: dist[i] ?? 0, connected: c.connected });
+      const root = v.root[i] as number;
+      const b = beat(root >= 0 ? (defense[root] as number) : 0);
+      this.flowSprites.push({
+        sprite: s,
+        depth: Math.max(0, v.depth[i] as number),
+        period: b.period,
+        depthAmp: b.depth,
+        own: strength(defense[i] as number),
+        base,
+        connected: c.connected,
+        full: !c.core && c.biomass >= maxBiomassFor(state, c, body),
+      });
     });
     for (let k = used; k < pool.length; k++) {
       const spare = pool[k] as Sprite;
       spare.visible = false;
-      this.flowSprites.push({ sprite: spare, dist: 0, connected: false });
     }
+    this.flowSprites.push(
+      ...pool.slice(used).map((sprite) => ({
+        sprite,
+        depth: 0,
+        period: 1,
+        depthAmp: 0,
+        own: 0,
+        base: 0,
+        connected: false,
+        full: false,
+      })),
+    );
   }
 
   private rebuildCores(
+    defense: readonly number[],
     colony: readonly (Colony | null)[],
     board: ReturnType<typeof getBoard>,
   ): void {
@@ -1004,7 +1044,42 @@ export class MatchView {
         .stroke({ width: 2, color: lighten(color, 0.7), alpha: 0.8 });
       n.position.set(p.x, p.y);
       this.cores.addChild(n);
-      this.coreSprites.push(n);
+      // A core beats with its own defense: slow and deep when it is hard to take.
+      const b = beat(defense[i] as number);
+      this.coreSprites.push({ g: n, period: b.period, depthAmp: b.depth });
+    });
+  }
+
+  /**
+   * A draining rim on every cut-off cell: the full circle is 5+ turns left before it starves,
+   * and it empties as the cell runs down (Dormancy grace included). Static.
+   */
+  private drawStarveMarks(
+    colony: readonly (Colony | null)[],
+    board: ReturnType<typeof getBoard>,
+    state: GameState,
+  ): void {
+    const g = this.starveMarks;
+    g.clear();
+    this.starveRims = 0;
+    const loss = state.rules.starvationLoss;
+    colony.forEach((c, i) => {
+      if (!c || c.connected || c.core) return;
+      const left = starveTurnsLeft(c, playerRules(state, c.owner).dormancyTurns, loss);
+      this.starveRims++;
+      const p = hexToPixel(board.cells[i] as Hex);
+      const r = HEX_SIZE * 0.62;
+      g.circle(p.x, p.y, r).stroke({ width: 2.5, color: 0x000000, alpha: 0.35 });
+      const frac = Math.min(1, left / 5);
+      // Start a fresh path at the top: an arc otherwise joins the previous rim's last point.
+      g.moveTo(p.x, p.y - r)
+        .arc(p.x, p.y, r, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2)
+        .stroke({
+          width: 2.5,
+          color: left <= 1 ? 0xff6b6b : 0xc9d1e0,
+          alpha: 0.9,
+          cap: "round",
+        });
     });
   }
 
@@ -1094,20 +1169,31 @@ export class MatchView {
       return;
     }
     if (this.reduceMotion) {
-      for (const f of this.flowSprites) f.sprite.alpha = f.connected ? 0.35 : 0.2;
+      // Still, but the same information: brightness follows strength; full cells glow.
+      for (const f of this.flowSprites) {
+        f.sprite.alpha = !f.connected ? 0.2 : f.full ? 0.6 : 0.18 + 0.4 * f.own;
+        f.sprite.scale.set(f.base);
+      }
+      for (const c of this.coreSprites) c.g.scale.set(1);
       return;
     }
     for (const f of this.flowSprites) {
-      if (f.connected) {
-        // Peaks travel inward: distance increases phase, so the wave moves toward the core.
-        const wave = Math.sin(t * 2.4 + f.dist * 0.9);
-        f.sprite.alpha = 0.12 + 0.45 * Math.max(0, wave) ** 3;
-      } else {
+      if (!f.connected) {
         f.sprite.alpha = 0.12 + 0.18 * (0.5 + 0.5 * Math.sin(t * 1.2));
+        continue;
       }
+      if (f.full) {
+        // Full: nothing more to grow into. A steady glow, not a beat.
+        f.sprite.alpha = 0.6;
+        f.sprite.scale.set(f.base * 1.12);
+        continue;
+      }
+      // The beat leaves the core and flows outward: farther cells swell later.
+      const swell = pulse(t / f.period - f.depth * WAVE_STEP) * f.depthAmp;
+      f.sprite.alpha = 0.1 + swell * (0.35 + 0.45 * f.own);
+      f.sprite.scale.set(f.base * (1 + 0.35 * swell * (0.4 + 0.6 * f.own)));
     }
-    const s = 1 + 0.07 * Math.sin(t * 3);
-    for (const c of this.coreSprites) c.scale.set(s);
+    for (const c of this.coreSprites) c.g.scale.set(1 + 0.13 * c.depthAmp * pulse(t / c.period));
     // Mature stalks glow (SPEC §10.4).
     this.stalkGlow.alpha = 0.45 + 0.35 * Math.sin(t * 4);
   }

@@ -89,6 +89,32 @@ test("a turn's replay tours every body with action, then returns to yours", asyn
   expect(seen.filter((b) => b !== start).length).toBeGreaterThan(0);
   expect(await current()).toBe(start);
   await expect(page.getByRole("button", { name: "Submit" })).toBeEnabled();
+
+  // Colony life, phase 2: cut-off cells carry a starvation rim. Shown on a copy of the state
+  // with three of our cells cut off (the game itself is untouched).
+  const rims = await page.evaluate(() => {
+    const h = (
+      window as unknown as {
+        __swarm: {
+          session: { state: { bodies: { colony: (Record<string, unknown> | null)[] }[] } };
+          view: { setState(s: unknown): void; starveRims: number };
+        };
+      }
+    ).__swarm;
+    const st = structuredClone(h.session.state);
+    const body = st.bodies.find((b) => b.colony.some((c) => c && c["owner"] === 0 && !c["core"]));
+    if (!body) return -1;
+    let cut = 0;
+    body.colony.forEach((c, i) => {
+      if (cut < 3 && c && c["owner"] === 0 && !c["core"]) {
+        body.colony[i] = { ...c, connected: false };
+        cut++;
+      }
+    });
+    h.view.setState(st);
+    return h.view.starveRims;
+  });
+  expect(rims).toBeGreaterThanOrEqual(3);
 });
 
 test("the replay viewer scrubs to any turn and switches between bodies", async ({ page }) => {

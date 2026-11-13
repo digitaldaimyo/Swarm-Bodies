@@ -55,6 +55,17 @@ say something true about the game state. No decoration that carries no informati
 - **Performance:** measured as an A/B against `main` with the 4×-throttle spec. Vessels drawn as their own uncached layer cost about +0.6–1.2 ms per replay frame, and a separate cached layer added a full-body blit every frame. So vessels are drawn inside the colony body's cached texture: replay frames match `main`, and a board swap costs about 1 ms more.
 - **One opacity, not one per triangle:** the body's translucency is applied to the whole cached texture, not to each triangle. Per-triangle opacity produced a visible triangle mosaic.
 
+**Phase 2 is done.**
+
+- **Heartbeat** (`apps/client/src/game/heartbeat.ts`, unit tested):
+  - **Outward flow:** each cell beats with its core's rhythm, delayed 0.11 of a beat per supply-tree step out, so beats flow outward.
+  - **Pace:** a core's defense sets its pace, from 0.9 s (weak, shallow) to 2 s (fortified, deep).
+  - **Swell:** each cell's own defense sets how much it swells.
+- **Steady glow:** cells at maximum biomass glow steadily instead of beating.
+- **Starvation rims:** cut-off cells get a draining rim, full at 5+ turns left and red at the last turn, counting Dormancy grace first.
+- **Reduce motion:** brightness by strength, and full cells glow; no motion.
+- **Performance:** A/B against `main`, replay frames match (2.5–2.6 vs 2.6–2.7 ms p50). Board swaps stay within budget.
+
 ## Constraints for every phase
 
 - **Performance:** static parts go in the cached colony texture. Moving parts use pooled sprites with fixed caps. The 4×-throttle frame-budget tests keep passing.

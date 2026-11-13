@@ -21,6 +21,12 @@ describe("supply tree (colony life, phase 1)", () => {
   const at = (q: number, r: number) => board.indexOf(q, r);
   const v = vascular(body.radius, body.colony, (i) => (i === at(3, 0) ? 2 : 0));
 
+  it("every tree cell knows the core it is fed from", () => {
+    expect(v.root[at(3, 0)]).toBe(at(0, 0));
+    expect(v.root[at(0, 0)]).toBe(at(0, 0));
+    expect(v.root[at(-3, 3)]).toBe(-1);
+  });
+
   it("feeds each connected cell from its neighbour nearer the core", () => {
     expect(v.parent[at(0, 0)]).toBe(-1);
     expect(v.parent[at(1, 0)]).toBe(at(0, 0));
@@ -64,5 +70,40 @@ describe("supply tree (colony life, phase 1)", () => {
         });
       }
     }
+  });
+});
+
+describe("heartbeat (colony life, phase 2)", async () => {
+  const { beat, pulse, starveTurnsLeft, strength, WAVE_STEP } =
+    await import("../src/game/heartbeat");
+
+  it("a stronger defense beats slower and deeper", () => {
+    expect(strength(2)).toBe(0);
+    expect(strength(100)).toBe(1);
+    expect(beat(16).period).toBeGreaterThan(beat(4).period);
+    expect(beat(16).depth).toBeGreaterThan(beat(4).depth);
+  });
+
+  it("the pulse is a short swell then rest, repeating every beat", () => {
+    expect(pulse(0)).toBeCloseTo(0, 5);
+    expect(pulse(0.12)).toBeGreaterThan(0.5);
+    expect(pulse(0.5)).toBe(0);
+    expect(pulse(1.12)).toBeCloseTo(pulse(0.12), 9);
+  });
+
+  it("the wave reaches cells farther out later (it flows outward)", () => {
+    // At the moment the swell peaks at depth 0, a cell 3 steps out has not swelled yet; one
+    // beat-fraction of 3 steps later it has.
+    const peak = 0.12;
+    expect(pulse(peak - 3 * WAVE_STEP)).toBeLessThan(pulse(peak));
+    expect(pulse(peak + 3 * WAVE_STEP - 3 * WAVE_STEP)).toBeCloseTo(pulse(peak), 9);
+  });
+
+  it("a cut-off cell's turns left: Dormancy grace first, then one loss per turn", () => {
+    const c = { owner: 0, biomass: 3, core: false, connected: false, fruiting: null, cut: 0 };
+    expect(starveTurnsLeft(c, 0, 1)).toBe(3);
+    expect(starveTurnsLeft({ ...c, biomass: 1 }, 0, 1)).toBe(1);
+    expect(starveTurnsLeft({ ...c, cut: 2 }, 5, 1)).toBe(6);
+    expect(starveTurnsLeft({ ...c, cut: 7 }, 5, 1)).toBe(3);
   });
 });
