@@ -173,6 +173,21 @@ export class SkirmishSession extends SessionBase implements MatchSession {
     return s;
   }
 
+  /**
+   * Lessons only ("Try that turn again"): undoes the last turn, back to the state before it, with
+   * a fresh plan. Each turn's record keeps its starting state, so nothing is recomputed.
+   */
+  rewind(): boolean {
+    if (!lessonOf(this.settings) || this.resolving || this.history.length === 0) return false;
+    const last = this.history.pop();
+    if (!last) return false;
+    this.stats.pop();
+    this.setState(last.before);
+    this.startBot();
+    this.notify();
+    return true;
+  }
+
   /** A lesson's goal is met (Training grounds). */
   get lessonDone(): boolean {
     const l = lessonOf(this.settings);

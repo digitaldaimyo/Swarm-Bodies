@@ -1,5 +1,6 @@
 import {
   authoredGame,
+  createGame,
   getBoard,
   incomeFor,
   type AuthoredMap,
@@ -19,7 +20,15 @@ export type LessonGoal =
   /** Projected income (the HUD's figure) at least this much. */
   | { kind: "income"; atLeast: number }
   /** You own this cell, and the turn being planned is at least `fromTurn` (default 1). */
-  | { kind: "own"; cell: Hex; fromTurn?: number };
+  | { kind: "own"; cell: Hex; fromTurn?: number }
+  /** None of these cells (on body 0) holds a colony. */
+  | { kind: "empty"; cells: Hex[] }
+  /** You won the game. */
+  | { kind: "won" }
+  /** You hold cells on at least this many bodies. */
+  | { kind: "bodies"; atLeast: number }
+  /** Every one of these goals. */
+  | { kind: "all"; goals: LessonGoal[] };
 
 export interface Lesson {
   id: string;
@@ -28,11 +37,26 @@ export interface Lesson {
   blurb: string;
   /** The goal, as the player reads it. */
   goalText: string;
-  map: AuthoredMap;
+  /** A hand-placed board (most lessons)... */
+  map?: AuthoredMap;
+  /** ...or a generated system (Fruit and launch: launches need orbits and other bodies). */
+  system?: LessonSystem;
   /** The opponent's orders (seat 1) by turn number; turns not listed: no orders. */
   script: Readonly<Record<number, readonly Order[]>>;
   tutorial: readonly TutorialStep[];
   goal: LessonGoal;
+}
+
+/**
+ * A generated two-player system for a lesson. The seed is chosen so the taught sequence (Reinforce,
+ * Fruit, wait two turns, Launch) lands a spore early; a test checks it. Your first connected cell
+ * beside the core starts at `cellBiomass`, one Reinforce short of fruiting.
+ */
+export interface LessonSystem {
+  seed: string;
+  rules: Partial<Rules>;
+  nutrients: [number, number];
+  cellBiomass: number;
 }
 
 /** Lessons run without drafts (they would interrupt the one idea a lesson teaches). */
@@ -201,6 +225,182 @@ export const LESSONS: readonly Lesson[] = [
     ],
     goal: { kind: "own", cell: { q: -1, r: 1 } },
   },
+  {
+    id: "l4",
+    index: 4,
+    name: "Protect your core",
+    blurb: "What happens to a colony that loses its core.",
+    goalText: "Destroy the rival core.",
+    map: {
+      radius: 5,
+      rules: LESSON_RULES,
+      nutrients: [10, 0],
+      cells: [
+        { q: -3, r: 0, owner: 0, biomass: 5, core: true },
+        { q: -2, r: 0, owner: 0, biomass: 5 },
+        { q: -1, r: 0, owner: 0, biomass: 7 },
+        { q: 0, r: 0, owner: 1, biomass: 2, core: true },
+        { q: 1, r: 0, owner: 1, biomass: 1 },
+        { q: 2, r: 0, owner: 1, biomass: 2 },
+        { q: 1, r: -1, owner: 1, biomass: 1 },
+        { q: 0, r: 1, owner: 1, biomass: 1 },
+      ],
+    },
+    script: {},
+    tutorial: [
+      {
+        text: "Every cell is fed through a core. The rival's core is weak: biomass 2, plus 3 for its connected neighbours. Defense 5.",
+        until: { kind: "next" },
+      },
+      {
+        text: "Drag from your biomass-7 cell into their core: attack 7 against 5.",
+        until: { kind: "order", order: "grow" },
+      },
+      {
+        text: "Submit, and watch what happens to the rest of their colony.",
+        until: { kind: "submit" },
+      },
+    ],
+    goal: { kind: "won" },
+  },
+  {
+    id: "l5",
+    index: 5,
+    name: "Supply is critical",
+    blurb: "Cut a supply line and the cells beyond it starve.",
+    goalText: "Cut the rival's arm off, and let it starve.",
+    map: {
+      radius: 5,
+      rules: LESSON_RULES,
+      nutrients: [10, 0],
+      cells: [
+        { q: 0, r: -4, owner: 0, biomass: 5, core: true },
+        { q: 0, r: -3, owner: 0, biomass: 4 },
+        { q: 0, r: -2, owner: 0, biomass: 4 },
+        { q: 0, r: -1, owner: 0, biomass: 5 },
+        { q: 3, r: 0, owner: 1, biomass: 5, core: true },
+        { q: 2, r: 0, owner: 1, biomass: 3 },
+        { q: 1, r: 0, owner: 1, biomass: 3 },
+        { q: 0, r: 0, owner: 1, biomass: 1 },
+        { q: -1, r: 0, owner: 1, biomass: 2 },
+        { q: -2, r: 0, owner: 1, biomass: 2 },
+        { q: -2, r: 1, owner: 1, biomass: 2 },
+      ],
+    },
+    script: {},
+    tutorial: [
+      {
+        text: "Cells stay alive only while they are connected to a core. The rival's western arm hangs off a single cell of biomass 1.",
+        until: { kind: "next" },
+      },
+      {
+        text: "Drag from your biomass-5 cell into that neck: attack 5 against 1 + 2 support.",
+        until: { kind: "order", order: "grow" },
+      },
+      { text: "Submit, and watch the cut-off arm.", until: { kind: "submit" } },
+      {
+        text: "Cut off, the arm starves: 1 biomass a turn, starting at once. The rims show how long each cell has. Submit again.",
+        until: { kind: "submit" },
+      },
+    ],
+    goal: {
+      kind: "all",
+      goals: [
+        { kind: "own", cell: { q: 0, r: 0 } },
+        {
+          kind: "empty",
+          cells: [
+            { q: -1, r: 0 },
+            { q: -2, r: 0 },
+            { q: -2, r: 1 },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    id: "l6",
+    index: 6,
+    name: "Fruit and launch",
+    blurb: "Spread to another body with a spore.",
+    goalText: "Land a spore on another body.",
+    system: {
+      seed: "lesson-6-7",
+      rules: { ...LESSON_RULES, systemMinNeutrals: 1, systemExtraBodies: 1 },
+      nutrients: [20, 0],
+      cellBiomass: 4,
+    },
+    script: {},
+    tutorial: [
+      {
+        text: "Spores carry your colony to other bodies. A connected cell with biomass 5 or more can Fruit (10 N); the fruiting body ripens in 2 turns, then can Launch.",
+        until: { kind: "next" },
+      },
+      {
+        text: "The cell beside your core has biomass 4. Tap it and Reinforce it to 7.",
+        until: { kind: "order", order: "reinforce" },
+      },
+      { text: "Submit.", until: { kind: "submit" } },
+      {
+        text: "Tap that cell again and choose Fruit.",
+        until: { kind: "order", order: "fruit" },
+        when: { kind: "canFruit" },
+      },
+      { text: "Submit. Watch the stalk grow as it ripens.", until: { kind: "submit" } },
+      {
+        text: "Pinch out, or tap the sun in the body strip, to see the System view. Bodies move on their orbits; the forecast shows when one comes within range.",
+        until: { kind: "systemView" },
+      },
+      {
+        text: "Your fruiting body is ripe. Open your home body, tap it, choose Launch, pick a body in range, then the cell to land on.",
+        until: { kind: "order", order: "launch" },
+        when: { kind: "canLaunch" },
+      },
+      {
+        text: "Submit. The spore crosses space for a turn or more, then lands as a new core.",
+        until: { kind: "submit" },
+      },
+    ],
+    goal: { kind: "bodies", atLeast: 2 },
+  },
+  {
+    id: "l7",
+    index: 7,
+    name: "At the same time",
+    blurb: "Orders are sealed and resolve together.",
+    goalText: "Take the cell between you.",
+    map: {
+      radius: 5,
+      rules: LESSON_RULES,
+      nutrients: [10, 20],
+      cells: [
+        { q: -3, r: 0, owner: 0, biomass: 5, core: true },
+        { q: -2, r: 0, owner: 0, biomass: 2 },
+        { q: -1, r: 0, owner: 0, biomass: 2 },
+        { q: 3, r: 0, owner: 1, biomass: 5, core: true },
+        { q: 2, r: 0, owner: 1, biomass: 2 },
+        { q: 1, r: 0, owner: 1, biomass: 2 },
+      ],
+    },
+    // The rival reaches for the middle cell on odd turns, giving you a turn to reinforce.
+    script: Object.fromEntries([1, 3, 5, 7, 9].map((t) => [t, [grow([1, 0], [0, 0])]])),
+    tutorial: [
+      {
+        text: "Everyone plans in secret, then all orders resolve together. Drag from your tip into the empty cell between you, then submit.",
+        until: { kind: "submit" },
+      },
+      {
+        text: "You both reached it with equal pressure, 2 against 2: a stalemate. Nobody takes it. Reinforce your tip (+3), and submit.",
+        until: { kind: "order", order: "reinforce" },
+      },
+      { text: "Submit, and wait for them to reach again.", until: { kind: "submit" } },
+      {
+        text: "Now grow into the cell again: 5 against their 2. The stronger claim wins. The “?” on a preview means someone else might also reach that cell.",
+        until: { kind: "submit" },
+      },
+    ],
+    goal: { kind: "own", cell: { q: 0, r: 0 } },
+  },
 ];
 
 export function lesson(id: string): Lesson | undefined {
@@ -209,7 +409,29 @@ export function lesson(id: string): Lesson | undefined {
 
 /** The lesson's starting state. */
 export function lessonState(l: Lesson): GameState {
-  return authoredGame(l.map, `lesson-${l.id}`);
+  if (l.map) return authoredGame(l.map, `lesson-${l.id}`);
+  const sys = l.system;
+  if (!sys) throw new Error(`lesson ${l.id} has no board`);
+  const s = createGame({ mode: "system", playerCount: 2, rules: sys.rules }, sys.seed);
+  const home = s.players.find((p) => p.id === 0)?.home.body ?? 0;
+  const homeBody = s.bodies[home];
+  const cell = homeBody
+    ? homeBody.colony.findIndex((c) => !!c && c.owner === 0 && !c.core && c.connected)
+    : -1;
+  return {
+    ...s,
+    bodies: s.bodies.map((b) =>
+      b.id === home
+        ? {
+            ...b,
+            colony: b.colony.map((c, i) =>
+              i === cell && c ? { ...c, biomass: sys.cellBiomass } : c,
+            ),
+          }
+        : b,
+    ),
+    players: s.players.map((p, i) => ({ ...p, nutrients: sys.nutrients[i] ?? p.nutrients })),
+  };
 }
 
 /** The opponent's orders for the turn being planned. */
@@ -219,10 +441,25 @@ export function lessonScript(l: Lesson, turn: number): readonly Order[] {
 
 /** Whether the lesson's goal is met in `state` (seat 0 is the player). */
 export function lessonComplete(l: Lesson, state: GameState): boolean {
-  const g = l.goal;
-  if (g.kind === "income") return incomeFor(state, 0) >= g.atLeast;
-  if (state.turn < (g.fromTurn ?? 1)) return false;
+  return goalMet(l.goal, state);
+}
+
+function goalMet(g: LessonGoal, state: GameState): boolean {
   const body = state.bodies[0];
-  if (!body) return false;
-  return body.colony[getBoard(body.radius).indexOf(g.cell.q, g.cell.r)]?.owner === 0;
+  const cellAt = (h: Hex) =>
+    body ? (body.colony[getBoard(body.radius).indexOf(h.q, h.r)] ?? null) : null;
+  switch (g.kind) {
+    case "income":
+      return incomeFor(state, 0) >= g.atLeast;
+    case "own":
+      return state.turn >= (g.fromTurn ?? 1) && cellAt(g.cell)?.owner === 0;
+    case "empty":
+      return g.cells.every((h) => cellAt(h) === null);
+    case "won":
+      return state.result?.winner === 0;
+    case "bodies":
+      return state.bodies.filter((b) => b.colony.some((c) => c?.owner === 0)).length >= g.atLeast;
+    case "all":
+      return g.goals.every((x) => goalMet(x, state));
+  }
 }

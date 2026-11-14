@@ -18,7 +18,7 @@
 
 ### Next
 
-1. **Tutorial pass** (`docs/plans/tutorial.md`): the plan is settled. Step 1 (Novice opponent) and step 2 (lesson groundwork, Lessons 1–3) are done. Next is step 3: the Training-grounds map, Lessons 4–7, and per-turn "Try that turn again".
+1. **Tutorial pass** (`docs/plans/tutorial.md`): the plan is settled. Steps 1–3 are done: the Novice opponent, the lesson groundwork, and the Training grounds with all seven lessons and "Try that turn again". Next is step 4: Dr. Ottoline Purr (portrait, voice, lesson lines, campaign-map introductions), with the old tutorial cards coming off campaign nodes 1–3.
    - **Settled:** seven optional lessons, Dr. Ottoline Purr as narrator, and the Codex as her field journal.
 2. **Easier bots on early campaign nodes:** done for nodes 1–3, with the Novice bot (DECISIONS #122). Nodes 4 and 8 are a cliff, awaiting a decision.
 3. Then the open items below.
