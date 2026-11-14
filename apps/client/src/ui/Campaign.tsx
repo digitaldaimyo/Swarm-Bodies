@@ -12,6 +12,8 @@ import {
 import type { StrainId } from "@swarm/sim";
 import { audio } from "../audio/sfx";
 import { useProgress } from "./progress";
+import { PurrSays } from "./Purr";
+import { getSettings } from "./settings";
 
 interface Props {
   onBack(): void;
@@ -138,7 +140,7 @@ function Briefing({
           ×
         </button>
       </header>
-      <p>{node.blurb}</p>
+      {getSettings().narrator !== "off" ? <PurrSays line={node.intro} /> : <p>{node.blurb}</p>}
       <ul class="facts">
         <li>
           {node.map.mode === "singleRock"

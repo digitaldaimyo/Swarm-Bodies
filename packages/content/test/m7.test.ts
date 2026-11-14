@@ -135,12 +135,13 @@ describe("SPEC §11.1 campaign data", () => {
     expect(CAMPAIGN.some((n) => n.after.length >= 2)).toBe(true);
   });
 
-  it("nodes 1–3 are the tutorial on Single Rock and a two-body system", () => {
+  it("nodes 1–3 are the gentle start: Single Rock, then a two-body system", () => {
     const [a, b, c] = CAMPAIGN;
     expect(a!.map.mode).toBe("singleRock");
     expect(b!.map.mode).toBe("singleRock");
     expect(createGame(nodeConfig(c!, "swarmer"), c!.seed).bodies).toHaveLength(2);
-    for (const n of [a!, b!, c!]) expect(n.tutorial.length).toBeGreaterThan(0);
+    // The Training grounds teach now; Dr. Purr introduces each node instead of tutorial cards.
+    for (const n of [a!, b!, c!]) expect(n.intro.text.length).toBeGreaterThan(0);
   });
 
   it("unlocks Predator at node 4, Sporer at node 7, and 4 mutations", () => {
@@ -245,16 +246,11 @@ describe("How to play and the node 1 combat steps", () => {
     expect(text).toContain("attack vs defense");
   });
 
-  it("node 1 explains combat once the colonies touch", async () => {
-    const { CAMPAIGN, COMBAT_RULE } = await import("../src");
-    const steps = CAMPAIGN[0]!.tutorial;
-    const combat = steps.filter((s) => s.when?.kind === "contact");
-    expect(combat).toHaveLength(2);
-    expect(combat[0]!.text).toContain("attack vs defense");
-    expect(combat[1]!.text).toContain(COMBAT_RULE.defense);
-    // They come after the growing steps, so they never jump the queue.
-    expect(steps.indexOf(combat[0]!)).toBeGreaterThan(
-      steps.findIndex((s) => s.until.kind === "submit"),
-    );
+  it("the Training grounds explain combat (it moved there from node 1's cards)", async () => {
+    const { LESSONS } = await import("../src");
+    const text = LESSONS.flatMap((l) => l.tutorial.map((s) => s.text)).join(" ");
+    expect(text).toContain("Attack is your feeding cell's biomass");
+    expect(text).toContain("Defense is the target's biomass");
+    expect(text).toContain("Ties go to the defender");
   });
 });

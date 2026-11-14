@@ -1,3 +1,6 @@
+import { RESULT_LINES } from "@swarm/content";
+import { PurrSays } from "./Purr";
+import { getSettings } from "./settings";
 import { achievementInfo, campaignNode, mutationInfo, strainInfo } from "@swarm/content";
 import type { MutationId } from "@swarm/sim";
 import type { MatchSession } from "../game/match-session";
@@ -51,6 +54,11 @@ export default function Results({
       <p class="muted">
         {reason} {session.description}
       </p>
+      {getSettings().narrator === "on" && (
+        <section class="card">
+          <PurrSays line={RESULT_LINES[result?.winner === null ? "draw" : won ? "win" : "loss"]} />
+        </section>
+      )}
       {rewards && <Rewards rewards={rewards} />}
       <section class="card">
         <h3>Dominance</h3>

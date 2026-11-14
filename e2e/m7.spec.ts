@@ -23,7 +23,7 @@ async function player(browser: Browser): Promise<Page> {
   return page;
 }
 
-test("campaign: node 1's tutorial, then a win opens node 2 and records progress", async ({
+test("campaign: Dr. Purr introduces node 1, then a win opens node 2 and records progress", async ({
   page,
 }) => {
   test.setTimeout(240_000);
@@ -31,16 +31,13 @@ test("campaign: node 1's tutorial, then a win opens node 2 and records progress"
   await page.getByRole("button", { name: "Campaign" }).click();
   await expect(page.getByRole("listitem", { name: /2\. Fronts, locked/ })).toBeVisible();
   await page.getByRole("listitem", { name: /1\. First Contact, open/ }).click();
-  await expect(page.getByLabel("Briefing: First Contact")).toContainText("Tutorial");
+  const briefing = page.getByLabel("Briefing: First Contact");
+  await expect(briefing).toContainText("Dr. Purr");
+  await expect(briefing.getByRole("img", { name: /Dr\. Ottoline Purr/ })).toBeVisible();
   await page.getByRole("button", { name: "Play" }).click();
   await inMatch(page);
-
-  // The scripted tutorial: "Got it" advances a text step; the next step waits for a Grow order.
-  const card = page.locator(".tutorial-card");
-  await expect(card).toContainText("your core");
-  await page.getByRole("button", { name: "Got it" }).click();
-  await expect(card).toContainText("Grow path");
-  await expect(card).toHaveAttribute("data-tutorial-step", "1");
+  // The Training grounds teach now: node 1 has no tutorial cards.
+  await expect(page.locator(".tutorial-card")).toHaveCount(0);
 
   // The scripted player (Normal policy) plays the node out against the Easy bot. The seeds are
   // fixed, so this game is the same every run.
@@ -48,6 +45,8 @@ test("campaign: node 1's tutorial, then a win opens node 2 and records progress"
   await expect(page.getByRole("heading", { name: "Victory" })).toBeVisible({ timeout: 200_000 });
   await expect(page.getByLabel("Rewards")).toContainText("System 1 complete: First Contact");
   await expect(page.getByLabel("Rewards")).toContainText("Achievement: First Bloom");
+  // Her closing line on the results screen.
+  await expect(page.getByText("A thorough victory.")).toBeVisible();
   await page.getByRole("button", { name: "Campaign map" }).click();
   await expect(page.getByRole("listitem", { name: /1\. First Contact, complete/ })).toBeVisible();
   await expect(page.getByRole("listitem", { name: /2\. Fronts, open/ })).toBeVisible();

@@ -10,6 +10,7 @@ import {
   type Rules,
 } from "@swarm/sim";
 import type { TutorialStep } from "./campaign";
+import type { Line } from "./narrator";
 
 /**
  * The Training grounds (docs/plans/tutorial.md): short lessons on hand-placed boards, each
@@ -44,6 +45,8 @@ export interface Lesson {
   /** The opponent's orders (seat 1) by turn number; turns not listed: no orders. */
   script: Readonly<Record<number, readonly Order[]>>;
   tutorial: readonly TutorialStep[];
+  /** Dr. Purr's line when the lesson is complete. */
+  done: Line;
   goal: LessonGoal;
 }
 
@@ -105,23 +108,35 @@ export const LESSONS: readonly Lesson[] = [
     script: {},
     tutorial: [
       {
-        text: "Deposits pay income once your colony reaches them: ice 2 N a turn, organic 3. Your core pays 2. Goal: an income of 7.",
+        mood: "smug",
+        text: "Welcome aboard the Third Nap, assistant. Our specimen eats deposits: ice pays 2 N a turn, organic 3, the core 2. Get it to 7.",
         until: { kind: "next" },
       },
       {
-        text: "Drag from your colony toward a deposit. Each new cell costs 2 N, and a mineral cell 1 more.",
+        mood: "smug",
+        text: "Drag from the colony toward a deposit. Each new cell costs 2 N, and mineral costs 1 more, naturally.",
         until: { kind: "order", order: "grow" },
       },
       {
-        text: "A path reaches at most 3 new cells a turn, and both deposits are 4 away. Start a path toward the other one too, from a different cell.",
+        mood: "intrigued",
+        text: "Three new cells a turn is its limit, and both deposits are 4 away. Start a second path from another cell. Ambition is free.",
         until: { kind: "order", order: "grow" },
       },
-      { text: "Submit. Rock blocks paths: grow around it.", until: { kind: "submit" } },
       {
-        text: "Finish both paths. Income arrives as soon as a deposit is connected to your core.",
+        mood: "smug",
+        text: "Submit. Rock blocks paths; go around it, as I go around stairs.",
+        until: { kind: "submit" },
+      },
+      {
+        mood: "smug",
+        text: "Finish both paths. Income arrives the moment a deposit connects to the core.",
         until: { kind: "submit" },
       },
     ],
+    done: {
+      mood: "intrigued",
+      text: "Seven a turn. The specimen is fed, and I have a theory to ignore.",
+    },
     goal: { kind: "income", atLeast: 7 },
   },
   {
@@ -153,27 +168,41 @@ export const LESSONS: readonly Lesson[] = [
     script: { 1: [grow([1, 0], [0, 0])], 3: [grow([1, 0], [0, 0])] },
     tutorial: [
       {
-        text: "A gap in the rock, with a feeding ground in it. Pinch to zoom in until each cell shows its biomass.",
+        mood: "smug",
+        text: "A gap in the rock, with lunch in it. Pinch to zoom until every cell shows its biomass.",
         until: { kind: "zoomIn" },
       },
       {
-        text: "Your cell in the gap has biomass 1. Submit with no orders, and watch the rival.",
+        mood: "smug",
+        text: "Your cell in the gap has biomass 1. Submit with no orders and watch the rival. I'll take notes.",
         until: { kind: "submit" },
       },
       {
-        text: "They took it: attack 4 beat your defense 2 (biomass 1, plus 1 for your connected neighbour). Take it back: drag from your biomass-4 cell into the gap.",
+        mood: "unimpressed",
+        text: "They took it: attack 4 beat your defense 2. One biomass guarding a feeding ground. I've seen better strategy from a hairball.",
+        until: { kind: "next" },
+      },
+      {
+        mood: "smug",
+        text: "Take it back: drag from your biomass-4 cell into the gap. Attack 4 against their 3.",
         until: { kind: "order", order: "grow" },
       },
-      { text: "Attack 4 against their 3. Submit.", until: { kind: "submit" } },
+      { mood: "smug", text: "Submit.", until: { kind: "submit" } },
       {
-        text: "They will try the same attack again. Tap your gap cell and Reinforce it: +3 biomass for 3 N.",
+        mood: "intrigued",
+        text: "They'll try the exact same thing. Tap your gap cell and Reinforce: +3 biomass for 3 N.",
         until: { kind: "order", order: "reinforce" },
       },
       {
-        text: "Reinforce resolves before growth: their attack 4 meets defense 5. Submit, and watch it fail.",
+        mood: "smug",
+        text: "Reinforce lands before growth, so their 4 meets your 5. Submit, and watch.",
         until: { kind: "submit" },
       },
     ],
+    done: {
+      mood: "intrigued",
+      text: "Held. Mass, assistant. It solves most problems, and naps solve the rest.",
+    },
     goal: { kind: "own", cell: { q: 0, r: 0 }, fromTurn: 4 },
   },
   {
@@ -207,22 +236,27 @@ export const LESSONS: readonly Lesson[] = [
     script: {},
     tutorial: [
       {
-        text: "Attack is your feeding cell's biomass, plus 1 for each other cell of yours touching the target. Defense is the target's biomass, plus 1 for each connected neighbour it has.",
+        mood: "smug",
+        text: "Attack is your feeding cell's biomass, plus 1 for each other cell of yours touching the target. Defense is the target's biomass, plus 1 per connected neighbour. Do keep up.",
         until: { kind: "next" },
       },
       {
+        mood: "smug",
         text: "Both rival tips have defense 4. Attack the upper one from your lone biomass-4 cell: 4 against 4.",
         until: { kind: "order", order: "grow" },
       },
       {
+        mood: "intrigued",
         text: "Now the lower one, from the biomass-4 cell whose two neighbours also touch it: 4 + 2 = 6 against 4.",
         until: { kind: "order", order: "grow" },
       },
       {
-        text: "Submit. Watch which attack lands: ties go to the defender.",
+        mood: "smug",
+        text: "Submit. Ties go to the defender, so one of these will disappoint you.",
         until: { kind: "submit" },
       },
     ],
+    done: { mood: "intrigued", text: "Same cell, two results. Friends help. Even for slime." },
     goal: { kind: "own", cell: { q: -1, r: 1 } },
   },
   {
@@ -249,18 +283,25 @@ export const LESSONS: readonly Lesson[] = [
     script: {},
     tutorial: [
       {
-        text: "Every cell is fed through a core. The rival's core is weak: biomass 2, plus 3 for its connected neighbours. Defense 5.",
+        mood: "smug",
+        text: "Every cell is fed through a core. Theirs is feeble: biomass 2, plus 3 for its connected neighbours. Defense 5.",
         until: { kind: "next" },
       },
       {
+        mood: "intrigued",
         text: "Drag from your biomass-7 cell into their core: attack 7 against 5.",
         until: { kind: "order", order: "grow" },
       },
       {
-        text: "Submit, and watch what happens to the rest of their colony.",
+        mood: "smug",
+        text: "Submit, and watch what happens to a colony without a core.",
         until: { kind: "submit" },
       },
     ],
+    done: {
+      mood: "intrigued",
+      text: "No core, no colony. Keep yours thick and surrounded, assistant. I'd hate to start over.",
+    },
     goal: { kind: "won" },
   },
   {
@@ -290,19 +331,23 @@ export const LESSONS: readonly Lesson[] = [
     script: {},
     tutorial: [
       {
-        text: "Cells stay alive only while they are connected to a core. The rival's western arm hangs off a single cell of biomass 1.",
+        mood: "smug",
+        text: "Cells live only while connected to a core. The rival's western arm hangs off a single cell of biomass 1. Careless.",
         until: { kind: "next" },
       },
       {
-        text: "Drag from your biomass-5 cell into that neck: attack 5 against 1 + 2 support.",
+        mood: "intrigued",
+        text: "Drag from your biomass-5 cell into that neck: attack 5 against 1, plus 2 support.",
         until: { kind: "order", order: "grow" },
       },
-      { text: "Submit, and watch the cut-off arm.", until: { kind: "submit" } },
+      { mood: "smug", text: "Submit, and watch the arm.", until: { kind: "submit" } },
       {
-        text: "Cut off, the arm starves: 1 biomass a turn, starting at once. The rims show how long each cell has. Submit again.",
+        mood: "intrigued",
+        text: "Cut off, it starves: 1 biomass a turn, starting at once. The rims show how long each cell has. Submit again.",
         until: { kind: "submit" },
       },
     ],
+    done: { mood: "smug", text: "Severed and starved. Elegant, if a little rude." },
     goal: {
       kind: "all",
       goals: [
@@ -333,34 +378,48 @@ export const LESSONS: readonly Lesson[] = [
     script: {},
     tutorial: [
       {
-        text: "Spores carry your colony to other bodies. A connected cell with biomass 5 or more can Fruit (10 N); the fruiting body ripens in 2 turns, then can Launch.",
+        mood: "intrigued",
+        text: "Spores carry a colony to other bodies. A connected cell with biomass 5 or more can Fruit for 10 N; it ripens in 2 turns, then can Launch.",
         until: { kind: "next" },
       },
       {
+        mood: "smug",
         text: "The cell beside your core has biomass 4. Tap it and Reinforce it to 7.",
         until: { kind: "order", order: "reinforce" },
       },
-      { text: "Submit.", until: { kind: "submit" } },
+      { mood: "smug", text: "Submit.", until: { kind: "submit" } },
       {
+        mood: "intrigued",
         text: "Tap that cell again and choose Fruit.",
         until: { kind: "order", order: "fruit" },
         when: { kind: "canFruit" },
       },
-      { text: "Submit. Watch the stalk grow as it ripens.", until: { kind: "submit" } },
       {
-        text: "Pinch out, or tap the sun in the body strip, to see the System view. Bodies move on their orbits; the forecast shows when one comes within range.",
+        mood: "smug",
+        text: "Submit. Watch the stalk grow as it ripens. Patience is a virtue I mostly admire in others.",
+        until: { kind: "submit" },
+      },
+      {
+        mood: "intrigued",
+        text: "Pinch out, or tap the sun in the body strip, for the System view. Bodies move on their orbits; the forecast shows when one comes in range.",
         until: { kind: "systemView" },
       },
       {
-        text: "Your fruiting body is ripe. Open your home body, tap it, choose Launch, pick a body in range, then the cell to land on.",
+        mood: "intrigued",
+        text: "It's ripe. Open your home body, tap it, choose Launch, pick a body in range, then where to land.",
         until: { kind: "order", order: "launch" },
         when: { kind: "canLaunch" },
       },
       {
+        mood: "smug",
         text: "Submit. The spore crosses space for a turn or more, then lands as a new core.",
         until: { kind: "submit" },
       },
     ],
+    done: {
+      mood: "intrigued",
+      text: "A new colony on a new rock. I'll be insufferable about this at the next conference.",
+    },
     goal: { kind: "bodies", atLeast: 2 },
   },
   {
@@ -386,19 +445,26 @@ export const LESSONS: readonly Lesson[] = [
     script: Object.fromEntries([1, 3, 5, 7, 9].map((t) => [t, [grow([1, 0], [0, 0])]])),
     tutorial: [
       {
+        mood: "smug",
         text: "Everyone plans in secret, then all orders resolve together. Drag from your tip into the empty cell between you, then submit.",
         until: { kind: "submit" },
       },
       {
-        text: "You both reached it with equal pressure, 2 against 2: a stalemate. Nobody takes it. Reinforce your tip (+3), and submit.",
+        mood: "unimpressed",
+        text: "You both reached it with equal pressure, 2 against 2: a stalemate. Nobody gets it. Reinforce your tip (+3).",
         until: { kind: "order", order: "reinforce" },
       },
-      { text: "Submit, and wait for them to reach again.", until: { kind: "submit" } },
+      { mood: "smug", text: "Submit, and let them reach again.", until: { kind: "submit" } },
       {
-        text: "Now grow into the cell again: 5 against their 2. The stronger claim wins. The “?” on a preview means someone else might also reach that cell.",
+        mood: "intrigued",
+        text: "Grow into it again: 5 against their 2, and the stronger claim wins. A “?” on a preview means someone else might reach that cell too.",
         until: { kind: "submit" },
       },
     ],
+    done: {
+      mood: "smug",
+      text: "You both reached for it at the same moment, then you reached harder. I relate to this deeply.",
+    },
     goal: { kind: "own", cell: { q: 0, r: 0 } },
   },
 ];

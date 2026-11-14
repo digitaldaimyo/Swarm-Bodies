@@ -1603,3 +1603,34 @@ h3 {
 .replay-bar .btn-icon:disabled {
   opacity: 0.45;
 }
+
+/* Dr. Ottoline Purr (docs/plans/tutorial.md). */
+.purr {
+  flex: none;
+  animation: purr-pop 220ms ease-out;
+}
+@keyframes purr-pop {
+  from {
+    transform: scale(0.88);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+[data-motion="reduce"] .purr {
+  animation: none;
+}
+.purr-says {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.purr-says p {
+  margin: 0;
+}
+.purr-name {
+  color: #e9c46a;
+  font-size: calc(12px * var(--text-scale, 1));
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}

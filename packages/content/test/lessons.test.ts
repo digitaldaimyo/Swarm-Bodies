@@ -195,3 +195,26 @@ describe("lesson progress", () => {
     expect(merged.completedLessons).toEqual(["l1", "l2"]);
   });
 });
+
+describe("Dr. Ottoline Purr's lines (step 4)", () => {
+  it("every lesson step, completion, campaign node and result has a line with an expression", async () => {
+    const { CAMPAIGN, RESULT_LINES } = await import("../src");
+    const lines = [
+      ...LESSONS.flatMap((l) => [...l.tutorial, l.done]),
+      ...CAMPAIGN.map((n) => n.intro),
+      ...Object.values(RESULT_LINES),
+    ];
+    for (const line of lines) {
+      expect(["smug", "intrigued", "unimpressed"]).toContain(line.mood);
+      // Short enough to read in one glance on a phone.
+      expect(line.text.length).toBeLessThanOrEqual(200);
+      expect(line.text.trim()).toBe(line.text);
+    }
+    expect(CAMPAIGN.every((n) => n.intro.text.length > 0)).toBe(true);
+  });
+
+  it("the campaign's old tutorial cards are gone: the Training grounds teach instead", async () => {
+    const { CAMPAIGN } = await import("../src");
+    expect(CAMPAIGN.slice(0, 3).every((n) => n.tutorial.length === 0)).toBe(true);
+  });
+});
