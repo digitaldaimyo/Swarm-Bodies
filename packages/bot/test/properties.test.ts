@@ -20,7 +20,7 @@ describe("SPEC §13.1 bot contract", () => {
       fc.property(
         fc.string({ minLength: 1, maxLength: 10 }),
         fc.constantFrom<Difficulty>("easy", "normal", "hard"),
-        fc.constantFrom<Difficulty>("easy", "normal"),
+        fc.constantFrom<Difficulty>("novice", "easy", "normal"),
         (seed, a, b) => {
           let turns = 0;
           for (const s of play(seed, a, b)) {

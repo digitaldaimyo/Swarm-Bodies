@@ -22,7 +22,7 @@ export type PlayMode = "skirmish" | "campaign" | "daily" | "online" | "ranked";
 export interface SummaryContext {
   mode: PlayMode;
   /** The bots' difficulty in offline modes. */
-  difficulty?: "easy" | "normal" | "hard";
+  difficulty?: "novice" | "easy" | "normal" | "hard";
   campaignNode?: string;
   /** Consecutive days with a Daily Seed submission, including this one. */
   dailyStreak?: number;

@@ -155,7 +155,7 @@ export class SkirmishSession extends SessionBase implements MatchSession {
     if (this.settings.daily) return `Daily Seed · ${this.settings.daily}`;
     const n = this.state.players.length - 1;
     const map = this.state.mode === "system" ? "System" : "Single Rock";
-    return `${map} · ${n} ${{ easy: "Easy", normal: "Normal", hard: "Hard" }[this.settings.difficulty]} bot${n === 1 ? "" : "s"} · seed ${this.settings.seed}`;
+    return `${map} · ${n} ${{ novice: "Novice", easy: "Easy", normal: "Normal", hard: "Hard" }[this.settings.difficulty]} bot${n === 1 ? "" : "s"} · seed ${this.settings.seed}`;
   }
 
   get submitted(): boolean {

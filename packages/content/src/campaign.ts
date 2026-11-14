@@ -20,7 +20,8 @@ import type { GameSummary } from "./summary";
  * system), with scripted overlays.
  */
 export type Personality = "balanced" | "aggressive" | "greedy" | "expansionist" | "saboteur";
-export type Difficulty = "easy" | "normal" | "hard";
+/** "novice" is the gentlest bot, for the first campaign nodes only (DECISIONS #122). */
+export type Difficulty = "novice" | "easy" | "normal" | "hard";
 
 /** Objective twists (SPEC §11.1): extra conditions on a win. */
 export interface Twist {
@@ -127,7 +128,7 @@ export const CAMPAIGN: readonly CampaignNode[] = [
     seed: "campaign-c01",
     map: { mode: "singleRock", players: 2 },
     you: "swarmer",
-    opponent: { strain: "biofilm", difficulty: "easy", personality: "greedy" },
+    opponent: { strain: "biofilm", difficulty: "novice", personality: "greedy" },
     modifier: null,
     twist: null,
     unlocks: {},
@@ -172,7 +173,7 @@ export const CAMPAIGN: readonly CampaignNode[] = [
     seed: "campaign-c02",
     map: { mode: "singleRock", players: 2 },
     you: "swarmer",
-    opponent: { strain: "swarmer", difficulty: "easy", personality: "aggressive" },
+    opponent: { strain: "swarmer", difficulty: "novice", personality: "aggressive" },
     modifier: null,
     twist: null,
     unlocks: {},
@@ -203,7 +204,7 @@ export const CAMPAIGN: readonly CampaignNode[] = [
     seed: "campaign-c03",
     map: { mode: "system", players: 2, rules: TWO_BODY },
     you: "sporer",
-    opponent: { strain: "biofilm", difficulty: "easy", personality: "balanced" },
+    opponent: { strain: "biofilm", difficulty: "novice", personality: "balanced" },
     modifier: null,
     twist: null,
     unlocks: {},
