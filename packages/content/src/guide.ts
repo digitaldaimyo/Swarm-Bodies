@@ -57,6 +57,7 @@ export const GUIDE: readonly GuideSection[] = [
       "Otherwise your path stops there, and the defender loses half your attack in biomass (never below 1).",
       "While you drag, the label on an enemy cell shows attack vs defense: green captures, red bounces, and “?” means other players' orders could change it.",
       "Thick cells win fights. Reinforce your front before you push, and attack where several of your cells touch the target.",
+      "Hold a finger on any cell to see its defense, split into biomass and support.",
       "If several paths reach the same empty cell, the strongest takes it; a tie leaves it empty (a stalemate).",
     ],
   },
@@ -66,6 +67,7 @@ export const GUIDE: readonly GuideSection[] = [
     points: [
       "Cells linked to a core through your colony are connected. Only connected cells earn income and count for defense.",
       `Cut-off cells starve, losing ${r.starvationLoss} biomass a turn. Cutting an enemy vein weakens everything beyond the cut.`,
+      "Holding a cell also traces its supply route back to its core. Bright motes flowing along the veins are deposit income on its way home; a slashed badge is income that cannot get through.",
     ],
   },
   {
@@ -80,7 +82,7 @@ export const GUIDE: readonly GuideSection[] = [
     id: "spores",
     title: "Spores and other bodies",
     points: [
-      `Fruit a connected cell with biomass ${r.fruitMinBiomass} or more (${r.fruitCost} N). It ripens in ${r.fruitMatureTurns} turns.`,
+      `Fruit a connected cell with biomass ${r.fruitMinBiomass} or more (${r.fruitCost} N). It ripens in ${r.fruitMatureTurns} turns. A small sparkle marks the cells you can fruit right now.`,
       `A ripe fruiting body can Launch a spore at a body within range when their orbits line up (the forecast shows launch windows). It lands as a new core with biomass ${r.landingBiomass}.`,
       "Solar flares thin out cells facing the sun; comets drop rich, short-lived deposits.",
     ],

@@ -181,6 +181,9 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
   };
 
   const planning = () => phaseRef.current === "planning" && !session.submitted && !session.finished;
+  // Fruiting hints while orders can still be planned (colony life, phase 4).
+  const canPlan = phase === "planning" && !session.submitted && !session.finished;
+  useEffect(() => view.current?.setFruitHints(canPlan));
 
   // Mount the Pixi view.
   useEffect(() => {

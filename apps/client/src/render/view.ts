@@ -43,6 +43,7 @@ import { SpritePool } from "./pool";
 import { drawPattern } from "./patterns";
 import { resourceRoutes, vascular, vesselWidth, type Vascular } from "../game/vascular";
 import { beat, pulse, starveTurnsLeft, strength, WAVE_STEP } from "../game/heartbeat";
+import { defenseParts, defenseText, fruitableCells, supplyPath } from "../game/readout";
 import { SystemLayer } from "./system";
 
 export interface ViewCallbacks {
@@ -181,6 +182,27 @@ export class MatchView {
   get moteRouteCount(): number {
     return this.moteRoutes.length;
   }
+  /**
+   * Readouts (colony life, phase 4). Holding a cell traces its supply route to the core and
+   * shows its defense; cells that could fruit now carry a faint sparkle while planning.
+   */
+  private readonly inspectG = new Graphics();
+  private readonly inspectLabel = new Container();
+  /** The cell held for a readout, or -1, and its text (tests read these). */
+  inspected = -1;
+  inspectText = "";
+  /** Cells on the held cell's supply route, itself and its core included. */
+  inspectRoute = 0;
+  private vasc: Vascular | null = null;
+  private pending: readonly Order[] = [];
+  private fruitHints = false;
+  /** Whether the board shows the live state (not a replay frame). */
+  private boardLive = false;
+  private readonly sparkLayer = new Container();
+  private sparkTex: Texture | null = null;
+  private sparks: { sprite: Sprite; phase: number }[] = [];
+  /** Cells sparkling as able to fruit (tests read this). */
+  fruitable = 0;
   /** Colony detail "Calm": no motes. Vessels, badges and rims stay. */
   calm = false;
   /** Draining rims on cut-off cells: the turns each has left before it starves. */
@@ -304,7 +326,9 @@ export class MatchView {
       this.starveMarks,
       this.flow,
       this.moteLayer,
+      this.sparkLayer,
       this.cores,
+      this.inspectG,
       this.stalkGlow,
       this.stalks,
       this.planG,
@@ -313,6 +337,7 @@ export class MatchView {
       this.numbers,
       this.labels,
       this.fxLabels,
+      this.inspectLabel,
       this.cursor,
     );
 
@@ -330,6 +355,17 @@ export class MatchView {
         .fill({ color: 0x070b1a, alpha: 0.7 })
         .circle(8, 8, 5.5)
         .fill(0xffffff),
+      resolution: 2,
+    });
+    // Fruiting hint: a small four-point star.
+    const star: number[] = [];
+    for (let k = 0; k < 8; k++) {
+      const a = (k * Math.PI) / 4;
+      const rr = k % 2 === 0 ? 7 : 2;
+      star.push(8 + Math.cos(a) * rr, 8 + Math.sin(a) * rr);
+    }
+    this.sparkTex = this.app.renderer.generateTexture({
+      target: new Graphics().poly(star).fill(0xffffff),
       resolution: 2,
     });
     // Per-cell discs are sprites from pre-rendered textures, not tessellated circles.
@@ -403,6 +439,8 @@ export class MatchView {
       this.planG.clear();
       this.cancelPaint();
       this.setBoard(this.body.colony);
+      this.boardLive = true;
+      this.refreshSparks();
       this.fit(true);
     }
     this.setMode("body");
@@ -603,6 +641,7 @@ export class MatchView {
   setInputEnabled(on: boolean): void {
     this.inputEnabled = on;
     if (!on) this.cursor.clear();
+    this.refreshSparks();
   }
 
   private bindInput(): void {
@@ -623,6 +662,7 @@ export class MatchView {
     const cancelLongPress = () => {
       if (this.longPress) clearTimeout(this.longPress);
       this.longPress = null;
+      this.clearInspect();
       if (this.showNumbers) {
         this.showNumbers = false;
         this.clampCamera();
@@ -663,6 +703,7 @@ export class MatchView {
           if (mode === "pending") {
             this.showNumbers = true;
             this.clampCamera();
+            if (downHex) this.inspect(downHex);
           }
         }, 450);
       }
@@ -889,6 +930,8 @@ export class MatchView {
   setState(state: GameState): void {
     this.state = state;
     this.setBoard(this.body.colony, state);
+    this.boardLive = true;
+    this.refreshSparks();
     this.updateSystem();
     this.drawSun();
   }
@@ -896,6 +939,7 @@ export class MatchView {
   /** Redraws colonies from a colony array (the live state or a replay frame). */
   setBoard(colony: readonly (Colony | null)[], state = this.state): void {
     this.boardSwaps++;
+    this.boardLive = false;
     this.colony = colony.slice();
     const body = (state.bodies[this.bodyId] ?? state.bodies[0]) as Body;
     const board = getBoard(body.radius);
@@ -1007,6 +1051,8 @@ export class MatchView {
     this.rebuildFlow(v, defense, colony, board, body, state);
     this.rebuildCores(defense, colony, board);
     this.rebuildMotes(v, colony, board, body, state);
+    this.vasc = v;
+    this.refreshSparks();
     this.drawStarveMarks(colony, board, state);
     this.rebuildStalks(colony, board, body, state);
     this.numbersDirty = true;
@@ -1352,6 +1398,118 @@ export class MatchView {
     });
   }
 
+  /** Fruiting hints are shown only while the viewer can still plan orders. */
+  setFruitHints(on: boolean): void {
+    if (on === this.fruitHints) return;
+    this.fruitHints = on;
+    this.refreshSparks();
+  }
+
+  /** The viewer's cells that could fruit now (after queued orders) sparkle faintly. */
+  private refreshSparks(): void {
+    if (!this.state || !this.sparkTex) return;
+    const cells =
+      this.fruitHints && this.inputEnabled
+        ? fruitableCells(this.state, this.body, this.viewer, this.pending)
+        : [];
+    // Only when the board shows the live state, not a replay frame.
+    const live = this.boardLive;
+    const board = getBoard(this.body.radius);
+    let used = 0;
+    if (live) {
+      for (const i of cells) {
+        let sp = this.sparks[used];
+        if (!sp) {
+          const sprite = new Sprite(this.sparkTex);
+          sprite.anchor.set(0.5);
+          sprite.blendMode = "add";
+          this.sparkLayer.addChild(sprite);
+          sp = { sprite, phase: 0 };
+          this.sparks.push(sp);
+        }
+        used++;
+        const p = hexToPixel(board.cells[i] as Hex);
+        // Upper left of the cell; the deposit badge sits upper right.
+        sp.sprite.position.set(p.x - HEX_SIZE * 0.42, p.y - HEX_SIZE * 0.42);
+        sp.sprite.visible = true;
+        sp.phase = (i * 0.618) % 1;
+      }
+    }
+    for (let k = used; k < this.sparks.length; k++)
+      (this.sparks[k] as { sprite: Sprite }).sprite.visible = false;
+    this.fruitable = used;
+  }
+
+  /** Traces a held cell's supply route to its core and shows its defense. */
+  private inspect(h: Hex): void {
+    const board = getBoard(this.body.radius);
+    const i = board.indexOf(h.q, h.r);
+    const c = i >= 0 ? this.colony[i] : null;
+    if (!c || !this.vasc) return;
+    const d = defenseParts(this.state, this.body, this.colony, i);
+    const color = lighten(playerColor(c.owner), 0.6);
+    const g = this.inspectG.clear();
+    const pts = supplyPath(this.vasc, i).map((k) => hexToPixel(board.cells[k] as Hex));
+    if (pts.length > 1) {
+      for (const [width, stroke, alpha] of [
+        [8, 0x02040c, 0.6],
+        [3.5, color, 0.95],
+      ] as const) {
+        const [first, ...rest] = pts as [Point, ...Point[]];
+        g.moveTo(first.x, first.y);
+        for (const q of rest) g.lineTo(q.x, q.y);
+        g.stroke({ width, color: stroke, alpha, cap: "round", join: "round" });
+      }
+      const core = pts[pts.length - 1] as Point;
+      g.circle(core.x, core.y, HEX_SIZE * 0.8).stroke({ width: 3, color, alpha: 0.95 });
+    }
+    const p = hexToPixel(h);
+    g.circle(p.x, p.y, HEX_SIZE * 0.8).stroke({ width: 3, color: 0xffffff, alpha: 0.95 });
+    const text = defenseText(d, c.connected);
+    this.inspectLabel.removeChildren().forEach((x) => x.destroy());
+    const t = new Text({
+      text,
+      style: {
+        fontFamily: "Inter, system-ui, sans-serif",
+        fontSize: 14,
+        fontWeight: "700",
+        fill: 0xffffff,
+        align: "center",
+        lineHeight: 18,
+        stroke: { color: 0x02040c, width: 4 },
+      },
+      resolution: 2,
+    });
+    t.anchor.set(0.5, 1);
+    const k = 1 / Math.max(0.8, this.zoom);
+    t.scale.set(k);
+    // Kept on screen, with a dark backing so it reads over the biomass numbers.
+    const w = t.width;
+    const ht = t.height;
+    const pad = 6 * k;
+    const left = this.screenToWorld({ x: 8, y: 0 }).x + w / 2 + pad;
+    const right = this.screenToWorld({ x: this.app.screen.width - 8, y: 0 }).x - w / 2 - pad;
+    const x = left > right ? p.x : Math.min(right, Math.max(left, p.x));
+    const y = p.y - HEX_SIZE * 0.95;
+    t.position.set(x, y);
+    const back = new Graphics()
+      .roundRect(x - w / 2 - pad, y - ht - pad, w + pad * 2, ht + pad * 2, 8 * k)
+      .fill({ color: 0x070b1a, alpha: 0.82 });
+    this.inspectLabel.addChild(back, t);
+    this.inspected = i;
+    this.inspectText = text;
+    this.inspectRoute = pts.length;
+  }
+
+  private clearInspect(): void {
+    if (this.inspected < 0) return;
+    this.inspectG.clear();
+    this.inspectLabel.removeChildren().forEach((x) => x.destroy());
+    this.inspected = -1;
+    this.inspectText = "";
+    this.inspectRoute = 0;
+  }
+
   private tick(dt: number): void {
     this.time += dt / 1000;
     const t = this.time;
@@ -1360,6 +1518,13 @@ export class MatchView {
       return;
     }
     this.tickMotes(dt / 1000);
+    // Fruiting hints twinkle; with reduce motion they hold still.
+    for (const sp of this.sparks) {
+      if (!sp.sprite.visible) continue;
+      const tw = this.reduceMotion ? 0.5 : 0.5 + 0.5 * Math.sin((t * 0.9 + sp.phase) * Math.PI * 2);
+      sp.sprite.alpha = 0.3 + 0.45 * tw;
+      sp.sprite.scale.set(0.95 + 0.35 * tw);
+    }
     if (this.reduceMotion) {
       // Still, but the same information: brightness follows strength; full cells glow.
       for (const f of this.flowSprites) {
@@ -1398,6 +1563,10 @@ export class MatchView {
 
   /** Queued orders: ghost paths, reinforce rings and retract crosses. */
   setPlan(orders: readonly Order[], player: PlayerId, previews: StepPreview[][]): void {
+    if (player === this.viewer) {
+      this.pending = orders;
+      this.refreshSparks();
+    }
     const g = this.planG;
     g.clear();
     const color = playerColor(player);
