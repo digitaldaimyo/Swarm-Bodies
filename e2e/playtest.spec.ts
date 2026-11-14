@@ -279,24 +279,29 @@ test("holding a cell traces its supply route and shows its defense", async ({ pa
 
   // Phase 5: a Sporer colony sheds drifting specks. Shown on a copy of the state with our
   // strain set to Sporer (the game itself is untouched), then the real state again.
-  const specks = await page.evaluate(async () => {
-    const h = (
-      window as unknown as {
-        __swarm: {
-          session: { state: { players: { id: number; strain: string }[] } };
-          view: { setState(s: unknown): void; specks: number };
-        };
-      }
-    ).__swarm;
+  type SporeHook = {
+    __swarm: {
+      session: { state: { players: { id: number; strain: string }[] } };
+      view: { setState(s: unknown): void; specks: number };
+    };
+  };
+  await page.evaluate(() => {
+    const h = (window as unknown as SporeHook).__swarm;
     const st = structuredClone(h.session.state);
     st.players = st.players.map((p) => (p.id === 0 ? { ...p, strain: "sporer" } : p));
     h.view.setState(st);
-    await new Promise((r) => setTimeout(r, 1200));
-    const n = h.view.specks;
-    h.view.setState(h.session.state);
-    return n;
   });
-  expect(specks).toBeGreaterThan(0);
+  // Specks spawn as frames run; wait for them rather than for a fixed time, since frames can
+  // crawl on a loaded runner (PR #20 CI in WebKit: none after a fixed 1.2 s).
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as SporeHook).__swarm.view.specks), {
+      timeout: 15_000,
+    })
+    .toBeGreaterThan(0);
+  await page.evaluate(() => {
+    const h = (window as unknown as SporeHook).__swarm;
+    h.view.setState(h.session.state);
+  });
 
   // Fruiting hints and frontier feelers are only shown while orders can still be planned.
   const hints = () =>
