@@ -18,6 +18,7 @@ import {
   HEX_DIRECTIONS as HEX_DIRS,
   type Body,
   type Colony,
+  type DepositKind,
   type GameState,
   type Hex,
   type Order,
@@ -40,7 +41,7 @@ import {
 } from "./palette";
 import { SpritePool } from "./pool";
 import { drawPattern } from "./patterns";
-import { vascular, vesselWidth, type Vascular } from "../game/vascular";
+import { resourceRoutes, vascular, vesselWidth, type Vascular } from "../game/vascular";
 import { beat, pulse, starveTurnsLeft, strength, WAVE_STEP } from "../game/heartbeat";
 import { SystemLayer } from "./system";
 
@@ -116,6 +117,8 @@ export class MatchView {
   private readonly depositMarks = new Graphics();
   /** How many deposit badges the board shows (tests read this; the canvas cannot be queried). */
   depositBadges = 0;
+  /** Badges slashed because their deposit is cut off from every core (tests read this). */
+  cutBadges = 0;
   private readonly numbers = new Container();
   private readonly planG = new Graphics();
   private readonly paintG = new Graphics();
@@ -126,6 +129,7 @@ export class MatchView {
   private grid: Graphics | null = null;
   private ground: Container | null = null;
   private dot: Texture | null = null;
+  private moteTex: Texture | null = null;
   private readonly stalks = new Graphics();
   private readonly sun = new Graphics();
   private readonly flash = new Graphics();
@@ -152,7 +156,33 @@ export class MatchView {
     connected: boolean;
     full: boolean;
   }[] = [];
-  private coreSprites: { g: Graphics; period: number; depthAmp: number }[] = [];
+  private coreSprites: {
+    g: Graphics;
+    cell: number;
+    period: number;
+    depthAmp: number;
+    /** Brightens as nutrient motes arrive, then fades (colony life, phase 3). */
+    fed: number;
+  }[] = [];
+  /**
+   * Nutrient motes (colony life, phase 3): each deposit or comet a colony holds sends motes
+   * in its badge colour along its supply route to the core, more often the more it yields. A
+   * cut route ends where the supply line broke, and its motes fizzle there. A fixed pool of
+   * sprites, animated only for the body on screen.
+   */
+  private readonly moteLayer = new Container();
+  private moteSprites: Sprite[] = [];
+  private moteRoutes: MoteRoute[] = [];
+  private motesLive: Mote[] = [];
+  /** Live motes and routes (tests read these; the canvas cannot be queried). */
+  get motes(): number {
+    return this.motesLive.length;
+  }
+  get moteRouteCount(): number {
+    return this.moteRoutes.length;
+  }
+  /** Colony detail "Calm": no motes. Vessels, badges and rims stay. */
+  calm = false;
   /** Draining rims on cut-off cells: the turns each has left before it starves. */
   private readonly starveMarks = new Graphics();
   /** How many starvation rims the board shows (tests read this). */
@@ -273,6 +303,7 @@ export class MatchView {
       this.depositMarks,
       this.starveMarks,
       this.flow,
+      this.moteLayer,
       this.cores,
       this.stalkGlow,
       this.stalks,
@@ -291,6 +322,16 @@ export class MatchView {
       .circle(16, 16, 9)
       .fill(0xffffff);
     this.dot = this.app.renderer.generateTexture({ target: g, resolution: 2 });
+    // Nutrient motes: a bright bead with a dark rim (like the deposit badges), so a mote reads
+    // on any colony colour. Tinting keeps the rim dark.
+    this.moteTex = this.app.renderer.generateTexture({
+      target: new Graphics()
+        .circle(8, 8, 8)
+        .fill({ color: 0x070b1a, alpha: 0.7 })
+        .circle(8, 8, 5.5)
+        .fill(0xffffff),
+      resolution: 2,
+    });
     // Per-cell discs are sprites from pre-rendered textures, not tessellated circles.
     const disc = this.app.renderer.generateTexture({
       target: new Graphics().circle(32, 32, 32).fill(0xffffff),
@@ -759,6 +800,7 @@ export class MatchView {
     const g = this.depositMarks;
     g.clear();
     this.depositBadges = 0;
+    this.cutBadges = 0;
     const board = getBoard(body.radius);
     const comets = new Set(body.comets.map((c) => c.cell));
     for (let i = 0; i < colony.length; i++) {
@@ -787,6 +829,17 @@ export class MatchView {
         g.circle(x, y, r * 0.85).fill(0x5fbf5c);
       } else if (kind === "mineral") {
         g.rect(x - r * 0.75, y - r * 0.75, r * 1.5, r * 1.5).fill(DEPOSIT_COLORS.mineral);
+      }
+      // Cut off from every core: its income is not reaching the colony. A slash says so
+      // without motion or colour (the still form of fizzling motes, colony life phase 3).
+      if (!(colony[i] as Colony).connected) {
+        g.moveTo(x - r - 1, y + r + 1)
+          .lineTo(x + r + 1, y - r - 1)
+          .stroke({ width: 4, color: 0x070b1a, alpha: 0.9, cap: "round" })
+          .moveTo(x - r - 1, y + r + 1)
+          .lineTo(x + r + 1, y - r - 1)
+          .stroke({ width: 2, color: 0xff5a4a, cap: "round" });
+        this.cutBadges++;
       }
     }
   }
@@ -953,6 +1006,7 @@ export class MatchView {
     this.drawDepositMarks(colony, body);
     this.rebuildFlow(v, defense, colony, board, body, state);
     this.rebuildCores(defense, colony, board);
+    this.rebuildMotes(v, colony, board, body, state);
     this.drawStarveMarks(colony, board, state);
     this.rebuildStalks(colony, board, body, state);
     this.numbersDirty = true;
@@ -1046,8 +1100,145 @@ export class MatchView {
       this.cores.addChild(n);
       // A core beats with its own defense: slow and deep when it is hard to take.
       const b = beat(defense[i] as number);
-      this.coreSprites.push({ g: n, period: b.period, depthAmp: b.depth });
+      this.coreSprites.push({ g: n, cell: i, period: b.period, depthAmp: b.depth, fed: 0 });
     });
+  }
+
+  /**
+   * Nutrient routes for the body's deposits and comets. Motes already travelling keep going
+   * when their deposit still has a route (replays redraw the board many times a turn); the
+   * rest are released.
+   */
+  private rebuildMotes(
+    v: Vascular,
+    colony: readonly (Colony | null)[],
+    board: ReturnType<typeof getBoard>,
+    body: Body,
+    state: GameState,
+  ): void {
+    const comets = new Set(body.comets.map((c) => c.cell));
+    const old = new Map(this.moteRoutes.map((r) => [r.from, r]));
+    this.moteRoutes = resourceRoutes(body.radius, colony, v, (i, owner) =>
+      cellYield(state, body, i, owner),
+    ).map((r, k) => {
+      const pts = new Float32Array(r.path.length * 2);
+      r.path.forEach((cell, j) => {
+        const p = hexToPixel(board.cells[cell] as Hex);
+        pts[j * 2] = p.x;
+        pts[j * 2 + 1] = p.y;
+      });
+      const end = r.path[r.path.length - 1] as number;
+      const prev = old.get(r.from);
+      return {
+        from: r.from,
+        pts,
+        len: r.path.length,
+        broken: r.broken,
+        core: r.broken ? -1 : end,
+        color: comets.has(r.from) ? 0xffe28a : depositColor(body.deposits[r.from]),
+        every: MOTE.everyPerYield / r.yield,
+        // Staggered so a board's deposits do not all fire together.
+        wait: prev ? prev.wait : ((k * 0.37) % 1) * (MOTE.everyPerYield / r.yield),
+      };
+    });
+    const byFrom = new Map(this.moteRoutes.map((r) => [r.from, r]));
+    this.motesLive = this.motesLive.filter((m) => {
+      const r = byFrom.get(m.route.from);
+      if (!r || r.broken !== m.route.broken) {
+        m.sprite.visible = false;
+        this.moteSprites.push(m.sprite);
+        return false;
+      }
+      m.route = r;
+      m.at = Math.min(m.at, r.len - 1);
+      return true;
+    });
+  }
+
+  /** Moves the motes along their routes; spawns from the pool as each deposit's timer fires. */
+  private tickMotes(dt: number): void {
+    const off = this.calm || this.reduceMotion || !this.moteTex;
+    this.moteLayer.visible = !off;
+    if (off) {
+      if (this.motesLive.length) this.rebuildMotesPool();
+      for (const c of this.coreSprites) c.fed = 0;
+      return;
+    }
+    for (const r of this.moteRoutes) {
+      r.wait -= dt;
+      if (r.wait > 0) continue;
+      r.wait += r.every;
+      if (r.wait < 0) r.wait = r.every;
+      const sprite = this.takeMote();
+      if (!sprite) continue;
+      sprite.tint = r.color;
+      this.motesLive.push({ sprite, route: r, at: 0, fizzle: -1 });
+    }
+    const live: Mote[] = [];
+    for (const m of this.motesLive) {
+      const r = m.route;
+      const last = r.len - 1;
+      if (m.fizzle < 0) {
+        m.at = Math.min(last, m.at + MOTE.speed * dt);
+        if (m.at >= last) {
+          if (r.broken) m.fizzle = 0;
+          else {
+            const core = this.coreSprites.find((c) => c.cell === r.core);
+            if (core) core.fed = Math.min(1, core.fed + MOTE.feed);
+            this.releaseMote(m);
+            continue;
+          }
+        }
+      } else {
+        m.fizzle += dt / MOTE.fizzle;
+        if (m.fizzle >= 1) {
+          this.releaseMote(m);
+          continue;
+        }
+      }
+      const seg = Math.min(last - 1, Math.floor(m.at));
+      const f = last > 0 ? m.at - seg : 0;
+      const i = Math.max(0, seg) * 2;
+      const x0 = r.pts[i] as number;
+      const y0 = r.pts[i + 1] as number;
+      const x = last > 0 ? x0 + ((r.pts[i + 2] as number) - x0) * f : x0;
+      const y = last > 0 ? y0 + ((r.pts[i + 3] as number) - y0) * f : y0;
+      m.sprite.position.set(x, y);
+      if (m.fizzle >= 0) {
+        // A broken route: the mote reddens and shrinks where the supply line was cut.
+        m.sprite.tint = MOTE.fizzleColor;
+        m.sprite.alpha = 0.9 * (1 - m.fizzle);
+        m.sprite.scale.set(MOTE.size * (1 + 0.6 * m.fizzle) * (1 - m.fizzle * 0.7));
+      } else {
+        m.sprite.alpha = 0.85 * Math.min(1, m.at / 0.35 + 0.15);
+        m.sprite.scale.set(MOTE.size);
+      }
+      live.push(m);
+    }
+    this.motesLive = live;
+    for (const c of this.coreSprites) c.fed *= Math.exp(-dt * MOTE.fedDecay);
+  }
+
+  private takeMote(): Sprite | null {
+    let s = this.moteSprites.pop();
+    if (!s) {
+      if (this.moteLayer.children.length >= MOTE.cap || !this.moteTex) return null;
+      s = new Sprite(this.moteTex);
+      s.anchor.set(0.5);
+      this.moteLayer.addChild(s);
+    }
+    s.visible = true;
+    return s;
+  }
+
+  private releaseMote(m: Mote): void {
+    m.sprite.visible = false;
+    this.moteSprites.push(m.sprite);
+  }
+
+  private rebuildMotesPool(): void {
+    for (const m of this.motesLive) this.releaseMote(m);
+    this.motesLive = [];
   }
 
   /**
@@ -1168,6 +1359,7 @@ export class MatchView {
       if (!this.reduceMotion) this.system.tick(dt);
       return;
     }
+    this.tickMotes(dt / 1000);
     if (this.reduceMotion) {
       // Still, but the same information: brightness follows strength; full cells glow.
       for (const f of this.flowSprites) {
@@ -1193,7 +1385,10 @@ export class MatchView {
       f.sprite.alpha = 0.1 + swell * (0.35 + 0.45 * f.own);
       f.sprite.scale.set(f.base * (1 + 0.35 * swell * (0.4 + 0.6 * f.own)));
     }
-    for (const c of this.coreSprites) c.g.scale.set(1 + 0.13 * c.depthAmp * pulse(t / c.period));
+    // Each core beats, and brightens a little as nutrients arrive.
+    for (const c of this.coreSprites) {
+      c.g.scale.set(1 + 0.13 * c.depthAmp * pulse(t / c.period) + 0.12 * c.fed);
+    }
     // Mature stalks glow (SPEC §10.4).
     this.stalkGlow.alpha = 0.45 + 0.35 * Math.sin(t * 4);
   }
@@ -1653,4 +1848,46 @@ function effectCells(e: Effect): Hex[] {
     default:
       return [e.cell];
   }
+}
+
+/** Mote tuning (client presentation only, so not sim config). Speed in cells per second. */
+const MOTE = {
+  cap: 36,
+  speed: 2.5,
+  /** Seconds between motes for a deposit yielding 1 a turn; higher yields send more. */
+  everyPerYield: 2.4,
+  size: 0.5,
+  fizzle: 0.45,
+  fizzleColor: 0xff5a4a,
+  feed: 0.45,
+  fedDecay: 3,
+} as const;
+
+interface MoteRoute {
+  from: number;
+  /** Cell centres along the route, deposit first, as x,y pairs. */
+  pts: Float32Array;
+  len: number;
+  broken: boolean;
+  /** The core cell it feeds, or -1 for a broken route. */
+  core: number;
+  color: number;
+  every: number;
+  wait: number;
+}
+
+interface Mote {
+  sprite: Sprite;
+  route: MoteRoute;
+  /** Distance along the route, in cells. */
+  at: number;
+  /** -1 while travelling; 0..1 while fizzling at a break. */
+  fizzle: number;
+}
+
+/** The badge colour of a deposit kind (motes match their badges). */
+function depositColor(kind: DepositKind | null | undefined): number {
+  if (kind === "ice") return DEPOSIT_COLORS.ice;
+  if (kind === "mineral") return DEPOSIT_COLORS.mineral;
+  return 0x5fbf5c;
 }

@@ -1,4 +1,4 @@
-import { getBoard, type Colony } from "@swarm/sim";
+import { getBoard, hexDistance, type Colony, type Hex } from "@swarm/sim";
 
 /**
  * The supply tree of every colony on one body (colony life pass, phase 1): how each connected
@@ -80,4 +80,70 @@ export function trunkLoad(v: Vascular, a: number, b: number): number {
 /** Vessel width in world px for a trunk carrying `load` cells: thin at the tips, thick inward. */
 export function vesselWidth(load: number): number {
   return Math.min(5.5, 1.2 + 1.1 * Math.log2(1 + load));
+}
+
+/**
+ * A resource route (colony life, phase 3): the cells a deposit's nutrients travel through to
+ * reach a core, deposit first. A connected deposit follows the supply tree to its core. A cut
+ * deposit's route is `broken`: it runs through its cut-off patch to the cell nearest one of
+ * its owner's cores, where the supply line was severed, and ends there.
+ */
+export interface ResourceRoute {
+  from: number;
+  owner: number;
+  path: number[];
+  yield: number;
+  broken: boolean;
+}
+
+export function resourceRoutes(
+  radius: number,
+  colony: readonly (Colony | null)[],
+  v: Vascular,
+  yieldOf: (cell: number, owner: number) => number,
+): ResourceRoute[] {
+  const board = getBoard(radius);
+  const cores = new Map<number, Hex[]>();
+  colony.forEach((c, i) => {
+    if (!c?.core) return;
+    const list = cores.get(c.owner) ?? [];
+    list.push(board.cells[i] as Hex);
+    cores.set(c.owner, list);
+  });
+  const toCore = (i: number, owner: number) => {
+    const h = board.cells[i] as Hex;
+    let best = Infinity;
+    for (const k of cores.get(owner) ?? []) best = Math.min(best, hexDistance(h, k));
+    return best;
+  };
+  const routes: ResourceRoute[] = [];
+  for (let i = 0; i < colony.length; i++) {
+    const c = colony[i];
+    if (!c || c.core) continue;
+    const y = yieldOf(i, c.owner);
+    if (y <= 0) continue;
+    if ((v.depth[i] as number) >= 0) {
+      const path = [i];
+      for (let p = v.parent[i] as number; p >= 0; p = v.parent[p] as number) path.push(p);
+      routes.push({ from: i, owner: c.owner, path, yield: y, broken: false });
+      continue;
+    }
+    // Cut off: walk the patch breadth-first (board order) to the cell nearest a core.
+    const prev = new Map<number, number>([[i, -1]]);
+    const queue = [i];
+    let end = i;
+    for (let h = 0; h < queue.length; h++) {
+      const a = queue[h] as number;
+      if (toCore(a, c.owner) < toCore(end, c.owner)) end = a;
+      for (const b of board.neighbours[a] as readonly number[]) {
+        if (prev.has(b) || colony[b]?.owner !== c.owner) continue;
+        prev.set(b, a);
+        queue.push(b);
+      }
+    }
+    const path: number[] = [];
+    for (let a = end; a !== -1; a = prev.get(a) as number) path.unshift(a);
+    routes.push({ from: i, owner: c.owner, path, yield: y, broken: true });
+  }
+  return routes;
 }

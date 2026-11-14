@@ -66,6 +66,17 @@ say something true about the game state. No decoration that carries no informati
 - **Reduce motion:** brightness by strength, and full cells glow; no motion.
 - **Performance:** A/B against `main`, replay frames match (2.5–2.6 vs 2.6–2.7 ms p50). Board swaps stay within budget.
 
+**Phase 3 is done.**
+
+- **Resource routes** (`resourceRoutes` in `apps/client/src/game/vascular.ts`, unit tested): a connected deposit's route follows the supply tree to its core. A cut-off deposit's route runs through its severed patch to the cell nearest one of its owner's cores, where it is `broken`.
+- **Motes:** beads in the badge colour with a dark rim, so they read on any colony colour (additive dots vanished on cyan colonies). They travel at 2.5 cells/s; a deposit yielding _y_ sends one every 2.4/_y_ s.
+- **Broken routes:** motes redden and fizzle at the break.
+- **Arrival:** each arriving mote brightens its core briefly.
+- **Limits:** one pool, capped at 36 sprites, animated only in Body view for the body on screen. Motes still travelling survive board redraws when their deposit still has a route, so replays keep flowing.
+- **Still equivalent:** a cut-off deposit's badge is slashed, shown always, including in Calm and with reduce motion.
+- **Setting:** "Colony detail: Full / Calm" in Settings → Play. Calm drops the motes.
+- **Performance:** A/B against `main`, typical replay frames match (p50 2.5–3.2 vs 2.0–3.0 ms, within run noise). Idle frames cost about +0.3 ms for the moving motes. Board swaps stay within budget.
+
 ## Constraints for every phase
 
 - **Performance:** static parts go in the cached colony texture. Moving parts use pooled sprites with fixed caps. The 4×-throttle frame-budget tests keep passing.

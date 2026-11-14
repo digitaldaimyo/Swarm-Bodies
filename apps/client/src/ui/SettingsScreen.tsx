@@ -60,6 +60,22 @@ export function SettingsScreen({
         {toggle("haptics", "Haptics")}
         {toggle("reduceMotion", "Reduce motion")}
         <div class="field">
+          <span id="colony-detail-label">Colony detail</span>
+          <div class="segmented small" role="radiogroup" aria-labelledby="colony-detail-label">
+            {(["full", "calm"] as const).map((v) => (
+              <button
+                key={v}
+                role="radio"
+                aria-checked={s.colonyDetail === v}
+                class={s.colonyDetail === v ? "seg active" : "seg"}
+                onClick={() => updateSettings({ colonyDetail: v })}
+              >
+                {v === "full" ? "Full" : "Calm"}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div class="field">
           <span>Replay speed</span>
           <div class="segmented small">
             {([1, 2] as const).map((v) => (

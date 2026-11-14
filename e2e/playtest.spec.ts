@@ -9,7 +9,13 @@ type Hook = {
   autoplay: boolean;
   phase: string;
   turn: number;
-  view?: { depositBadges: number; vessels: number };
+  view?: {
+    depositBadges: number;
+    vessels: number;
+    motes: number;
+    moteRouteCount: number;
+    calm: boolean;
+  };
 };
 /**
  * Small reads from the e2e hook. Never return `__swarm` itself: it holds the live view and
@@ -56,6 +62,18 @@ test("a turn's replay tours every body with action, then returns to yours", asyn
   expect(
     await page.evaluate(() => (window as unknown as { __swarm: Hook }).__swarm.view?.vessels ?? 0),
   ).toBeGreaterThan(5);
+  // Phase 3: nutrient motes travel from the deposits to the cores; Calm detail stills them.
+  const motes = () =>
+    page.evaluate(() => (window as unknown as { __swarm: Hook }).__swarm.view?.motes ?? 0);
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { __swarm: Hook }).__swarm.view?.moteRouteCount ?? 0,
+    ),
+  ).toBeGreaterThan(0);
+  await expect.poll(motes, { timeout: 10_000 }).toBeGreaterThan(0);
+  await page.evaluate(() => ((window as unknown as { __swarm: Hook }).__swarm.view!.calm = true));
+  await expect.poll(motes, { timeout: 5_000 }).toBe(0);
+  await page.evaluate(() => ((window as unknown as { __swarm: Hook }).__swarm.view!.calm = false));
 
   const strip = page.getByRole("navigation", { name: "Bodies" });
   const current = async (): Promise<string> =>
@@ -90,31 +108,48 @@ test("a turn's replay tours every body with action, then returns to yours", asyn
   expect(await current()).toBe(start);
   await expect(page.getByRole("button", { name: "Submit" })).toBeEnabled();
 
-  // Colony life, phase 2: cut-off cells carry a starvation rim. Shown on a copy of the state
-  // with three of our cells cut off (the game itself is untouched).
-  const rims = await page.evaluate(() => {
+  // Colony life, phases 2 and 3: cut-off cells carry a starvation rim, and cut-off deposits a
+  // slashed badge. Shown on a copy of the state with our deposit cells and at least three
+  // cells cut off (the game itself is untouched).
+  const cut = await page.evaluate(() => {
+    type Cell = Record<string, unknown> | null;
     const h = (
       window as unknown as {
         __swarm: {
-          session: { state: { bodies: { colony: (Record<string, unknown> | null)[] }[] } };
-          view: { setState(s: unknown): void; starveRims: number };
+          session: {
+            state: { bodies: { id: number; colony: Cell[]; deposits: (string | null)[] }[] };
+          };
+          view: {
+            setState(s: unknown): void;
+            showBody(id: number): void;
+            starveRims: number;
+            cutBadges: number;
+          };
         };
       }
     ).__swarm;
     const st = structuredClone(h.session.state);
-    const body = st.bodies.find((b) => b.colony.some((c) => c && c["owner"] === 0 && !c["core"]));
-    if (!body) return -1;
-    let cut = 0;
+    const own = (c: Cell) => !!c && c["owner"] === 0 && !c["core"];
+    const body =
+      st.bodies.find((b) => b.colony.some((c, i) => own(c) && b.deposits[i])) ??
+      st.bodies.find((b) => b.colony.some(own));
+    if (!body) return { rims: -1, badges: -1, deposits: 0 };
+    let cells = 0;
+    let deposits = 0;
     body.colony.forEach((c, i) => {
-      if (cut < 3 && c && c["owner"] === 0 && !c["core"]) {
-        body.colony[i] = { ...c, connected: false };
-        cut++;
-      }
+      if (!own(c)) return;
+      const deposit = !!body.deposits[i];
+      if (!deposit && cells >= 3) return;
+      body.colony[i] = { ...c, connected: false };
+      cells++;
+      if (deposit) deposits++;
     });
+    h.view.showBody(body.id);
     h.view.setState(st);
-    return h.view.starveRims;
+    return { rims: h.view.starveRims, badges: h.view.cutBadges, deposits };
   });
-  expect(rims).toBeGreaterThanOrEqual(3);
+  expect(cut.rims).toBeGreaterThanOrEqual(3);
+  expect(cut.badges).toBeGreaterThanOrEqual(cut.deposits);
 });
 
 test("the replay viewer scrubs to any turn and switches between bodies", async ({ page }) => {

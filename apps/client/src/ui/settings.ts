@@ -12,6 +12,8 @@ export interface Settings {
   patterns: boolean;
   /** UI text scale, 1 to 1.5 (SPEC §10.8). */
   textScale: number;
+  /** Colony detail (colony life): "calm" drops the moving extras (nutrient motes). */
+  colonyDetail: "full" | "calm";
 }
 
 export const TEXT_SCALES = [1, 1.25, 1.5] as const;
@@ -30,6 +32,7 @@ function defaults(): Settings {
     replaySpeed: 1,
     patterns: false,
     textScale: 1,
+    colonyDetail: "full",
   };
 }
 
