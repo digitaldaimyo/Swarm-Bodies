@@ -634,14 +634,16 @@ export class GameEngine {
       stateHash,
       nextDeadline: deadline === null ? null : new Date(deadline).toISOString(),
     });
-    if (after.result)
-      this.broadcast(g.id, { type: "gameOver", gameId: g.id, result: after.result });
     if (finished && g.ranked && g.season !== null && this.deps.progression) {
-      // Only the process that wrote the final turn rates it, so a game is rated once.
+      // Only the process that wrote the final turn rates it, so a game is rated once. Rated
+      // before gameOver goes out, so a client that reads the ladder on gameOver sees the
+      // result (a slow rating write raced it: PR #22 CI).
       await this.deps.progression
         .rateFinished(g.season, g.seats, after)
         .catch((err: unknown) => this.deps.log.error({ err, gameId: g.id }, "rating failed"));
     }
+    if (after.result)
+      this.broadcast(g.id, { type: "gameOver", gameId: g.id, result: after.result });
     this.schedule(g);
     if (!finished) void this.notifyTurn(g);
   }
