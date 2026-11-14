@@ -16,12 +16,14 @@ import { hardPlan } from "./hard";
 import {
   HARD_WEIGHTS,
   NORMAL_WEIGHTS,
+  NOVICE,
   PERSONALITIES,
   type BotWeights,
   type Personality,
 } from "./weights";
 
-export type Difficulty = "easy" | "normal" | "hard";
+/** "novice" is for the early campaign only (DECISIONS #122); skirmish offers easy to hard. */
+export type Difficulty = "novice" | "easy" | "normal" | "hard";
 
 export interface BotOptions {
   /** Campaign flavour (SPEC §13.3). Defaults to balanced. */
@@ -72,22 +74,35 @@ export function chooseOrders(
 export function greedyPlan(
   state: GameState,
   playerId: PlayerId,
-  difficulty: "easy" | "normal",
+  difficulty: "novice" | "easy" | "normal",
   seed: string,
   weights: BotWeights,
 ): Order[] {
   const rng = rngStream(seed, `bot:${playerId}:${state.turn}`);
-  const easy = difficulty === "easy";
-  const ignoreThreats = easy && rng.int(2) === 0;
+  const novice = difficulty === "novice";
+  const easy = difficulty === "easy" || novice;
+  const ignoreThreats = novice ? rng.int(3) < NOVICE.ignoreThreatsOutOf3 : easy && rng.int(2) === 0;
   const analysis = analyse(state, playerId, weights);
   // When nutrients outrun what 12 orders can spend, the order limit is the binding constraint:
   // rank by value per order instead of value per N (SPEC §5.1 order limit).
   const banked = state.players.find((p) => p.id === playerId)?.nutrients ?? 0;
   const rich = banked >= state.rules.maxOrdersPerSet * RICH_N_PER_ORDER;
-  const candidates = generateCandidates(analysis, { ignoreThreats, sever: !easy })
+  const candidates = generateCandidates(analysis, {
+    ignoreThreats,
+    sever: !easy,
+    ...(novice ? { assaultMargin: NOVICE.assaultMargin } : {}),
+  })
     .filter((c) => c.value > 0)
+    // Novice starts no fights early on.
+    .filter((c) => !(novice && c.kind === "assault" && state.turn < NOVICE.peaceUntilTurn))
     .sort(rich ? byValuePerOrder : byRatio);
-  return select(state, playerId, candidates, easy ? rng : null);
+  return select(
+    state,
+    playerId,
+    candidates,
+    easy ? rng : null,
+    novice ? { pickFrom: NOVICE.pickFrom, maxOrders: NOVICE.maxOrders } : undefined,
+  );
 }
 
 /** N per order above which a bot counts as rich (orders, not nutrients, limit it). */
@@ -118,10 +133,12 @@ function select(
   player: PlayerId,
   sorted: readonly Candidate[],
   rng: Rng | null,
+  limits?: { pickFrom: number; maxOrders: number },
 ): Order[] {
   const ps = state.players.find((p) => p.id === player);
   let budget = ps?.nutrients ?? 0;
-  const maxOrders = state.rules.maxOrdersPerSet;
+  const maxOrders = Math.min(state.rules.maxOrdersPerSet, limits?.maxOrders ?? Infinity);
+  const pickFrom = rng ? (limits?.pickFrom ?? 3) : 1;
   const starts = new Set<string>();
   const claims = new Set<string>();
   const reinforced = new Set<string>();
@@ -143,7 +160,7 @@ function select(
 
   for (;;) {
     const picks: number[] = [];
-    for (let i = 0; i < remaining.length && picks.length < (rng ? 3 : 1); i++) {
+    for (let i = 0; i < remaining.length && picks.length < pickFrom; i++) {
       if (fits(remaining[i] as Candidate)) picks.push(i);
     }
     if (picks.length === 0) break;

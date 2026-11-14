@@ -33,6 +33,8 @@ export interface GenerateOptions {
   ignoreThreats: boolean;
   /** Easy never severs. */
   sever: boolean;
+  /** Attack must beat defense by at least this much to be considered (default 1: any win). */
+  assaultMargin?: number;
 }
 
 /** Chance an attack at this strength takes a cell with this defense, as the bot estimates it. */
@@ -197,7 +199,8 @@ function generatePaths(
           } else {
             const defense = cellDefense(t);
             attack += mine.assaultBonus;
-            if (attack <= defense) continue; // The path would halt here.
+            // The path would halt here (or, for a cautious bot, might as well).
+            if (attack - defense < (opts.assaultMargin ?? 1)) continue;
             capture = true;
             newB = Math.min(mine.maxBiomass, attack - defense);
             gain = w.cell + w.capture + (ba.depositValue[t] as number) * 1.5;

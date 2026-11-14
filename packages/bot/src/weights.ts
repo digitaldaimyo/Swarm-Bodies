@@ -72,3 +72,20 @@ export const PERSONALITIES: Record<Personality, BotWeights> = {
   expansionist: { ...NORMAL_WEIGHTS, cell: 3, potential: 0.3, expansion: 1.2, fruitFaith: 0.9 },
   saboteur: { ...NORMAL_WEIGHTS, sever: 4, capture: 3 },
 };
+
+/**
+ * The Novice bot (campaign only, DECISIONS #122): the Easy planner held back further, so a new
+ * player meets an opponent that grows and fights, but slowly and only when it is sure.
+ */
+export const NOVICE = {
+  /** Orders per turn at most (a reinforce-and-grow counts as two). */
+  maxOrders: 4,
+  /** Each slot is filled at random from this many of the best remaining moves (Easy: 3). */
+  pickFrom: 5,
+  /** Attacks only where attack beats defense by at least this much (others: by 1). */
+  assaultMargin: 2,
+  /** No attacks at all before this turn. */
+  peaceUntilTurn: 4,
+  /** Chance per turn it ignores threats, i.e. no reinforcing and no contest caution (Easy: 1/2). */
+  ignoreThreatsOutOf3: 2,
+} as const;

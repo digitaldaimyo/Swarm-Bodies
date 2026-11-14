@@ -1,4 +1,4 @@
-import { chooseOrders, type Personality as BotPersonality } from "@swarm/bot";
+import { chooseOrders, type Difficulty, type Personality as BotPersonality } from "@swarm/bot";
 import {
   CAMPAIGN,
   emptyProgress,
@@ -22,7 +22,7 @@ import {
 /** A scripted campaign player: the Hard bot, optionally in a personality, honouring the twist. */
 export interface CampaignPolicy {
   name: string;
-  difficulty: "normal" | "hard";
+  difficulty: "easy" | "normal" | "hard";
   personality?: BotPersonality;
 }
 
@@ -39,6 +39,10 @@ export function playNode(
   policy: CampaignPolicy,
   strain: StrainId = "swarmer",
   mutationPool?: readonly MutationId[],
+  /** Reseeds both sides' choices (the map stays the node's), for win-rate batches. */
+  variant = "",
+  /** Plays the node's bots at this difficulty instead of the node's own. */
+  opponentDifficulty: Difficulty = node.opponent.difficulty,
 ): GameSummary {
   const config = nodeConfig(node, strain, mutationPool);
   let state = createGame(config, node.seed);
@@ -49,7 +53,7 @@ export function playNode(
     for (const p of state.players) {
       if (p.eliminated) continue;
       if (p.id === 0) {
-        let o = chooseOrders(state, 0, policy.difficulty, `campaign-you-${node.id}`, {
+        let o = chooseOrders(state, 0, policy.difficulty, `campaign-you-${node.id}${variant}`, {
           ...(policy.personality ? { personality: policy.personality } : {}),
         });
         // Honour launch limits: the player simply stops launching.
@@ -61,8 +65,8 @@ export function playNode(
         orders[p.id] = chooseOrders(
           state,
           p.id,
-          node.opponent.difficulty,
-          `${node.seed}:bot${p.id}`,
+          opponentDifficulty,
+          `${node.seed}:bot${p.id}${variant}`,
           {
             personality: node.opponent.personality,
           },
@@ -103,4 +107,26 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     );
     done.push(node.id);
   }
+}
+
+/** A beginner stand-in for measuring how gentle a node is: the Easy bot (DECISIONS #122). */
+export const BEGINNER: CampaignPolicy = { name: "beginner", difficulty: "easy" };
+
+/**
+ * How often the beginner stand-in wins `node` against its bots at `opponent` difficulty, over
+ * `games` reseeded plays on the node's own map (and its own strain for the player, if fixed).
+ */
+export function beginnerWinRate(
+  node: CampaignNode,
+  opponent: Difficulty,
+  games: number,
+): { wins: number; games: number; meanTurns: number } {
+  let wins = 0;
+  let turns = 0;
+  for (let g = 0; g < games; g++) {
+    const s = playNode(node, BEGINNER, node.you ?? "swarmer", undefined, `:v${g}`, opponent);
+    if (s.outcome === "win") wins++;
+    turns += s.turns;
+  }
+  return { wins, games, meanTurns: turns / games };
 }

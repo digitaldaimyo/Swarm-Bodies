@@ -350,3 +350,27 @@ The plan, the user's decisions and the per-phase results are in `docs/plans/colo
      - **The user's verdict:** the bots are genuinely challenging, perhaps too much so early in the campaign.
      - **Next:** early nodes get a weaker opponent. That means an easier difficulty or personality on those nodes, not a retune of Easy and Normal, which skirmish and the balance gate rely on.
      - **When:** this is to be planned together with the tutorial pass.
+
+## 2026-11-14 — Novice opponent for the early campaign
+
+122. **Novice: a gentler bot for campaign nodes 1–3** (`packages/bot`, `NOVICE` in `weights.ts`).
+     - **Why:** playtests found the early campaign too hard (#121). Easy is unchanged, because skirmish and the balance gate rely on it.
+     - **What it is:** the Easy planner, with four limits:
+       - at most 4 orders a turn;
+       - each slot is picked at random from the top 5 moves (Easy: top 3);
+       - it attacks only where it would win by 2 or more;
+       - it starts no fights before turn 4;
+       - it also ignores threats on 2 turns in 3 (Easy: 1 in 2).
+     - **Measured** with `pnpm balance -- --beginner`, where an Easy bot stands in for a new player (30 games per cell, each node's own map):
+
+       | Node                     | Stand-in vs Novice | Stand-in vs Easy (before) |
+       | ------------------------ | ------------------ | ------------------------- |
+       | 1. First Contact         | 87%                | 27%                       |
+       | 2. Fronts                | 100%               | 30%                       |
+       | 3. Spore Season          | 100%               | 10%                       |
+       | 4. The Belt (stays Easy) | 100%               | 13%                       |
+       | 8. Grounded (stays Easy) | 97%                | 7%                        |
+
+     - **Tuning history:** a first, stricter Novice (3 orders, margin 3, peace until turn 5) won 100% everywhere, in short routs. That is no opposition at all, so it was eased up to the numbers above.
+     - **Open:** nodes 4 and 8 stay on Easy, as planned, but the stand-in wins only 13% and 7% there. Going from node 3 to node 4 is a cliff for a weak player. Left to the user.
+     - **Unchanged:** Easy, Normal and Hard play exactly as before. The default capture margin of 1 is the old check, and Hard's internal Easy samples still pick from 3.
