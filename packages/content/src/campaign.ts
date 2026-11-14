@@ -9,7 +9,6 @@ import {
   type Rules,
   type StrainId,
 } from "@swarm/sim";
-import { COMBAT_RULE } from "./guide";
 import { MODIFIERS, type ModifierId } from "./modifiers";
 import type { GameSummary } from "./summary";
 
@@ -19,6 +18,8 @@ import type { GameSummary } from "./summary";
  * optional objective twist. Nodes 1–3 double as the tutorial (Single Rock and a two-body
  * system), with scripted overlays.
  */
+import type { Line, Mood } from "./narrator";
+
 export type Personality = "balanced" | "aggressive" | "greedy" | "expansionist" | "saboteur";
 /** "novice" is the gentlest bot, for the first campaign nodes only (DECISIONS #122). */
 export type Difficulty = "novice" | "easy" | "normal" | "hard";
@@ -88,6 +89,8 @@ export type TutorialCondition =
 export interface TutorialStep {
   text: string;
   until: TutorialTrigger;
+  /** Dr. Purr's expression while she says it (default smug). */
+  mood?: Mood;
   /** Defaults to always. */
   when?: TutorialCondition;
 }
@@ -110,6 +113,8 @@ export interface CampaignNode {
   twist: TwistId | null;
   unlocks: { strains?: StrainId[]; mutations?: MutationId[] };
   tutorial: TutorialStep[];
+  /** Dr. Purr's introduction on the campaign map. */
+  intro: Line;
 }
 
 const TWO_BODY: Partial<Rules> = {
@@ -134,35 +139,11 @@ export const CAMPAIGN: readonly CampaignNode[] = [
     modifier: null,
     twist: null,
     unlocks: {},
-    tutorial: [
-      {
-        text: "This is your colony. The bright nucleus is your core: lose every core and you are out.",
-        until: { kind: "next" },
-      },
-      {
-        text: "Drag from one of your glowing cells into the dark rock to paint a Grow path. Each new cell costs nutrients (N).",
-        until: { kind: "order", order: "grow" },
-      },
-      {
-        text: "Orders resolve for everyone at once. Tap Submit to end your turn.",
-        until: { kind: "submit" },
-      },
-      {
-        text: "Deposits pay income every turn while connected to a core. Spread to them and hold more than half the rock to win.",
-        until: { kind: "next" },
-      },
-      // Combat, the first time the colonies meet (players hit it here, before node 2 teaches it).
-      {
-        text: "Your colony touches the enemy's. Drag into one of their cells to assault it: the label shows attack vs defense, and green means you will capture it.",
-        until: { kind: "next" },
-        when: { kind: "contact" },
-      },
-      {
-        text: `Attack is ${COMBAT_RULE.attack}. Defense is ${COMBAT_RULE.defense}. Thick cells win: Reinforce before you push. Codex › How to play has all the rules.`,
-        until: { kind: "next" },
-        when: { kind: "contact" },
-      },
-    ],
+    tutorial: [],
+    intro: {
+      mood: "smug",
+      text: "One rock, one rival, one very ambitious Swarmer. Grow toward the deposits and keep your core thick. I'll be watching. Mostly.",
+    },
   },
   {
     id: "c02",
@@ -179,21 +160,11 @@ export const CAMPAIGN: readonly CampaignNode[] = [
     modifier: null,
     twist: null,
     unlocks: {},
-    tutorial: [
-      {
-        text: "Growing into an enemy cell is an assault: your attack (the feeder's biomass plus your neighbours) must beat their defense.",
-        until: { kind: "next" },
-      },
-      {
-        text: "Tap one of your cells and Reinforce it to make it thicker before the fighting starts.",
-        until: { kind: "order", order: "reinforce" },
-      },
-      {
-        text: "Cells cut off from every core starve. Cutting the enemy's vein is often better than fighting the front. Capture a cell to continue.",
-        until: { kind: "event", event: "CellCaptured" },
-        when: { kind: "contact" },
-      },
-    ],
+    tutorial: [],
+    intro: {
+      mood: "intrigued",
+      text: "This rival is a Swarmer too, and it pushes back. Reinforce your front before you push, and cut their veins where they're thin.",
+    },
   },
   {
     id: "c03",
@@ -210,22 +181,11 @@ export const CAMPAIGN: readonly CampaignNode[] = [
     modifier: null,
     twist: null,
     unlocks: {},
-    tutorial: [
-      {
-        text: "Your asteroid orbits the star with the rival's. Open the System view (the sun in the strip) to see them.",
-        until: { kind: "systemView" },
-      },
-      {
-        text: "That cell is thick enough now (biomass 5+). Tap it and choose Fruit: it grows into a launcher.",
-        until: { kind: "order", order: "fruit" },
-        when: { kind: "canFruit" },
-      },
-      {
-        text: "Your fruiting body is ripe. When the other body is in range, tap it and Launch. A spore lands as a new core.",
-        until: { kind: "event", event: "SporeLaunched" },
-        when: { kind: "canLaunch" },
-      },
-    ],
+    tutorial: [],
+    intro: {
+      mood: "smug",
+      text: "Two asteroids in orbit, and you're a Sporer now. Fruit, wait for the window, and launch. Do try to land on the rock, not near it.",
+    },
   },
   {
     id: "c04",
@@ -243,6 +203,10 @@ export const CAMPAIGN: readonly CampaignNode[] = [
     twist: null,
     unlocks: { strains: ["predator"] },
     tutorial: [],
+    intro: {
+      mood: "intrigued",
+      text: "A real system at last, with rocks to spare. Win it, and the Predator strain joins your notes.",
+    },
   },
   {
     id: "c05",
@@ -260,6 +224,10 @@ export const CAMPAIGN: readonly CampaignNode[] = [
     twist: null,
     unlocks: { mutations: ["rad_shield"] },
     tutorial: [],
+    intro: {
+      mood: "unimpressed",
+      text: "The star is in a mood: flares every 4 turns thin out the cells facing it. Keep your colonies thick, as I keep my coat.",
+    },
   },
   {
     id: "c06",
@@ -277,6 +245,10 @@ export const CAMPAIGN: readonly CampaignNode[] = [
     twist: "hold_3_bodies",
     unlocks: { mutations: ["quorum"] },
     tutorial: [],
+    intro: {
+      mood: "intrigued",
+      text: "Rich comets keep falling, 8 N each. Spread out and hold 3 bodies at once. Greed, but scientific.",
+    },
   },
   {
     id: "c07",
@@ -294,6 +266,10 @@ export const CAMPAIGN: readonly CampaignNode[] = [
     twist: null,
     unlocks: { strains: ["sporer"] },
     tutorial: [],
+    intro: {
+      mood: "smug",
+      text: "Every neutral moon here is metal: costly to enter, dense to hold. Win it, and the Sporer strain is yours.",
+    },
   },
   {
     id: "c08",
@@ -311,6 +287,10 @@ export const CAMPAIGN: readonly CampaignNode[] = [
     twist: "few_launches",
     unlocks: { mutations: ["hardened_spores"] },
     tutorial: [],
+    intro: {
+      mood: "unimpressed",
+      text: "Spores are scarce: launch two at most, and win on foot. Walking. How quaint.",
+    },
   },
   {
     id: "c09",
@@ -328,6 +308,10 @@ export const CAMPAIGN: readonly CampaignNode[] = [
     twist: null,
     unlocks: {},
     tutorial: [],
+    intro: {
+      mood: "intrigued",
+      text: "Two rivals and one system. Let them weaken each other, then take what's left. Purely observational advice.",
+    },
   },
   {
     id: "c10",
@@ -345,6 +329,10 @@ export const CAMPAIGN: readonly CampaignNode[] = [
     twist: "keep_cores",
     unlocks: { mutations: ["deep_reserves"] },
     tutorial: [],
+    intro: {
+      mood: "unimpressed",
+      text: "These Predators go for the veins. Win without losing a single core. I'm attached to them, and so are you.",
+    },
   },
   {
     id: "c11",
@@ -362,6 +350,10 @@ export const CAMPAIGN: readonly CampaignNode[] = [
     twist: "fast",
     unlocks: {},
     tutorial: [],
+    intro: {
+      mood: "smug",
+      text: "A Hard Swarmer, and you must win by turn 30. Fast, thin and everywhere, much like my last assistant.",
+    },
   },
   {
     id: "c12",
@@ -379,6 +371,10 @@ export const CAMPAIGN: readonly CampaignNode[] = [
     twist: null,
     unlocks: {},
     tutorial: [],
+    intro: {
+      mood: "intrigued",
+      text: "Three rivals, the whole system, and the last colony standing wins the galaxy. Try not to disappoint me now.",
+    },
   },
 ];
 

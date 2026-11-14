@@ -28,7 +28,8 @@ import { localCosmetics } from "./Cosmetics";
 import { OrderDrawer } from "./OrderDrawer";
 import { RadialMenu } from "./RadialMenu";
 import { getSettings, haptic, updateSettings, useSettings } from "./settings";
-import { tutorialReady, type TutorialStep } from "@swarm/content";
+import { tutorialReady, type Line, type TutorialStep } from "@swarm/content";
+import { PurrSays } from "./Purr";
 
 interface Props {
   session: MatchSession;
@@ -65,6 +66,8 @@ const e2e = typeof location !== "undefined" && new URLSearchParams(location.sear
 /** What Match needs from a Training-grounds lesson (docs/plans/tutorial.md). */
 export interface LessonControls {
   goalText: string;
+  /** Dr. Purr's line on completion. */
+  doneLine: Line;
   /** The goal is met in the session's current state. */
   done(): boolean;
   /** Called once, when the goal is first met (records progress). */
@@ -617,6 +620,12 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial, l
   const draft = myState?.draft ?? null;
   const draftOpen =
     !!draft && phase === "planning" && !session.submitted && draftClosedTurn !== state.turn;
+
+  // Dr. Purr's chirp as each new line appears.
+  const stepShown = !!step && phase !== "replay" && !draftOpen;
+  useEffect(() => {
+    if (stepShown) audio.chirp();
+  }, [tutorialStep, stepShown]);
   const cost = planner.plannedCost;
   const over = cost > planner.banked;
   const lastStats = session.stats[session.stats.length - 1];
@@ -877,7 +886,7 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial, l
               )}
             </div>
           )}
-          <p>{step.text}</p>
+          <PurrSays line={{ text: step.text, mood: step.mood ?? "smug" }} />
           <div class="tutorial-actions">
             <span class="muted">
               {tutorialStep + 1}/{tutorial?.length}
@@ -923,7 +932,7 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial, l
       {lesson && lessonDone && !doneDismissed && phase !== "replay" && (
         <aside class="tutorial-card lesson-done" role="dialog" aria-labelledby="lesson-done-title">
           <h3 id="lesson-done-title">Lesson complete</h3>
-          <p>{lesson.goalText}</p>
+          <PurrSays line={lesson.doneLine} />
           <div class="tutorial-actions">
             <button class="btn btn-ghost small-btn" onClick={() => setDoneDismissed(true)}>
               Keep playing

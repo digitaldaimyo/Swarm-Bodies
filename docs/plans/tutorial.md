@@ -313,6 +313,27 @@ Coordinates are axial `(q, r)`. "b" is biomass. The outcomes marked **verified**
   - The tutorial returns to the step that was showing when that turn was submitted.
 - **New goal kinds:** cells emptied, game won, cells on N bodies, and all of several goals.
 
+**Step 4 is done.** Dr. Ottoline Purr (DECISIONS #129–#131).
+
+- **The look:** the approved draft is now `ui/Purr.tsx`, a procedural SVG with three expressions and a monocle.
+  - She blinks every few seconds, and a new expression pops in. Both hold still with reduce motion.
+- **The voice:** all seven lessons are in her voice, with an expression per step and a closing line on each completion card.
+  - **Lessons 1–2:** the approved first batch.
+  - **Lesson 2:** gains a "Got it" step, so her "hairball" comment and the instruction to retake the gap are separate bubbles.
+- **Campaign map:** she introduces all 12 nodes in their briefings.
+- **Old tutorial cards:** nodes 1–3 no longer have them. The Training grounds teach instead, as decided.
+- **Results screen:** a closing line for a win, a loss or a draw.
+- **The chirp:** a quiet synthesized "mrrp" when a new line appears. It follows the effects volume.
+- **The "Dr. Purr" setting:**
+
+  | Setting | Lessons   | Campaign introductions  | Results line |
+  | ------- | --------- | ----------------------- | ------------ |
+  | On      | yes       | yes                     | yes          |
+  | Lessons | yes       | yes                     | no           |
+  | Off     | text only | the plain blurb instead | no           |
+
+- **Content:** every line is data in `packages/content` (`narrator.ts`, `lessons.ts`, `campaign.ts`). A test checks that each has an expression and a phone-sized length.
+
 ## Still to discuss
 
 - Achievements for the Training grounds and the Journal: decide when step 3 lands.

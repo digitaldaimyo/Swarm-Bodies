@@ -57,3 +57,4 @@ export {
   type Lesson,
   type LessonGoal,
 } from "./lessons";
+export { NARRATOR, RESULT_LINES, type Line, type Mood } from "./narrator";

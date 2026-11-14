@@ -405,3 +405,18 @@ The plan, the user's decisions and the per-phase results are in `docs/plans/colo
      - **How:** the lesson session pops the last turn's record and restores the state from before it, with a fresh plan and the opponent's script for that turn.
      - **Tutorial:** Match restores the tutorial step that was showing when that turn was submitted. A first version restored the step from when the turn began, which undid steps the player had moved past during the turn; the e2e test caught it.
      - **Why not rebuild:** rebuilding the session would have remounted the match and restarted the tutorial.
+
+## 2026-11-14 — Training grounds, step 4: Dr. Ottoline Purr
+
+129. **Dr. Purr's look and voice are approved by the user,** monocle included.
+     - **The look:** the portrait is the approved draft, a procedural SVG with three expressions.
+     - **Lines:** they are data. Every tutorial step can carry a `mood`, each lesson has a `done` line, each campaign node an `intro`, and `RESULT_LINES` holds the results-screen lines.
+     - **Length:** at most 200 characters per line, so a bubble reads in one glance on a phone. Some lesson steps run to three short sentences, as the approved lines do.
+130. **The campaign's tutorial cards on nodes 1–3 are removed.** This supersedes #105.
+     - **Why:** the Training grounds teach the rules now, and Dr. Purr introduces each node instead.
+     - **Tests:** those that checked node 1's combat cards now check that the Training grounds explain attack, defense and ties.
+131. **The "Dr. Purr" setting: On (default), Lessons, Off.**
+     - **Lessons** always keep their text, because it is the tutorial.
+     - **Off** replaces campaign introductions with the plain blurb, and hides the results line.
+     - **Lessons** keeps campaign introductions but hides the results line.
+     - **One setting everywhere:** the plan's "Lessons only by default in online play" is left to step 5, the in-game moments, which is the only place it matters.

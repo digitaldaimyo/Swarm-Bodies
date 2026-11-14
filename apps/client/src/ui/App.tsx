@@ -273,6 +273,7 @@ export function App() {
     };
     return {
       goalText: l.goalText,
+      doneLine: l.done,
       done: () => (session as SkirmishSession).lessonDone,
       onDone: () =>
         void updateProgress((p) => ({

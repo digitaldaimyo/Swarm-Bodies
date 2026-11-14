@@ -21,6 +21,7 @@ const LEVEL = {
   stinger: 0.22,
   click: 0.08,
   tick: 0.04,
+  chirp: 0.06,
 } as const;
 
 /** The same sound twice within this many ms plays once (a replay frame fires many). */
@@ -218,6 +219,18 @@ class AudioEngine {
   click(): void {
     if (!this.admit("click", 0.04)) return;
     this.tone("triangle", 1800, 900, 0.04, LEVEL.click);
+  }
+
+  /**
+   * Dr. Purr's "mrrp" as a bubble opens: a soft rising-then-falling trill, two quick sine
+   * glides, very quiet. It follows the effects volume.
+   */
+  chirp(): void {
+    if (!this.admit("chirp", 0.25)) return;
+    const { ctx } = this;
+    if (!ctx) return;
+    this.tone("sine", 420, 640, 0.07, LEVEL.chirp);
+    setTimeout(() => this.tone("sine", 620, 380, 0.11, LEVEL.chirp * 0.8), 60);
   }
 
   tick(): void {

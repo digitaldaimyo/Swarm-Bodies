@@ -14,6 +14,8 @@ export interface Settings {
   textScale: number;
   /** Colony detail (colony life): "calm" drops the moving extras (nutrient motes). */
   colonyDetail: "full" | "calm";
+  /** Dr. Ottoline Purr: everywhere, in lessons only, or never (lessons still show the text). */
+  narrator: "on" | "lessons" | "off";
 }
 
 export const TEXT_SCALES = [1, 1.25, 1.5] as const;
@@ -33,6 +35,7 @@ function defaults(): Settings {
     patterns: false,
     textScale: 1,
     colonyDetail: "full",
+    narrator: "on",
   };
 }
 
