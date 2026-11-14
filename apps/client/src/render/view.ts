@@ -40,6 +40,7 @@ import {
   veinScale,
   shade,
 } from "./palette";
+import { arcPoints } from "./arc";
 import { SpritePool } from "./pool";
 import { drawPattern } from "./patterns";
 import { resourceRoutes, vascular, vesselWidth, type Vascular } from "../game/vascular";
@@ -197,6 +198,11 @@ export class MatchView {
   inspectRoute = 0;
   private vasc: Vascular | null = null;
   private pending: readonly Order[] = [];
+  /** Queued orders drawn on the body shown (tests read this). */
+  planShown = 0;
+  /** The last plan drawn, redrawn when another body is shown. */
+  private plan: { orders: readonly Order[]; player: PlayerId; previews: StepPreview[][] } | null =
+    null;
   private planHints = false;
   /** Whether the board shows the live state (not a replay frame). */
   private boardLive = false;
@@ -473,7 +479,9 @@ export class MatchView {
       // The colony texture is pinned to the body's extent: start it over for the new size.
       if (this.goo.isCachedAsTexture) this.goo.cacheAsTexture(false);
       this.gooG.clear();
-      this.planG.clear();
+      // Queued orders on the newly shown body are drawn again (playtest: they vanished).
+      if (this.plan) this.setPlan(this.plan.orders, this.plan.player, this.plan.previews);
+      else this.planG.clear();
       this.cancelPaint();
       this.setBoard(this.body.colony);
       this.boardLive = true;
@@ -1370,15 +1378,17 @@ export class MatchView {
       const r = HEX_SIZE * 0.62;
       g.circle(p.x, p.y, r).stroke({ width: 2.5, color: 0x000000, alpha: 0.35 });
       const frac = Math.min(1, left / 5);
-      // Start a fresh path at the top: an arc otherwise joins the previous rim's last point.
-      g.moveTo(p.x, p.y - r)
-        .arc(p.x, p.y, r, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2)
-        .stroke({
+      // One open polyline from the top: no moveTo + arc, whose doubled start point can leave a
+      // stray line (playtest).
+      const pts = arcPoints(p.x, p.y, r, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2);
+      if (pts.length) {
+        g.poly(pts, false).stroke({
           width: 2.5,
           color: left <= 1 ? 0xff6b6b : 0xc9d1e0,
           alpha: 0.9,
           cap: "round",
         });
+      }
     });
   }
 
@@ -1775,12 +1785,14 @@ export class MatchView {
 
   /** Queued orders: ghost paths, reinforce rings and retract crosses. */
   setPlan(orders: readonly Order[], player: PlayerId, previews: StepPreview[][]): void {
+    this.plan = { orders, player, previews };
     if (player === this.viewer) {
       this.pending = orders;
       this.refreshSparks();
     }
     const g = this.planG;
     g.clear();
+    this.planShown = 0;
     const color = playerColor(player);
     orders.forEach((o, k) => {
       if (o.type === "draft") return;
@@ -1790,6 +1802,7 @@ export class MatchView {
         g.circle(p.x, p.y, 4).fill(color);
       }
       if (o.body !== this.bodyId) return;
+      this.planShown++;
       if (o.type === "fruit") {
         const p = hexToPixel(o.cell);
         for (let y = 0; y < 22; y += 6)

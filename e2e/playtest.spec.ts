@@ -294,3 +294,59 @@ test("holding a cell traces its supply route and shows its defense", async ({ pa
   await page.getByRole("button", { name: "Submit" }).click();
   await expect.poll(hints).toEqual({ fruitable: 0, feelers: 0 });
 });
+
+test("queued orders are drawn again after visiting another body", async ({ page }) => {
+  test.setTimeout(180_000);
+  await systemGame(page);
+  await setAutoplay(page, true);
+  await page.waitForFunction(() => (window as unknown as { __swarm: Hook }).__swarm.turn >= 3);
+  await setAutoplay(page, false);
+  await page.waitForFunction(
+    () => (window as unknown as { __swarm: Hook }).__swarm.phase === "planning",
+  );
+  const later = page.getByRole("button", { name: "Decide later" });
+  if (await later.isVisible()) await later.click();
+  const shown = () =>
+    page.evaluate(
+      () =>
+        (window as unknown as { __swarm: { view: { planShown: number } } }).__swarm.view.planShown,
+    );
+
+  // Reinforce our core through the radial menu.
+  const core = await page.evaluate(() => {
+    type Cell = { owner: number; core: boolean } | null;
+    const h = (
+      window as unknown as {
+        __swarm: {
+          session: { state: { bodies: { radius: number; colony: Cell[] }[] } };
+          view: {
+            shownBody: number;
+            worldToScreen(h: { q: number; r: number }): { x: number; y: number };
+          };
+        };
+      }
+    ).__swarm;
+    const body = h.session.state.bodies[h.view.shownBody]!;
+    const R = body.radius;
+    const cells: { q: number; r: number }[] = [];
+    for (let r = -R; r <= R; r++)
+      for (let q = -R; q <= R; q++)
+        if ((Math.abs(q) + Math.abs(r) + Math.abs(q + r)) / 2 <= R) cells.push({ q, r });
+    const i = body.colony.findIndex((c) => c && c.owner === 0 && c.core);
+    const p = h.view.worldToScreen(cells[i]!);
+    const rect = document.querySelector("canvas")!.getBoundingClientRect();
+    return { x: rect.left + p.x, y: rect.top + p.y };
+  });
+  await page.mouse.click(core.x, core.y);
+  await page.getByRole("menuitem", { name: /^Reinforce/ }).click();
+  await expect.poll(shown).toBe(1);
+
+  // Visit another body and come back: the order is drawn again.
+  const strip = page.getByRole("navigation", { name: "Bodies" });
+  const home = strip.locator('[aria-current="true"]');
+  const homeLabel = ((await home.getAttribute("aria-label")) ?? "").split(",")[0]!;
+  await strip.locator('button[aria-label^="Body "]:not([aria-current="true"])').first().click();
+  await expect.poll(shown).toBe(0);
+  await strip.locator(`button[aria-label^="${homeLabel},"]`).click();
+  await expect.poll(shown).toBe(1);
+});
