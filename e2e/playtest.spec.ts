@@ -260,13 +260,37 @@ test("holding a cell traces its supply route and shows its defense", async ({ pa
   await page.mouse.up();
   expect((await read()).inspected).toBe(-1);
 
-  // Fruiting hints are only shown while orders can still be planned.
-  const fruitable = () =>
-    page.evaluate(
-      () =>
-        (window as unknown as { __swarm: { view: { fruitable: number } } }).__swarm.view.fruitable,
-    );
-  expect(await fruitable()).toBeGreaterThanOrEqual(0);
+  // Phase 5: a Sporer colony sheds drifting specks. Shown on a copy of the state with our
+  // strain set to Sporer (the game itself is untouched), then the real state again.
+  const specks = await page.evaluate(async () => {
+    const h = (
+      window as unknown as {
+        __swarm: {
+          session: { state: { players: { id: number; strain: string }[] } };
+          view: { setState(s: unknown): void; specks: number };
+        };
+      }
+    ).__swarm;
+    const st = structuredClone(h.session.state);
+    st.players = st.players.map((p) => (p.id === 0 ? { ...p, strain: "sporer" } : p));
+    h.view.setState(st);
+    await new Promise((r) => setTimeout(r, 1200));
+    const n = h.view.specks;
+    h.view.setState(h.session.state);
+    return n;
+  });
+  expect(specks).toBeGreaterThan(0);
+
+  // Fruiting hints and frontier feelers are only shown while orders can still be planned.
+  const hints = () =>
+    page.evaluate(() => {
+      const v = (window as unknown as { __swarm: { view: { fruitable: number; feelers: number } } })
+        .__swarm.view;
+      return { fruitable: v.fruitable, feelers: v.feelers };
+    });
+  const before = await hints();
+  expect(before.fruitable).toBeGreaterThanOrEqual(0);
+  expect(before.feelers).toBeGreaterThan(0);
   await page.getByRole("button", { name: "Submit" }).click();
-  await expect.poll(fruitable).toBe(0);
+  await expect.poll(hints).toEqual({ fruitable: 0, feelers: 0 });
 });

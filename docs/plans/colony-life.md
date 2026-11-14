@@ -90,6 +90,24 @@ say something true about the game state. No decoration that carries no informati
 - **How to play:** mentions holding a cell, the motes, slashed badges and the sparkle.
 - **Performance:** A/B against `main`, frames match within run noise; budgets pass.
 
+**Phase 5 is done. The pass is complete.**
+
+- **Strain styles** (`apps/client/src/game/personality.ts`, unit tested). Each style echoes the strain's rules:
+
+  | Strain   | Veins                            | Heartbeat     | Other                                                          |
+  | -------- | -------------------------------- | ------------- | -------------------------------------------------------------- |
+  | Swarmer  | thin (×0.6)                      | quick (×0.75) |                                                                |
+  | Biofilm  | thick (×1.55, webbing half that) | slow (×1.35)  |                                                                |
+  | Predator | dark                             |               | jagged: each vessel kinks sideways at its middle               |
+  | Sporer   |                                  |               | drifting spore specks rise from its cells (pooled, 24 at most) |
+
+- **Frontier feelers:** while you can plan, your connected cells put out soft pseudopods toward the empty, open cells next to them, the first step of any grow path.
+  - At most 32, spread evenly over the frontier.
+  - They twitch at your strain's pace and never reach past the cell's edge.
+  - Only your own colony: the feelers show your options, not anyone else's.
+- **Settings:** Calm drops the feelers and specks; with reduce motion both hold still.
+- **Performance:** A/B against `main`, replay and idle frames match. Timed part by part, a board swap is no slower: setBoard 4.2 vs 5.1 ms, render 3.6 ms on both.
+
 ## Constraints for every phase
 
 - **Performance:** static parts go in the cached colony texture. Moving parts use pooled sprites with fixed caps. The 4×-throttle frame-budget tests keep passing.
