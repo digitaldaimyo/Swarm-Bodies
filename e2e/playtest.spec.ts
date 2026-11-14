@@ -42,6 +42,69 @@ async function systemGame(page: Page): Promise<void> {
 const setAutoplay = (page: Page, on: boolean) =>
   page.evaluate((v) => ((window as unknown as { __swarm: Hook }).__swarm.autoplay = v), on);
 
+/**
+ * Autoplay can stop with a mutation draft pending; its dialog covers the board and Submit. The
+ * game state says whether one is pending, so wait for the dialog and set it aside rather than
+ * checking once: on a slow runner it can render just after an instant check.
+ */
+async function setDraftAside(page: Page): Promise<void> {
+  const pending = await page.evaluate(
+    () =>
+      (
+        window as unknown as {
+          __swarm: { session: { state: { players: { id: number; draft: unknown }[] } } };
+        }
+      ).__swarm.session.state.players.find((p) => p.id === 0)?.draft != null,
+  );
+  const later = page.getByRole("button", { name: "Decide later" });
+  if (pending) await later.click({ timeout: 15_000 });
+  else if (await later.isVisible()) await later.click();
+}
+
+/**
+ * One of our connected cells (a core, or any other cell) that is on screen and not under a HUD
+ * panel, so a press there reaches the board: its colony index and page coordinates. Picking the
+ * first cell in board order could land under the turn log on a slow runner (PR #21 CI, WebKit).
+ */
+async function ourCellOnScreen(
+  page: Page,
+  core: boolean,
+): Promise<{ i: number; x: number; y: number } | null> {
+  return page.evaluate((wantCore) => {
+    type Cell = { owner: number; core: boolean; connected: boolean } | null;
+    const h = (
+      window as unknown as {
+        __swarm: {
+          session: { state: { bodies: { radius: number; colony: Cell[] }[] } };
+          view: {
+            shownBody: number;
+            worldToScreen(h: { q: number; r: number }): { x: number; y: number };
+          };
+        };
+      }
+    ).__swarm;
+    const body = h.session.state.bodies[h.view.shownBody]!;
+    const R = body.radius;
+    const cells: { q: number; r: number }[] = [];
+    for (let r = -R; r <= R; r++)
+      for (let q = -R; q <= R; q++)
+        if ((Math.abs(q) + Math.abs(r) + Math.abs(q + r)) / 2 <= R) cells.push({ q, r });
+    const canvas = document.querySelector("canvas")!;
+    const rect = canvas.getBoundingClientRect();
+    for (let i = 0; i < body.colony.length; i++) {
+      const c = body.colony[i];
+      if (!c || c.owner !== 0 || !c.connected || c.core !== wantCore) continue;
+      const p = h.view.worldToScreen(cells[i]!);
+      const x = rect.left + p.x;
+      const y = rect.top + p.y;
+      if (x < 24 || y < 24 || x > innerWidth - 24 || y > innerHeight - 24) continue;
+      if (document.elementFromPoint(x, y) !== canvas) continue;
+      return { i, x, y };
+    }
+    return null;
+  }, core);
+}
+
 test("a turn's replay tours every body with action, then returns to yours", async ({ page }) => {
   test.setTimeout(240_000);
   await systemGame(page);
@@ -54,8 +117,7 @@ test("a turn's replay tours every body with action, then returns to yours", asyn
   );
   // Autoplay can stop with a mutation draft pending (drafts follow biomass, so it depends on
   // the turn it stops at). Its dialog covers the board and Submit: set it aside first.
-  const later = page.getByRole("button", { name: "Decide later" });
-  if (await later.isVisible()) await later.click();
+  await setDraftAside(page);
   // Resources stay visible under the colony: occupied deposit cells carry a badge.
   expect(await depositBadges(page)).toBeGreaterThan(0);
   // Colony life, phase 1: the supply tree is drawn as vessels over the colony body.
@@ -228,35 +290,10 @@ test("holding a cell traces its supply route and shows its defense", async ({ pa
   await page.waitForFunction(
     () => (window as unknown as { __swarm: Hook }).__swarm.phase === "planning",
   );
-  const later = page.getByRole("button", { name: "Decide later" });
-  if (await later.isVisible()) await later.click();
+  await setDraftAside(page);
 
-  // The farthest connected cell of ours on the body shown, and where it is on screen.
-  const target = await page.evaluate(() => {
-    type Cell = { owner: number; core: boolean; connected: boolean } | null;
-    const h = (
-      window as unknown as {
-        __swarm: {
-          session: { state: { bodies: { radius: number; colony: Cell[] }[] } };
-          view: {
-            shownBody: number;
-            worldToScreen(h: { q: number; r: number }): { x: number; y: number };
-          };
-        };
-      }
-    ).__swarm;
-    const body = h.session.state.bodies[h.view.shownBody]!;
-    const R = body.radius;
-    const cells: { q: number; r: number }[] = [];
-    for (let r = -R; r <= R; r++)
-      for (let q = -R; q <= R; q++)
-        if ((Math.abs(q) + Math.abs(r) + Math.abs(q + r)) / 2 <= R) cells.push({ q, r });
-    const i = body.colony.findIndex((c) => c && c.owner === 0 && !c.core && c.connected);
-    if (i < 0) return null;
-    const p = h.view.worldToScreen(cells[i]!);
-    const rect = document.querySelector("canvas")!.getBoundingClientRect();
-    return { i, x: rect.left + p.x, y: rect.top + p.y };
-  });
+  // A connected cell of ours that a press actually reaches.
+  const target = await ourCellOnScreen(page, false);
   expect(target).not.toBeNull();
   const read = () =>
     page.evaluate(() => {
@@ -269,7 +306,7 @@ test("holding a cell traces its supply route and shows its defense", async ({ pa
     });
   await page.mouse.move(target!.x, target!.y);
   await page.mouse.down();
-  await expect.poll(async () => (await read()).inspected, { timeout: 3_000 }).toBe(target!.i);
+  await expect.poll(async () => (await read()).inspected, { timeout: 10_000 }).toBe(target!.i);
   const held = await read();
   expect(held.text).toMatch(/^Defense \d+\n\d+ biomass \+ \d+ support/);
   // The route runs from the cell to a core.
@@ -326,8 +363,7 @@ test("queued orders are drawn again after visiting another body", async ({ page 
   await page.waitForFunction(
     () => (window as unknown as { __swarm: Hook }).__swarm.phase === "planning",
   );
-  const later = page.getByRole("button", { name: "Decide later" });
-  if (await later.isVisible()) await later.click();
+  await setDraftAside(page);
   const shown = () =>
     page.evaluate(
       () =>
@@ -335,30 +371,8 @@ test("queued orders are drawn again after visiting another body", async ({ page 
     );
 
   // Reinforce our core through the radial menu.
-  const core = await page.evaluate(() => {
-    type Cell = { owner: number; core: boolean } | null;
-    const h = (
-      window as unknown as {
-        __swarm: {
-          session: { state: { bodies: { radius: number; colony: Cell[] }[] } };
-          view: {
-            shownBody: number;
-            worldToScreen(h: { q: number; r: number }): { x: number; y: number };
-          };
-        };
-      }
-    ).__swarm;
-    const body = h.session.state.bodies[h.view.shownBody]!;
-    const R = body.radius;
-    const cells: { q: number; r: number }[] = [];
-    for (let r = -R; r <= R; r++)
-      for (let q = -R; q <= R; q++)
-        if ((Math.abs(q) + Math.abs(r) + Math.abs(q + r)) / 2 <= R) cells.push({ q, r });
-    const i = body.colony.findIndex((c) => c && c.owner === 0 && c.core);
-    const p = h.view.worldToScreen(cells[i]!);
-    const rect = document.querySelector("canvas")!.getBoundingClientRect();
-    return { x: rect.left + p.x, y: rect.top + p.y };
-  });
+  const core = (await ourCellOnScreen(page, true))!;
+  expect(core).not.toBeNull();
   await page.mouse.click(core.x, core.y);
   await page.getByRole("menuitem", { name: /^Reinforce/ }).click();
   await expect.poll(shown).toBe(1);
