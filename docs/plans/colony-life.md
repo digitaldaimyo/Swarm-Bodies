@@ -77,6 +77,19 @@ say something true about the game state. No decoration that carries no informati
 - **Setting:** "Colony detail: Full / Calm" in Settings → Play. Calm drops the motes.
 - **Performance:** A/B against `main`, typical replay frames match (p50 2.5–3.2 vs 2.0–3.0 ms, within run noise). Idle frames cost about +0.3 ms for the moving motes. Board swaps stay within budget.
 
+**Phase 4 is done.**
+
+- **Readouts** (`apps/client/src/game/readout.ts`, unit tested).
+- **Long-press a cell:** traces its supply route to the core and rings the core. A label shows its defense split into biomass, support and any mutation bonus. The total is the sim's own `defenseOf`.
+  - The label has a dark backing and stays on screen near the edges.
+  - The readout works on any colony cell, since everything in it is already visible: no intel.
+- **Fruiting hint:** a faint twinkling star marks each of the viewer's cells that could fruit now, after the orders already queued.
+  - The sim's validator decides, so biomass, connection, cost, the fruiting cap and other bodies are all respected.
+  - It shows only while orders can be planned, never in replays or after Submit.
+  - It holds still with reduce motion.
+- **How to play:** mentions holding a cell, the motes, slashed badges and the sparkle.
+- **Performance:** A/B against `main`, frames match within run noise; budgets pass.
+
 ## Constraints for every phase
 
 - **Performance:** static parts go in the cached colony texture. Moving parts use pooled sprites with fixed caps. The 4×-throttle frame-budget tests keep passing.
