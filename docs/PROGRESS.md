@@ -1,6 +1,65 @@
 # Progress
 
-**Current milestone:** M8, Polish: complete (branch `m8-polish`, PR pending review). **All milestones M1–M8 are done.** Next: playtests and the open items below, then §17's open questions.
+**Current phase:** spec 1.0 is feature-complete. All milestones M1–M8 are done and merged, the game is deployed, and real-device playtests are under way. **Next: an intensive tutorial planning pass** (see "Next" below). Updated 2026-11-14.
+
+## Status (2026-11-14)
+
+- **Deployed:**
+  - **Render:** the game server and client.
+  - **Neon:** Postgres.
+  - **GitHub Pages:** a second front door for the client (DECISIONS #104).
+  - **Deploys:** `main` deploys on merge.
+- **Real devices: validated by the user** on Android and iPhone, including large systems: no slowdown or lag noticed. This closes the M3 and M8 real-device items (DECISIONS #119).
+- **Balance:** the user judges it a very close first attempt that needs only minor tweaking. It is close enough that further play still gives valid insight and data (DECISIONS #120).
+- **Play feel (user):**
+  - The game is fun, and strategy matters and is flexible.
+  - Comeback moments happen.
+  - The bots are genuinely challenging, perhaps too much so for early campaign nodes.
+
+### Next
+
+1. **Tutorial: an intensive planning pass**, before any code.
+   - **The problem:** there is real depth to on-ramp.
+   - **Ideas from the user:**
+     - "Mini-world" challenges in small, contrived scenarios: zooming in reveals biomass, using terrain, battle mechanics.
+     - A narrator character, a space-cat xenobiologist, who appears now and then. The same voice would enrich the Codex.
+     - A deeper Codex that brings the universe to life.
+2. **Easier bots on early campaign nodes** (DECISIONS #121).
+3. Then the open items below.
+
+### Open items
+
+- **Browsers:** Firefox and Samsung Internet (§10.7) have not been tested. CI covers Chromium and WebKit.
+- **Design reviews pending with the user:**
+  - Spec numbers changed in balancing (DECISIONS #71, #82).
+  - Campaign node 8's twist (DECISIONS #83).
+- **Spec questions:**
+  - §16 lists preset emotes as the alternative to chat. Are emotes in v1? Not built yet.
+  - The notifications toggle lives in the Online hub, not Settings (§10.1, item 9).
+  - §17's open questions need more playtest data.
+- **Code health:** `apps/client/src/render/view.ts` (about 2,300 lines) does input, camera, colonies, colony life, readouts and replay. Split it into layers before v1.1 features.
+- **Rendering tests:** no test checks what a GPU actually draws (the stray-arc bug, DECISIONS #116). A few screenshot-diff scenes would cover the worst of it.
+
+## After M8: deployment, playtests and the colony life pass (PRs #9–#17)
+
+- [x] **Deployment** (PR #9): Render, Neon and Pages (DECISIONS #104).
+- [x] **Playtest 1** (PR #10):
+  - Combat is taught on campaign node 1.
+  - The Codex gains a "How to play" tab (DECISIONS #105).
+- [x] **Playtest 2** (PR #11):
+  - Deposit badges under colonies.
+  - A turn's replay tours every body with action.
+  - The replay viewer gains a scrubber and body switching (DECISIONS #106–#108).
+- [x] **Colony life pass** (PRs #12–#16; plan and results in `docs/plans/colony-life.md`, DECISIONS #109–#115):
+  1. Supply-tree vessels and a translucent colony body.
+  2. A heartbeat that flows outward from each core, paced by defense, plus starvation rims.
+  3. Nutrient motes along supply routes, and a "Colony detail: Full / Calm" setting.
+  4. Long-press readout (supply route, defense split) and the fruiting sparkle.
+  5. Strain personality, and frontier feelers.
+- [x] **Playtest 3** (PR #17):
+  - Stray lines on rings and rims.
+  - Orders redrawn after switching bodies.
+  - A decluttered System view (DECISIONS #116–#118).
 
 ## M8: Polish: done
 
@@ -25,9 +84,9 @@ Scope (§15): audio mix pass, tutorial pacing, accessibility audit against §10.
 - [x] **Tutorial pacing:** the fruit, launch and capture steps wait until the player can do them, and every action step can be skipped.
 - [x] **Performance:** Hard on 4-player systems: mean 54 → 39 ms, p95 133 → 103 ms. Bot decisions are identical before and after; golden replays are unchanged.
 
-**Open items for the user:**
+**Open items for the user (at the end of M8):**
 
-- **Real devices:** a mid-range Android and an iPhone 12 are still unmeasured. The 4× CPU-throttle tests stand in for them (DECISIONS #102).
+- **Real devices:** done. The user validated Android and iPhone on 2026-11-14 (DECISIONS #119).
 - **WebKit:** the new a11y and state tests are written to handle WebKit (DECISIONS #103), but WebKit runs only in CI here.
 - **Unplaytested:** campaign difficulty and tutorial pacing with real players, and 3–4 player balance.
 - **§17 open questions** are unchanged, ready for playtests.
@@ -169,8 +228,6 @@ Scope (§15): multiple bodies, orbits, System view, body strip, Fruit/Launch/spo
 
 ## M4: Online multiplayer: done
 
-## M4: Online multiplayer: done
-
 Scope (§15): `protocol`, server, guest accounts, create/join by code, live and async timers, sealed orders, hash verification, reconnects, Web Push, bot takeover; Swarmer and Biofilm strains.
 
 - [x] Strains (§7.1): Swarmer and Biofilm as per-player modifiers in the sim config, used by validation, resolution, the bot, client previews and `pnpm balance -- --strains a,b`. `packages/content` holds strain text, generated from the sim's numbers. The golden replays were regenerated (state shape changed; orders and results identical).
@@ -199,14 +256,10 @@ Scope (§15): `protocol`, server, guest accounts, create/join by code, live and 
 **Open items for the user:**
 
 - **Strain balance:** Normal-bot Swarmer beats Biofilm in about 98% of Single Rock games (DECISIONS #36). That is M6's balance work, but the numbers are the spec's, so retuning them is a design call.
-- **Real devices:** 60 fps on real devices is still to be confirmed (from M3).
+- **Real devices:** confirmed by the user on 2026-11-14 (DECISIONS #119).
 - **WebKit:** WebKit e2e runs only in CI; this container has Chromium only.
 
 Running locally: Postgres 16 (`postgres://swarm:swarm@localhost:5432`). Set `TEST_DATABASE_URL=postgres://swarm:swarm@localhost:5432/postgres` for the server tests; `pnpm test:e2e` starts the server on `swarm_e2e` (created if missing; override with `E2E_DATABASE_URL`). `pnpm dev` runs the client (Vite proxies `/api` and `/ws`) and the server (`DATABASE_URL`, default `postgres://swarm:swarm@localhost:5432/swarm`).
-
-## Next: M7, Progression and replayability
-
-SPEC §15 M7: the campaign (12 nodes, with a tutorial), codex, achievements, the Daily Seed with server validation, a ranked ladder (Glicko-2, seasons and sectors), shareable replays and cosmetics.
 
 ## M3: Playable client vs bot: done
 
@@ -223,7 +276,9 @@ Scope (§15): Vite, Pixi and Preact client; Body view, path painting, radial men
 - [x] PWA (§10.7): manifest, icons rasterised at build time from one SVG (`apps/client/build/icon.svg`), and a Workbox service worker precaching the app shell. Safe-area insets; portrait and landscape layouts.
 - [x] Acceptance: a full Single Rock game is playable to the end at 390×844 (Playwright smoke test, plus manual screenshot review at 390×844, 844×390 and 1440×900).
 - [x] Acceptance: Playwright smoke test (`e2e/smoke.spec.ts`). It uses a real touch drag (CDP) to paint, then submits, watches the replay, and finishes against the Easy bot with an accelerated scripted player.
-- [~] Acceptance: 60 fps on a mid-range phone profile. `e2e/perf.spec.ts` (a CI regression check of CPU work under a 4× throttle, plus a structural guard against per-swap geometry rebuilds) passes. **Open item: real-device validation on a mid-range Android phone and an iPhone 12**, per DECISIONS #33.
+- [x] Acceptance: 60 fps on a mid-range phone profile.
+  - `e2e/perf.spec.ts` passes: a CI regression check of CPU work under a 4× throttle, plus a structural guard against per-swap geometry rebuilds.
+  - Real-device play on Android and iPhone, large systems included, showed no slowdown (user, 2026-11-14; DECISIONS #119).
 - [x] Client unit tests (`apps/client/test/logic.test.ts`): hex layout, path painting (including routing around rock), the planner and assault preview against the sim, replay timeline reconstruction over whole games, the event log, and skirmish save/restore.
 
 ## M2: Bot: done

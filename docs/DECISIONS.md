@@ -273,3 +273,80 @@ Rulings on ambiguous or unspecified points in `docs/SPEC.md`, as CLAUDE.md requi
      - **Transport:** previous, play/pause, next, and a turn scrubber that seeks to any turn, including the final position.
      - **Bodies:** the body strip switches asteroids and the System view; picking a body replays the current turn on it.
      - **Seat:** a local replay opens on your home body; a shared one opens on the first colonised body.
+
+## 2026-11-13 — Colony life pass (PRs #12–#16)
+
+The plan, the user's decisions and the per-phase results are in `docs/plans/colony-life.md`. The rule for the pass: every animated cue must say something true about the game state. Everything here is client presentation only; the sim and golden replays are untouched.
+
+109. **The supply tree is the client's own, and agrees with the sim.**
+     - **How it is built:** `vascular()` builds a breadth-first tree from each owner's cores through same-owner cells, in board order, so it is deterministic.
+     - **Agreement:** a cell is in the tree exactly when the sim calls it connected. A unit test checks this on real 3-player games.
+     - **Load:** the cells and income that depend on a vein set its width.
+110. **Vessels live inside the cached colony texture, and the body is translucent as a whole.**
+     - **Rejected: an uncached layer.** It cost +0.6–1.2 ms per replay frame.
+     - **Rejected: a separate cached layer.** It added a full-body blit every frame.
+     - **Chosen:** vessels drawn inside the colony texture. Leaf twigs are left to the webbing.
+     - **Translucency:** the whole texture is drawn at 86% opacity. Opacity per triangle gave a visible mosaic.
+111. **The heartbeat is paced by defense and flows outward.**
+     - **Pace:** a core's defense (biomass plus connected support, the number an attacker must beat) sets its beat, from 0.9 s (weak) to 2 s (fortified).
+     - **Flow:** each cell lags its core by 0.11 of a beat per tree step.
+     - **Full cells:** cells at maximum biomass glow steadily.
+     - **Starvation rims:** cut-off cells drain a rim for the turns they have left, Dormancy grace included.
+     - **User's call:** "pulse by defense", with the beat flowing out from the node. Nutrients flow in, so blood goes out and food comes in.
+112. **Nutrient motes.**
+     - **Routes:** each held deposit or comet sends motes in its badge colour along its supply route to the core. A higher yield sends them more often.
+     - **Broken routes:** a cut route runs through the severed patch to the cell nearest a core, and its motes fizzle there.
+     - **Pool:** capped at 36 and animated only for the body on screen.
+     - **Look:** motes are rimmed beads. Additive dots vanished on cyan colonies.
+     - **Still equivalent:** a cut-off deposit's badge is slashed.
+     - **Setting:** "Colony detail: Full / Calm". Calm drops the motes, feelers and specks; it keeps the vessels, badges and rims.
+113. **Readouts use the sim's own numbers. Intel overlays are held.**
+     - **Long-press:** it traces a cell's supply route to the core. The label splits defense into biomass, support and mutation bonus; the total is the sim's `defenseOf`.
+     - **Fruiting sparkle:** it marks cells that could fruit now, after queued orders, as the sim's validator decides. It shows only while orders can be planned.
+     - **Held (user's decision):** chokepoint outlines and threat rims on any colony.
+114. **Strain personality echoes each strain's rules.**
+
+     | Strain   | Veins         | Heartbeat     | Other           |
+     | -------- | ------------- | ------------- | --------------- |
+     | Swarmer  | thin (×0.6)   | quick (×0.75) |                 |
+     | Biofilm  | thick (×1.55) | slow (×1.35)  |                 |
+     | Predator | dark          |               | jagged          |
+     | Sporer   |               |               | drifting specks |
+
+     The styles are data in `apps/client/src/game/personality.ts`. Client presentation only, so they are not sim config.
+
+115. **Frontier feelers mean "you can grow here".**
+     - **Interpretation:** the plan says feelers twitch "toward empty cells within grow reach". They point at the empty, open neighbours of connected cells, the first step of any grow path. Every reachable cell is beyond one of those, and drawing whole paths would be clutter.
+     - **Scope:** only the viewer's own colony, while orders can be planned.
+     - **Cap and pace:** at most 32, spread evenly over the frontier. They twitch at the strain's pace.
+     - **Shape:** soft pseudopods. The first version's tapered spikes read as thorns.
+
+## 2026-11-14 — Playtest feedback: arcs, orders on body switch, crowded systems (PR #17)
+
+116. **Arcs are stroked as standalone polylines (`render/arc.ts`).**
+     - **Symptom:** on a phone, lines ran from the sun's centre to each ownership ring, and between starvation rims.
+     - **Cause:** with `moveTo` + `arc`, Pixi could start an arc's path from the previous shape's centre. The doubled start point also left a zero-length first segment, whose round cap points in a random direction.
+     - **Fix:** `arcPoints` builds the points with no duplicates, and `poly(points, false)` strokes each arc as its own shape.
+     - **Rule to keep:** draw no arc with `moveTo` + `arc`.
+     - **Note:** the bug never showed in desktop Chromium. Only the user's phone screenshot revealed the cause.
+117. **Showing another body redraws the queued plan.** The view keeps the last plan and redraws it for the body now shown. Before, the plan was cleared and never redrawn.
+118. **The System view declutters for display only (`game/declutter.ts`).**
+     - **Nudging:** bodies that would overlap are pushed apart just enough to clear each other, ring and label included. It is deterministic, and bodies that do not overlap stay exactly where they are.
+     - **Tethers:** a moved body keeps a dot on its true orbital position, tethered to where it is drawn.
+     - **Picking** uses the drawn position.
+     - **Unchanged:** spore trajectories and launch ranges use true positions.
+
+## 2026-11-14 — Real-device validation and the balance verdict
+
+119. **Real devices are validated.**
+     - **What the user found:** play on Android and iPhone, large systems included, showed no slowdown or lag.
+     - **What it closes:** the real-device items from DECISIONS #33 and #102, and M3's 60 fps acceptance.
+     - **CI's role:** the 4× CPU-throttle specs stay as the regression guard.
+120. **Balance is accepted as a first pass.**
+     - **The user's verdict:** a very close first attempt that needs only minor tweaking.
+     - **Approach:** keep collecting play data before retuning. Further play still gives valid insight at this level of balance.
+     - **Still pending review:** the spec-number deviations in #71 and #82, and node 8's twist (#83).
+121. **The bots are too strong for early campaign nodes.**
+     - **The user's verdict:** the bots are genuinely challenging, perhaps too much so early in the campaign.
+     - **Next:** early nodes get a weaker opponent. That means an easier difficulty or personality on those nodes, not a retune of Easy and Normal, which skirmish and the balance gate rely on.
+     - **When:** this is to be planned together with the tutorial pass.
