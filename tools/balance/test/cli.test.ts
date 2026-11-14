@@ -84,9 +84,11 @@ describe("tools/balance", () => {
       shard: null,
       rules: null,
       beginner: false,
+      moments: false,
     });
     expect(parseArgs(["--map", "system"]).map).toBe("system");
     expect(parseArgs(["--beginner"]).beginner).toBe(true);
+    expect(parseArgs(["--moments"]).moments).toBe(true);
     expect(
       parseArgs([
         "--matrix",

@@ -5,6 +5,7 @@
  *                   [--map singleRock|system] [--rules JSON] [--json]
  *   pnpm balance -- --matrix --games 200 --map system [--gate] [--jobs 4] [--rules JSON]
  *   pnpm balance -- --beginner --games 40
+ *   pnpm balance -- --moments --games 20
  *
  * `--matrix` plays every pair of playable strains (Normal vs Normal) and checks the SPEC §12.4
  * targets; `--gate` exits non-zero if any pair leaves 30–70% (the CI gate). `--jobs N` splits
@@ -26,6 +27,7 @@ import type { Difficulty } from "@swarm/bot";
 import { CAMPAIGN } from "@swarm/content";
 import { execFile } from "node:child_process";
 import { beginnerWinRate } from "./campaign-play";
+import { formatMoments, measureMoments } from "./moments";
 import { checkTargets, formatMatrix, mergeMatrices, runMatrix, type MatrixReport } from "./matrix";
 import { isPolicyName, playGame, policyByName, type PlayedGame, type PolicyName } from "./play";
 
@@ -42,6 +44,7 @@ interface Options {
   shard: { index: number; of: number } | null;
   rules: Partial<Rules> | null;
   beginner: boolean;
+  moments: boolean;
 }
 
 export function parseArgs(argv: readonly string[]): Options {
@@ -58,6 +61,7 @@ export function parseArgs(argv: readonly string[]): Options {
     shard: null,
     rules: null,
     beginner: false,
+    moments: false,
   };
   const args = argv.filter((a) => a !== "--");
   for (let i = 0; i < args.length; i++) {
@@ -119,6 +123,9 @@ export function parseArgs(argv: readonly string[]): Options {
         break;
       case "--beginner":
         opts.beginner = true;
+        break;
+      case "--moments":
+        opts.moments = true;
         break;
       case "--jobs": {
         const n = Number(value());
@@ -365,6 +372,7 @@ function main(): void {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.matrix) return matrixMain(opts);
   if (opts.beginner) return beginnerMain(opts);
+  if (opts.moments) return void console.log(formatMoments(measureMoments(opts.games)));
   const started = performance.now();
   const report = runBatch({
     games: opts.games,

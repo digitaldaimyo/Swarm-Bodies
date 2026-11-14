@@ -28,7 +28,14 @@ import { localCosmetics } from "./Cosmetics";
 import { OrderDrawer } from "./OrderDrawer";
 import { RadialMenu } from "./RadialMenu";
 import { getSettings, haptic, updateSettings, useSettings } from "./settings";
-import { tutorialReady, type Line, type TutorialStep } from "@swarm/content";
+import {
+  MOMENT_LINES,
+  newMomentTracker,
+  nextMoment,
+  tutorialReady,
+  type Line,
+  type TutorialStep,
+} from "@swarm/content";
 import { PurrSays } from "./Purr";
 
 interface Props {
@@ -52,6 +59,10 @@ declare global {
       autoplay: boolean;
       /** e2e: the scripted player stops by itself when a draft is pending for the viewer. */
       stopAtDraft?: boolean;
+      /** e2e: the scripted player stops by itself while Dr. Purr has a remark showing. */
+      stopAtPurr?: boolean;
+      /** e2e: every in-game remark Dr. Purr made this match, in order. */
+      purr?: string[];
       phase: Phase;
       turn: number;
       finished: boolean;
@@ -127,6 +138,12 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial, l
   // Tutorial (SPEC §11.1): the current step, and what happened since it was last checked.
   const [tutorialStep, setTutorialStep] = useState(0);
   const tutorialSignals = useRef(new Set<string>());
+  // Dr. Purr's in-game moments (docs/plans/tutorial.md, step 5): offline games, narrator on.
+  const moments = useRef(newMomentTracker());
+  const [purr, setPurr] = useState<Line | null>(null);
+  const purrRef = useRef<Line | null>(null);
+  purrRef.current = purr;
+  const purrTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [now, setNow] = useState(Date.now());
   const settings = useSettings();
   const ctl = useRef({ paused: false, skipped: false });
@@ -350,8 +367,16 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial, l
   const drain = useCallback(async () => {
     if (playing.current) return;
     playing.current = true;
+    let said: Line | null = null;
+    const speaks = session.kind === "skirmish" && !lesson && getSettings().narrator === "on";
     while (queue.current.length > 0) {
       const record = queue.current.shift() as TurnRecord;
+      setPurr(null);
+      if (speaks) {
+        const r = nextMoment(moments.current, record.before, record.events, record.after, me);
+        moments.current = r.tracker;
+        if (r.moment) said = MOMENT_LINES[r.moment];
+      }
       setRadial(null);
       setInfo(null);
       setDrawer(false);
@@ -412,6 +437,14 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial, l
       setTimeout(onFinished, window.__swarm?.autoplay ? 0 : 900);
       return;
     }
+    if (said) {
+      purrRef.current = said;
+      setPurr(said);
+      audio.chirp();
+      if (e2e && window.__swarm) (window.__swarm.purr ??= []).push(said.text);
+      if (purrTimer.current) clearTimeout(purrTimer.current);
+      purrTimer.current = setTimeout(() => setPurr(null), 12000);
+    }
     setPhase(session.submitted ? "waiting" : "planning");
     if (!window.__swarm?.autoplay) setTimeout(() => setShowLog(false), 2600);
     refreshPlan();
@@ -463,6 +496,7 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial, l
   }, [session.state.turn]);
 
   const submit = useCallback(() => {
+    setPurr(null);
     if (!planning()) return;
     setRadial(null);
     setInfo(null);
@@ -545,6 +579,10 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial, l
       window.__swarm.autoplay = false;
       return;
     }
+    if (window.__swarm.stopAtPurr && purrRef.current) {
+      window.__swarm.autoplay = false;
+      return;
+    }
     let cancelled = false;
     const turn = session.state.turn;
     void import("@swarm/bot").then(({ chooseOrders }) => {
@@ -553,6 +591,10 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial, l
       if (cancelled || !window.__swarm?.autoplay || !planning() || session.state.turn !== turn)
         return;
       if (window.__swarm.stopAtDraft && session.state.players.find((p) => p.id === me)?.draft) {
+        window.__swarm.autoplay = false;
+        return;
+      }
+      if (window.__swarm.stopAtPurr && purrRef.current) {
         window.__swarm.autoplay = false;
         return;
       }
@@ -908,6 +950,20 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial, l
               }}
             >
               {step.until.kind === "next" ? "Got it" : "Skip step"}
+            </button>
+          </div>
+        </aside>
+      )}
+      {purr && !step && phase !== "replay" && !draftOpen && (
+        <aside class="tutorial-card purr-moment" role="status" aria-live="polite">
+          <PurrSays line={purr} />
+          <div class="tutorial-actions">
+            <button
+              class="btn btn-ghost small-btn"
+              onClick={() => setPurr(null)}
+              aria-label="Dismiss Dr. Purr"
+            >
+              Noted
             </button>
           </div>
         </aside>

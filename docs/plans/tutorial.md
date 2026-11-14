@@ -334,6 +334,13 @@ Coordinates are axial `(q, r)`. "b" is biomass. The outcomes marked **verified**
 
 - **Content:** every line is data in `packages/content` (`narrator.ts`, `lessons.ts`, `campaign.ts`). A test checks that each has an expression and a phone-sized length.
 
+**Step 5 is done.** Dr. Purr's in-game moments (DECISIONS #132–#135).
+
+- **Detectors:** pure functions in `packages/content/src/moments.ts`, with a tracker that applies the taste rules: one line a turn, each moment once a game, and 4 turns between lines.
+- **Measured:** `pnpm balance -- --moments` plays every campaign node with an Easy stand-in. The result is 4.1 lines a game on average, and 64% of games get 3–5.
+- **Client:** after the replay, in skirmish and campaign games with the setting On, a small bubble with the chirp. "Noted" dismisses it. Online games and lessons have none.
+- **Tests:** unit tests for each detector and the taste rules; e2e for a remark in campaign node 1 and its dismissal.
+
 ## Still to discuss
 
 - Achievements for the Training grounds and the Journal: decide when step 3 lands.
