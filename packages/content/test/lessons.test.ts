@@ -38,7 +38,7 @@ describe("Training grounds lessons (docs/plans/tutorial.md)", () => {
   it("every lesson starts valid, unfinished, and on a phone-sized board", () => {
     for (const l of LESSONS) {
       const s = lessonState(l);
-      expect(s.bodies[0]!.radius).toBeLessThanOrEqual(5);
+      if (l.map) expect(s.bodies[0]!.radius).toBeLessThanOrEqual(5);
       expect(lessonComplete(l, s)).toBe(false);
       expect(s.players.every((p) => p.strain === "base")).toBe(true);
       expect(l.tutorial.length).toBeGreaterThan(0);
@@ -88,6 +88,98 @@ describe("Training grounds lessons (docs/plans/tutorial.md)", () => {
     expect(owner(s, -1, 1)).toBe(0);
     expect(biomass(s, -1, 1)).toBe(2);
     expect(lessonComplete(l, s)).toBe(true);
+  });
+});
+
+describe("Training grounds lessons 4, 5 and 7 (step 3)", () => {
+  /** Plays to the end or to `turns`, whichever is first (lesson 4 ends the game). */
+  function playThrough(id: string, turns: Order[][]): GameState {
+    const l = lesson(id)!;
+    let s = lessonState(l);
+    for (const mine of turns) {
+      if (s.result) break;
+      expect(validateOrderSet(s, 0, mine)).toMatchObject({ ok: true });
+      s = resolveTurn(s, { 0: mine, 1: [...lessonScript(l, s.turn)] }).state;
+    }
+    return s;
+  }
+
+  it("4. Protect your core: taking the weak core ends the rival in the same turn", () => {
+    const s = playThrough("l4", [[grow([-1, 0], [0, 0])]]);
+    expect(s.result?.winner).toBe(0);
+    expect(owner(s, 0, 0)).toBe(0);
+    expect(lessonComplete(lesson("l4")!, s)).toBe(true);
+  });
+
+  it("5. Supply: cutting the neck starves the arm in two turns", () => {
+    const l = lesson("l5")!;
+    const cut = playThrough("l5", [[grow([0, -1], [0, 0])]]);
+    expect(owner(cut, 0, 0)).toBe(0);
+    expect(biomass(cut, -1, 0)).toBe(1);
+    expect(lessonComplete(l, cut)).toBe(false);
+    const starved = playThrough("l5", [[grow([0, -1], [0, 0])], []]);
+    expect(owner(starved, -2, 1)).toBeNull();
+    expect(lessonComplete(l, starved)).toBe(true);
+  });
+
+  it("7. At the same time: a stalemate, then the thicker claim wins", () => {
+    const l = lesson("l7")!;
+    const tie = playThrough("l7", [[grow([-1, 0], [0, 0])]]);
+    expect(owner(tie, 0, 0)).toBeNull();
+    expect(lessonComplete(l, tie)).toBe(false);
+    const won = playThrough("l7", [
+      [grow([-1, 0], [0, 0])],
+      [reinforce(-1, 0)],
+      [grow([-1, 0], [0, 0])],
+    ]);
+    expect(owner(won, 0, 0)).toBe(0);
+    expect(lessonComplete(l, won)).toBe(true);
+  });
+});
+
+describe("Training grounds lesson 6: fruit and launch (step 3)", () => {
+  it("reinforce, fruit, wait for it to ripen, launch: a spore lands on another body by turn 6", () => {
+    const l = lesson("l6")!;
+    let s = lessonState(l);
+    expect(s.mode).toBe("system");
+    const home = s.players[0]!.home.body;
+    const body = s.bodies[home]!;
+    const board = getBoard(body.radius);
+    const i = body.colony.findIndex((c) => !!c && c.owner === 0 && !c.core && c.connected);
+    expect(body.colony[i]!.biomass).toBe(4);
+    const cell = board.cells[i]!;
+    let launched = 0;
+    for (let t = 1; t <= 6 && !lessonComplete(l, s); t++) {
+      let mine: Order[] = [];
+      if (t === 1) mine = [{ type: "reinforce", body: home, cell }];
+      else if (t === 2) mine = [{ type: "fruit", body: home, cell }];
+      else if (!launched) {
+        outer: for (const b of s.bodies) {
+          if (b.id === home || b.home === 1) continue;
+          const bb = getBoard(b.radius);
+          for (const target of bb.cells) {
+            const o: Order = {
+              type: "launch",
+              body: home,
+              cell,
+              targetBody: b.id,
+              targetCell: target,
+            };
+            if (validateOrderSet(s, 0, [o]).ok) {
+              mine = [o];
+              launched = t;
+              break outer;
+            }
+          }
+        }
+      }
+      expect(validateOrderSet(s, 0, mine)).toMatchObject({ ok: true });
+      s = resolveTurn(s, { 0: mine, 1: [] }).state;
+    }
+    // Ripe on turn 4 (fruited on 2, two turns to ripen), in range at once.
+    expect(launched).toBe(4);
+    expect(lessonComplete(l, s)).toBe(true);
+    expect(s.turn).toBeLessThanOrEqual(7);
   });
 });
 

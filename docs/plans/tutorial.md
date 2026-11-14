@@ -298,6 +298,21 @@ Coordinates are axial `(q, r)`. "b" is biomass. The outcomes marked **verified**
 - **New trigger:** `zoomIn`, which completes when the board is zoomed in far enough to show biomass.
 - **Tests:** e2e plays all three lessons through the UI, and axe checks the Training grounds screen.
 
+**Step 3 is done.** The Training-grounds map, Lessons 4–7, and "Try that turn again" (DECISIONS #126–#128).
+
+- **The map:** like the campaign map. Every lesson is open in any order, with a briefing (name, blurb, goal) and Start. Finished lessons are ticked.
+- **Lessons 4, 5 and 7** use the boards verified above. Each is played through the rules in a unit test.
+  - **Lesson 4** ends the game when the rival core falls, and shows its "Lesson complete" card instead of the results screen.
+  - **Lesson 7's rival** reaches for the middle cell on odd turns, which leaves you a turn to reinforce.
+- **Lesson 6** runs on a generated three-body system (seed `lesson-6-7`). The cell beside your core starts at biomass 4.
+  - **The sequence:** Reinforce, Fruit, wait two turns, Launch. The spore launches on turn 4 and lands by turn 6–7.
+  - **Proof:** a unit test, plus e2e.
+  - **The search:** every one of the first eight seeds tried worked, because the rules guarantee each home an early launch window.
+- **"Try that turn again":** in any lesson, once a turn has been played, it undoes the last turn.
+  - Each turn's record keeps the state from before it, so nothing is recomputed.
+  - The tutorial returns to the step that was showing when that turn was submitted.
+- **New goal kinds:** cells emptied, game won, cells on N bodies, and all of several goals.
+
 ## Still to discuss
 
 - Achievements for the Training grounds and the Journal: decide when step 3 lands.

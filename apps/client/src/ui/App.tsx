@@ -280,6 +280,7 @@ export function App() {
           completedLessons: [...new Set([...(p.completedLessons ?? []), l.id])].sort(),
         })),
       onRestart: restart,
+      onRewind: () => void (session as SkirmishSession).rewind(),
       onNext: next
         ? () => {
             session.dispose();

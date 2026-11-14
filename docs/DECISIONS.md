@@ -393,3 +393,15 @@ The plan, the user's decisions and the per-phase results are in `docs/plans/colo
 125. **Lesson 2's enemy feeder is biomass 4, not 3 as first planned** (`docs/plans/tutorial.md`).
      - **The problem:** with 3, the enemy's repeat attack tied your unreinforced defense of 3, and ties go to the defender. The attack failed even without Reinforce.
      - **The fix:** with 4, the gap falls on turn 3 unless you reinforce. A unit test checks both turn-3 outcomes.
+
+## 2026-11-14 — Training grounds, step 3: map, Lessons 4–7, rewind
+
+126. **Lesson 6 (Fruit and launch) runs on a generated system, not an authored board.** Launches need orbits, ranges and other bodies.
+     - **Setup:** the lesson names a seed and rules: three bodies, one of them neutral, and no drafts. It sets the first connected cell beside your core to biomass 4, one Reinforce short of fruiting.
+     - **The seed:** `lesson-6-7` was picked by search. In it, the taught sequence launches on turn 4 and lands by turn 6–7.
+     - **Every seed tried worked,** because the rules guarantee each home an early launch window. A unit test pins the chosen seed.
+127. **A lesson that ends the game shows its completion card, not the results screen** (Lesson 4: taking the last core eliminates the rival that turn). A lesson game that ends any other way goes to the results screen as usual.
+128. **"Try that turn again" rewinds inside the session.**
+     - **How:** the lesson session pops the last turn's record and restores the state from before it, with a fresh plan and the opponent's script for that turn.
+     - **Tutorial:** Match restores the tutorial step that was showing when that turn was submitted. A first version restored the step from when the turn began, which undid steps the player had moved past during the turn; the e2e test caught it.
+     - **Why not rebuild:** rebuilding the session would have remounted the match and restarted the tutorial.

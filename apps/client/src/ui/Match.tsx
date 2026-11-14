@@ -70,6 +70,8 @@ export interface LessonControls {
   /** Called once, when the goal is first met (records progress). */
   onDone(): void;
   onRestart(): void;
+  /** Undo the last turn (offered once a turn has been played). */
+  onRewind(): void;
   /** Absent on the last lesson. */
   onNext?: (() => void) | undefined;
 }
@@ -98,6 +100,9 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial, l
   /** The lesson's goal was met after a turn. */
   const [lessonDone, setLessonDone] = useState(false);
   const [doneDismissed, setDoneDismissed] = useState(false);
+  /** A lesson turn can be undone once one has been played, while planning. */
+  const canRewind =
+    !!lesson && session.history.length > 0 && phase === "planning" && !session.submitted;
   const systemRef = useRef(false);
   /** Launch flow: the launcher, then (once picked) the target body awaiting a cell. */
   const [launch, setLaunchState] = useState<{
@@ -396,6 +401,11 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial, l
     audio.setDuck(false);
     onSave?.();
     if (session.finished) {
+      // A lesson that ends the game (Protect your core) shows its own completion card.
+      if (lesson?.done()) {
+        setPhase("planning");
+        return;
+      }
       setTimeout(onFinished, window.__swarm?.autoplay ? 0 : 900);
       return;
     }
@@ -458,6 +468,7 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial, l
     audio.submit();
     view.current?.cancelPaint();
     setPhase("waiting");
+    stepAtSubmit.current.set(session.state.turn, tutorialStepRef.current);
     tutorialSignals.current.add("submit");
     session.submit();
   }, [session]);
@@ -551,6 +562,24 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial, l
       cancelled = true;
     };
   });
+
+  // "Try that turn again" puts the tutorial back on the step that was showing when that turn was
+  // submitted, i.e. just before the turn being undone.
+  const stepAtSubmit = useRef(new Map<number, number>());
+  const tutorialStepRef = useRef(tutorialStep);
+  tutorialStepRef.current = tutorialStep;
+  const lastTurn = useRef(session.state.turn);
+  useEffect(() => {
+    const t = session.state.turn;
+    if (t < lastTurn.current) {
+      const step = stepAtSubmit.current.get(t);
+      for (const k of [...stepAtSubmit.current.keys()]) if (k >= t) stepAtSubmit.current.delete(k);
+      if (step !== undefined) setTutorialStep(step);
+      setLessonDone(false);
+      setDoneDismissed(false);
+    }
+    lastTurn.current = t;
+  }, [session.state.turn]);
 
   // A lesson is complete once its goal holds after a turn (checked back in planning, so the
   // replay that achieved it plays out first).
@@ -833,9 +862,20 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial, l
           data-tutorial-step={tutorialStep}
         >
           {lesson && (
-            <p class="lesson-goal">
-              <strong>Goal:</strong> {lesson.goalText}
-            </p>
+            <div class="lesson-goal-row">
+              <p class="lesson-goal">
+                <strong>Goal:</strong> {lesson.goalText}
+              </p>
+              {canRewind && (
+                <button
+                  class="btn btn-ghost small-btn"
+                  onClick={lesson.onRewind}
+                  title="Try that turn again"
+                >
+                  ↶ Turn
+                </button>
+              )}
+            </div>
           )}
           <p>{step.text}</p>
           <div class="tutorial-actions">
@@ -868,9 +908,16 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial, l
           <p class="lesson-goal">
             <strong>Goal:</strong> {lesson.goalText}
           </p>
-          <button class="btn btn-ghost small-btn" onClick={lesson.onRestart}>
-            Restart lesson
-          </button>
+          <div class="tutorial-actions">
+            {canRewind && (
+              <button class="btn btn-ghost small-btn" onClick={lesson.onRewind}>
+                Try that turn again
+              </button>
+            )}
+            <button class="btn btn-ghost small-btn" onClick={lesson.onRestart}>
+              Restart lesson
+            </button>
+          </div>
         </aside>
       )}
       {lesson && lessonDone && !doneDismissed && phase !== "replay" && (
