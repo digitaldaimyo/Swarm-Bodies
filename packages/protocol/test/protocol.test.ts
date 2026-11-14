@@ -131,3 +131,21 @@ describe("protocol (SPEC §9.4, §14)", () => {
     ).toBe(true);
   });
 });
+
+describe("progress sync (Training grounds)", () => {
+  it("accepts progress saved before lessons existed, and fills in completedLessons", async () => {
+    const { ProgressSchema } = await import("../src");
+    const old = {
+      version: 1,
+      completedNodes: ["c01"],
+      drafted: [],
+      achievements: [],
+      rewards: [],
+      selected: { palette: "default", vein: "default", trail: "default" },
+    };
+    expect(ProgressSchema.parse(old).completedLessons).toEqual([]);
+    expect(ProgressSchema.parse({ ...old, completedLessons: ["l1"] }).completedLessons).toEqual([
+      "l1",
+    ]);
+  });
+});

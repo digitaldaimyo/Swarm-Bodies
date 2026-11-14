@@ -18,12 +18,8 @@
 
 ### Next
 
-1. **Tutorial: an intensive planning pass**, before any code.
-   - **The problem:** there is real depth to on-ramp.
-   - **Ideas from the user:**
-     - "Mini-world" challenges in small, contrived scenarios: zooming in reveals biomass, using terrain, battle mechanics.
-     - A narrator character, a space-cat xenobiologist, who appears now and then. The same voice would enrich the Codex.
-     - A deeper Codex that brings the universe to life.
+1. **Tutorial pass** (`docs/plans/tutorial.md`): the plan is settled. Step 1 (Novice opponent) and step 2 (lesson groundwork, Lessons 1–3) are done. Next is step 3: the Training-grounds map, Lessons 4–7, and per-turn "Try that turn again".
+   - **Settled:** seven optional lessons, Dr. Ottoline Purr as narrator, and the Codex as her field journal.
 2. **Easier bots on early campaign nodes:** done for nodes 1–3, with the Novice bot (DECISIONS #122). Nodes 4 and 8 are a cliff, awaiting a decision.
 3. Then the open items below.
 

@@ -49,6 +49,11 @@ test("menus and panels pass axe (WCAG 2.1 AA)", async ({ page }) => {
   await audit(page, "daily");
   await page.getByRole("button", { name: "Back" }).click();
 
+  await page.getByRole("button", { name: "Training grounds" }).click();
+  await expect(page.getByRole("list", { name: "Lessons" })).toBeVisible();
+  await audit(page, "training grounds");
+  await page.getByRole("button", { name: "Back" }).click();
+
   await page.getByRole("button", { name: "Settings" }).click();
   await audit(page, "settings");
   await page.getByRole("button", { name: "Back" }).click();

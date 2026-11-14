@@ -5,7 +5,15 @@ import type { GameState } from "@swarm/sim";
 import type { MatchSession } from "../game/match-session";
 import type { OnlineSession } from "../game/online-session";
 import type { SkirmishSession, SkirmishSettings } from "../game/session";
-import { campaignNode, dailySetup, unlockedMutations, type CampaignNode } from "@swarm/content";
+import {
+  LESSONS,
+  campaignNode,
+  dailySetup,
+  lesson,
+  unlockedMutations,
+  type CampaignNode,
+} from "@swarm/content";
+import type { LessonControls } from "./Match";
 import { MUTATION_IDS, type StrainId } from "@swarm/sim";
 import { summarizeSession, type TurnRecord } from "../game/match-session";
 import type { ReplayFile } from "../game/replay";
@@ -17,6 +25,7 @@ import {
   recordGame,
   syncProgress,
   type GameRewards,
+  updateProgress,
 } from "./progress";
 import { audio } from "../audio/sfx";
 import { loadSkirmish, saveSkirmish } from "./storage";
@@ -39,6 +48,7 @@ const ReplayViewer = lazy(() => import("./ReplayViewer"));
 const Campaign = lazy(() => import("./Campaign"));
 const Codex = lazy(() => import("./Codex"));
 const Daily = lazy(() => import("./Daily"));
+const Training = lazy(() => import("./Training"));
 
 type Screen =
   | { name: "title" }
@@ -49,12 +59,29 @@ type Screen =
   | { name: "campaign" }
   | { name: "codex" }
   | { name: "daily" }
+  | { name: "training" }
   | { name: "match"; session: MatchSession }
   | { name: "results"; session: MatchSession; rewards?: GameRewards | undefined }
   | { name: "replay"; session: MatchSession; rewards?: GameRewards | undefined }
   | { name: "shared"; history: TurnRecord[]; title: string };
 
 /** The campaign node a session plays, if any. */
+/**
+ * A key per session, so a new session (a restarted or next lesson) gets a fresh match screen
+ * rather than the old one's tutorial step and completion state.
+ */
+const sessionKeys = new WeakMap<MatchSession, number>();
+let nextSessionKey = 1;
+function sessionKey(session: MatchSession): number {
+  let k = sessionKeys.get(session);
+  if (k === undefined) sessionKeys.set(session, (k = nextSessionKey++));
+  return k;
+}
+
+function lessonIdOf(session: MatchSession): string | undefined {
+  return session.kind === "skirmish" ? (session as SkirmishSession).settings.lesson : undefined;
+}
+
 function nodeOf(session: MatchSession): CampaignNode | undefined {
   if (session.kind !== "skirmish") return undefined;
   const id = (session as SkirmishSession).settings.campaign;
@@ -170,6 +197,8 @@ export function App() {
    * run is submitted first: the server replays and scores it, and its streak feeds achievements.
    */
   const finish = async (s: MatchSession): Promise<GameRewards | undefined> => {
+    // Lessons are practice: no summary, achievements or rewards.
+    if (lessonIdOf(s)) return undefined;
     const settings = s.kind === "skirmish" ? (s as SkirmishSession).settings : null;
     let daily: GameRewards["daily"];
     if (settings?.daily) {
@@ -221,6 +250,43 @@ export function App() {
       botStrain: bot,
       daily: date,
     });
+  };
+
+  const playLesson = (id: string) =>
+    void startSkirmish({
+      seed: `lesson-${id}`,
+      difficulty: "novice",
+      strain: "swarmer",
+      botStrain: "biofilm",
+      lesson: id,
+    });
+
+  /** What the match screen needs to run a lesson: its goal, completion and navigation. */
+  const lessonControls = (session: MatchSession): LessonControls | undefined => {
+    const id = lessonIdOf(session);
+    const l = id ? lesson(id) : undefined;
+    if (!l) return undefined;
+    const next = LESSONS.find((x) => x.index === l.index + 1);
+    const restart = () => {
+      session.dispose();
+      playLesson(l.id);
+    };
+    return {
+      goalText: l.goalText,
+      done: () => (session as SkirmishSession).lessonDone,
+      onDone: () =>
+        void updateProgress((p) => ({
+          ...p,
+          completedLessons: [...new Set([...(p.completedLessons ?? []), l.id])].sort(),
+        })),
+      onRestart: restart,
+      onNext: next
+        ? () => {
+            session.dispose();
+            playLesson(next.id);
+          }
+        : undefined,
+    };
   };
 
   const playNode = (node: CampaignNode, strain: Exclude<StrainId, "base">) => {
@@ -280,6 +346,7 @@ export function App() {
   const leave = (session: MatchSession) => {
     session.dispose();
     if (session.kind === "online") setScreen({ name: "online" });
+    else if (lessonIdOf(session)) setScreen({ name: "training" });
     else if (nodeOf(session)) {
       setHasSave(loadSkirmish() !== null);
       setScreen({ name: "campaign" });
@@ -315,6 +382,7 @@ export function App() {
             onCampaign={() => setScreen({ name: "campaign" })}
             onDaily={() => setScreen({ name: "daily" })}
             onCodex={() => setScreen({ name: "codex" })}
+            onTraining={() => setScreen({ name: "training" })}
           />
         )}
         {screen.name === "setup" && (
@@ -338,13 +406,23 @@ export function App() {
         <Suspense fallback={fallback}>
           {screen.name === "campaign" && <Campaign onBack={toTitle} onPlay={playNode} />}
           {screen.name === "codex" && <Codex onBack={toTitle} />}
+          {screen.name === "training" && (
+            <Training onBack={toTitle} onPlay={(l) => playLesson(l.id)} />
+          )}
           {screen.name === "daily" && <Daily onBack={toTitle} onPlay={playDaily} />}
           {screen.name === "match" && (
             <Match
+              key={sessionKey(screen.session)}
               session={screen.session}
-              tutorial={nodeOf(screen.session)?.tutorial}
+              tutorial={
+                lessonIdOf(screen.session)
+                  ? lesson(lessonIdOf(screen.session) as string)?.tutorial
+                  : nodeOf(screen.session)?.tutorial
+              }
+              lesson={lessonControls(screen.session)}
               onSave={
-                screen.session.kind === "skirmish"
+                // Lessons are short and never replace a saved skirmish.
+                screen.session.kind === "skirmish" && !lessonIdOf(screen.session)
                   ? () => saveSkirmish((screen.session as SkirmishSession).save())
                   : undefined
               }

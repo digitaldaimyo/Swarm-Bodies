@@ -4,6 +4,7 @@ export * from "./hex";
 export { idiv, isqrt, permille } from "./math";
 export { rngStream, hashString128, type Rng } from "./rng";
 export { createGame, isOneRegion } from "./generate";
+export { authoredGame, type AuthoredCell, type AuthoredMap } from "./authored";
 export { connectivityOf } from "./connectivity";
 export {
   entryCost,

@@ -374,3 +374,22 @@ The plan, the user's decisions and the per-phase results are in `docs/plans/colo
      - **Tuning history:** a first, stricter Novice (3 orders, margin 3, peace until turn 5) won 100% everywhere, in short routs. That is no opposition at all, so it was eased up to the numbers above.
      - **Open:** nodes 4 and 8 stay on Easy, as planned, but the stand-in wins only 13% and 7% there. Going from node 3 to node 4 is a cliff for a weak player. Left to the user.
      - **Unchanged:** Easy, Normal and Hard play exactly as before. The default capture margin of 1 is the old check, and Hard's internal Easy samples still pick from 3.
+
+## 2026-11-14 — Training grounds, step 2: lesson groundwork
+
+123. **Authored maps are a sim feature (`authoredGame`).**
+     - **What it builds:** a Single Rock game (no orbits, no scheduled events) whose one body is exactly the given board: radius, rock, deposits, cells and nutrients.
+     - **Connectivity:** it is computed, not given.
+     - **Bad maps are refused:** a cell off the board, a colony cell on rock, or a seat with no core all throw.
+     - **Goldens:** unaffected. `createGame` is unchanged.
+124. **Lessons are offline skirmish sessions with a scripted opponent.**
+     - **Start:** a `lesson` id in the session settings makes the session start from the lesson's board.
+     - **Opponent:** the bot seat plays the lesson's per-turn script instead of asking the bot worker. The sim still validates every order.
+     - **No drafts:** lessons run with `draftThresholds: []`, so a draft can't interrupt the one idea being taught.
+     - **No rewards:** lessons earn no achievements and never overwrite a saved skirmish.
+     - **Lesson 1 needs a rival:** a game needs two players, so a rival core sits sealed behind rock in a corner.
+     - **Completion:** a lesson is complete when its goal holds after a turn, checked back in planning so the replay that achieved it plays first.
+     - **Fresh state:** a restarted or next lesson gets a fresh match screen, because the match is keyed per session.
+125. **Lesson 2's enemy feeder is biomass 4, not 3 as first planned** (`docs/plans/tutorial.md`).
+     - **The problem:** with 3, the enemy's repeat attack tied your unreinforced defense of 3, and ties go to the defender. The attack failed even without Reinforce.
+     - **The fix:** with 4, the gap falls on turn 3 unless you reinforce. A unit test checks both turn-3 outcomes.

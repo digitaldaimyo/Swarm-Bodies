@@ -1,10 +1,21 @@
 import type { Difficulty, Personality } from "@swarm/bot";
-import { campaignNode, dailySetup, nodeConfig, type PlayMode } from "@swarm/content";
+import {
+  campaignNode,
+  dailySetup,
+  lesson,
+  lessonComplete,
+  lessonScript,
+  lessonState,
+  nodeConfig,
+  type Lesson,
+  type PlayMode,
+} from "@swarm/content";
 import {
   BASE_RULES,
   createGame,
   type GameConfig,
   type GameMode,
+  type GameState,
   type MutationId,
   type Order,
   type OrderSet,
@@ -36,6 +47,19 @@ export interface SkirmishSettings {
   campaign?: string;
   /** M7: a Daily Seed date (its setup replaces the fields above). */
   daily?: string;
+  /** A Training-grounds lesson: its authored board and scripted opponent replace the rest. */
+  lesson?: string;
+}
+
+/** The lesson a session plays, if any. */
+export function lessonOf(s: SkirmishSettings): Lesson | undefined {
+  return s.lesson ? lesson(s.lesson) : undefined;
+}
+
+/** The starting state: a lesson's authored board, or a generated game. */
+export function initialState(s: SkirmishSettings): GameState {
+  const l = lessonOf(s);
+  return l ? lessonState(l) : createGame(skirmishConfig(s), offlineSeed(s));
 }
 
 export type SystemSize = "standard" | "wide" | "vast";
@@ -136,7 +160,7 @@ export class SkirmishSession extends SessionBase implements MatchSession {
     private readonly bot: BotRunner,
     startBot = true,
   ) {
-    super(createGame(skirmishConfig(settings), offlineSeed(settings)), HUMAN);
+    super(initialState(settings), HUMAN);
     if (startBot) this.startBot();
   }
 
@@ -149,7 +173,15 @@ export class SkirmishSession extends SessionBase implements MatchSession {
     return s;
   }
 
+  /** A lesson's goal is met (Training grounds). */
+  get lessonDone(): boolean {
+    const l = lessonOf(this.settings);
+    return !!l && lessonComplete(l, this.state);
+  }
+
   get description(): string {
+    const l = lessonOf(this.settings);
+    if (l) return `Training ${l.index} · ${l.name}`;
     const node = this.settings.campaign ? campaignNode(this.settings.campaign) : undefined;
     if (node) return `Campaign ${node.index} · ${node.name}`;
     if (this.settings.daily) return `Daily Seed · ${this.settings.daily}`;
@@ -196,12 +228,16 @@ export class SkirmishSession extends SessionBase implements MatchSession {
     const turn = this.state.turn;
     const state = this.state;
     const seats = state.players.filter((p) => p.id !== HUMAN && !p.eliminated).map((p) => p.id);
-    const promise = Promise.all(
-      seats.map((seat) => {
-        const b = botFor(this.settings, seat);
-        return this.bot.choose(state, seat, b.difficulty, b.seed, b.personality);
-      }),
-    ).then((sets) => Object.fromEntries(seats.map((seat, i) => [seat, sets[i] ?? []])));
+    // A lesson's opponent follows its script, so the lesson's key moment always happens.
+    const l = lessonOf(this.settings);
+    const promise = l
+      ? Promise.resolve(Object.fromEntries(seats.map((seat) => [seat, [...lessonScript(l, turn)]])))
+      : Promise.all(
+          seats.map((seat) => {
+            const b = botFor(this.settings, seat);
+            return this.bot.choose(state, seat, b.difficulty, b.seed, b.personality);
+          }),
+        ).then((sets) => Object.fromEntries(seats.map((seat, i) => [seat, sets[i] ?? []])));
     this.botOrders = promise;
     void promise.then(() => {
       if (this.botOrders === promise && this.state.turn === turn) {

@@ -38,6 +38,8 @@ interface Props {
   onFinished(): void;
   /** Scripted tutorial steps (campaign nodes 1–3, SPEC §11.1). */
   tutorial?: readonly TutorialStep[] | undefined;
+  /** A Training-grounds lesson: its goal, and what to do once it is met. */
+  lesson?: LessonControls | undefined;
 }
 
 type Phase = "planning" | "waiting" | "replay";
@@ -60,7 +62,19 @@ declare global {
 }
 const e2e = typeof location !== "undefined" && new URLSearchParams(location.search).has("e2e");
 
-export default function Match({ session, onSave, onExit, onFinished, tutorial }: Props) {
+/** What Match needs from a Training-grounds lesson (docs/plans/tutorial.md). */
+export interface LessonControls {
+  goalText: string;
+  /** The goal is met in the session's current state. */
+  done(): boolean;
+  /** Called once, when the goal is first met (records progress). */
+  onDone(): void;
+  onRestart(): void;
+  /** Absent on the last lesson. */
+  onNext?: (() => void) | undefined;
+}
+
+export default function Match({ session, onSave, onExit, onFinished, tutorial, lesson }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<MatchView | null>(null);
   // Your cosmetics (SPEC §11.3), for your seat on this screen; declared first so the view is
@@ -79,6 +93,11 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
   const [bodyId, setBodyIdState] = useState(home);
   const bodyRef = useRef(home);
   const [systemView, setSystemViewState] = useState(false);
+  /** Zoomed in far enough to read biomass (a lesson step waits for it). */
+  const [zoomedIn, setZoomedIn] = useState(false);
+  /** The lesson's goal was met after a turn. */
+  const [lessonDone, setLessonDone] = useState(false);
+  const [doneDismissed, setDoneDismissed] = useState(false);
   const systemRef = useRef(false);
   /** Launch flow: the launcher, then (once picked) the target body awaiting a cell. */
   const [launch, setLaunchState] = useState<{
@@ -254,7 +273,10 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
           setInfo({ text: describeCell(h), at });
         }
       },
-      onCamera: () => setRadial(null),
+      onCamera: () => {
+        setRadial(null);
+        setZoomedIn(!!view.current?.zoomedIn);
+      },
       onBodyTap: (id) => {
         const l = launchRef.current;
         if (l && l.target === null) {
@@ -280,6 +302,8 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
       if (e2e && window.__swarm) window.__swarm.view = v;
       shown.current = session.state;
       v.setState(session.state);
+      // A lesson's board is small and both sides matter: frame all of it.
+      if (lesson) v.showWholeBody();
       refreshPlan();
     });
     return () => {
@@ -528,6 +552,15 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
     };
   });
 
+  // A lesson is complete once its goal holds after a turn (checked back in planning, so the
+  // replay that achieved it plays out first).
+  useEffect(() => {
+    if (!lesson || lessonDone || phase !== "planning" || !lesson.done()) return;
+    setLessonDone(true);
+    lesson.onDone();
+    audio.stinger(true);
+  }, [phase, session.state.turn]);
+
   // Advances the tutorial when its step's trigger has happened; anything else is forgotten so a
   // stale submit or capture never completes a later step.
   // A step waits, hidden, until the player can do what it asks (M8 pacing).
@@ -543,6 +576,7 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
     const hit =
       (u.kind === "order" && session.planner.orders.some((o) => o.type === u.order)) ||
       (u.kind === "systemView" && systemView) ||
+      (u.kind === "zoomIn" && zoomedIn) ||
       (u.kind === "submit" && signals.has("submit")) ||
       (u.kind === "event" && signals.has(`event:${u.event}`));
     signals.clear();
@@ -798,6 +832,11 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
           aria-live="polite"
           data-tutorial-step={tutorialStep}
         >
+          {lesson && (
+            <p class="lesson-goal">
+              <strong>Goal:</strong> {lesson.goalText}
+            </p>
+          )}
           <p>{step.text}</p>
           <div class="tutorial-actions">
             <span class="muted">
@@ -821,6 +860,35 @@ export default function Match({ session, onSave, onExit, onFinished, tutorial }:
             >
               {step.until.kind === "next" ? "Got it" : "Skip step"}
             </button>
+          </div>
+        </aside>
+      )}
+      {lesson && !step && !lessonDone && phase !== "replay" && !draftOpen && (
+        <aside class="tutorial-card lesson-chip" role="status">
+          <p class="lesson-goal">
+            <strong>Goal:</strong> {lesson.goalText}
+          </p>
+          <button class="btn btn-ghost small-btn" onClick={lesson.onRestart}>
+            Restart lesson
+          </button>
+        </aside>
+      )}
+      {lesson && lessonDone && !doneDismissed && phase !== "replay" && (
+        <aside class="tutorial-card lesson-done" role="dialog" aria-labelledby="lesson-done-title">
+          <h3 id="lesson-done-title">Lesson complete</h3>
+          <p>{lesson.goalText}</p>
+          <div class="tutorial-actions">
+            <button class="btn btn-ghost small-btn" onClick={() => setDoneDismissed(true)}>
+              Keep playing
+            </button>
+            <button class="btn small-btn" onClick={onExit}>
+              Training grounds
+            </button>
+            {lesson.onNext && (
+              <button class="btn btn-primary small-btn" onClick={lesson.onNext}>
+                Next lesson
+              </button>
+            )}
           </div>
         </aside>
       )}

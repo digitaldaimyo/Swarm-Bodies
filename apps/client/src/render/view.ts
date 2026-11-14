@@ -646,6 +646,11 @@ export class MatchView {
     this.cb.onCamera?.();
   }
 
+  /** Zoomed in far enough that every cell shows its biomass (Training grounds). */
+  get zoomedIn(): boolean {
+    return this.zoom >= NUMBERS_ZOOM;
+  }
+
   private zoomAt(factor: number, screenPt: Point): void {
     const before = this.screenToWorld(screenPt);
     this.zoom = Math.max(this.minZoom, Math.min(this.maxZoom, this.zoom * factor));
