@@ -74,7 +74,15 @@ test("Dr. Purr remarks on a moment in an offline game, and the remark can be dis
     h.autoplay = true;
   });
   const remark = page.locator(".purr-moment");
-  await expect(remark).toBeVisible({ timeout: 200_000 });
+  const draft = page.getByRole("dialog", { name: /Mutation draft/ });
+  // A remark waits behind a draft; pick a card (tap to read, tap to pick) to reveal it.
+  await expect(remark.or(draft)).toBeVisible({ timeout: 200_000 });
+  if (await draft.isVisible()) {
+    const card = draft.getByRole("button").first();
+    await card.click();
+    await card.click();
+  }
+  await expect(remark).toBeVisible({ timeout: 15_000 });
   await expect(remark).toContainText("Dr. Purr");
   const said = await page.evaluate(
     () => (window as unknown as { __swarm: { purr?: string[] } }).__swarm.purr ?? [],
