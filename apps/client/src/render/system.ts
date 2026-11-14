@@ -9,6 +9,8 @@ import {
   type PlayerId,
 } from "@swarm/sim";
 import type { Point } from "../game/layout";
+import { declutter } from "../game/declutter";
+import { arcPoints } from "./arc";
 import { BODY_TINT, lighten, playerColor, trailColor } from "./palette";
 
 /**
@@ -48,6 +50,8 @@ export function contested(body: Body): boolean {
 }
 
 const BODY_PX = { small: 11, medium: 15, large: 19 } as const;
+/** Room each body needs beyond its disc: ownership ring, alert dot and number label. */
+const FOOTPRINT = 13;
 const TAU = Math.PI * 2;
 
 export class SystemLayer {
@@ -63,6 +67,12 @@ export class SystemLayer {
   private centre: Point = { x: 0, y: 0 };
   private scale = 10;
   private screenPos = new Map<number, Point>();
+  /** Bodies drawn away from their true position to avoid overlap (tests read this). */
+  displaced = 0;
+  /** Where a body is drawn (its true position unless decluttered). */
+  shownAt(id: number): Point | undefined {
+    return this.screenPos.get(id);
+  }
   private time = 0;
   /** Spore motes and pickable rings are animated; the rest is redrawn on change only. */
   private motes: { from: Point; ctrl: Point; to: Point; t0: number; t1: number; color: number }[] =
@@ -179,9 +189,33 @@ export class SystemLayer {
 
     const g = this.bodiesG;
     g.clear();
-    for (const b of s.bodies) {
-      if (!b.orbit) continue;
-      const p = this.position(b, s.turn);
+    // Bodies that would overlap are nudged apart for display (playtest: crowded systems). Each
+    // keeps a dot on its true orbital position, tethered to where it is drawn.
+    const placed = s.bodies.filter((b) => b.orbit);
+    const truth = placed.map((b) => this.position(b, s.turn));
+    const shown = declutter(
+      placed.map((b, k) => ({ ...(truth[k] as Point), r: BODY_PX[b.size] + FOOTPRINT })),
+      this.centre,
+      2,
+    );
+    placed.forEach((b, k) => {
+      const t = truth[k] as Point;
+      const q = shown[k] as Point;
+      const off = Math.hypot(q.x - t.x, q.y - t.y);
+      if (off < 1.5) return;
+      const r = BODY_PX[b.size];
+      // The tether stops at the body's edge.
+      const ex = q.x + ((t.x - q.x) / off) * Math.min(off, r);
+      const ey = q.y + ((t.y - q.y) / off) * Math.min(off, r);
+      g.moveTo(t.x, t.y).lineTo(ex, ey).stroke({ width: 1, color: 0x8ea2c8, alpha: 0.45 });
+      g.circle(t.x, t.y, 2.5).fill({ color: 0x8ea2c8, alpha: 0.8 });
+    });
+    this.displaced = shown.filter((q, k) => {
+      const t = truth[k] as Point;
+      return Math.hypot(q.x - t.x, q.y - t.y) >= 1.5;
+    }).length;
+    for (const [k, b] of placed.entries()) {
+      const p = shown[k] as Point;
       this.screenPos.set(b.id, p);
       const r = BODY_PX[b.size];
       const tint = BODY_TINT[b.type];
@@ -199,9 +233,9 @@ export class SystemLayer {
       let start = -Math.PI / 2;
       for (const [player, n] of [...owners].sort((x, y) => x[0] - y[0])) {
         const sweep = (TAU * n) / Math.max(1, playable);
-        // arc() continues the current path: start a fresh one at the arc's first point.
-        g.moveTo(p.x + Math.cos(start) * (r + 4), p.y + Math.sin(start) * (r + 4));
-        g.arc(p.x, p.y, r + 4, start, start + Math.max(0.12, sweep)).stroke({
+        // One open polyline per arc: moveTo + arc doubles the start point, and the stroke
+        // built on that can leave a stray line (playtest).
+        g.poly(arcPoints(p.x, p.y, r + 4, start, start + Math.max(0.12, sweep)), false).stroke({
           width: 4,
           color: playerColor(player),
           alpha,
