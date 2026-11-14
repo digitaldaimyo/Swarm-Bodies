@@ -68,7 +68,9 @@ export type TutorialTrigger =
   | { kind: "order"; order: "grow" | "reinforce" | "retract" | "fruit" | "launch" }
   | { kind: "submit" }
   | { kind: "event"; event: "CellCaptured" | "SporeLaunched" | "SporeLanded" | "FruitMatured" }
-  | { kind: "systemView" };
+  | { kind: "systemView" }
+  /** The player zoomed in far enough to see biomass numbers (Training grounds). */
+  | { kind: "zoomIn" };
 
 /**
  * When a step may appear (M8 tutorial pacing): it waits until the player can actually do what

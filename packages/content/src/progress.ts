@@ -9,6 +9,8 @@ import { COSMETICS } from "./cosmetics";
 export interface Progress {
   version: 1;
   completedNodes: string[];
+  /** Training-grounds lessons finished (docs/plans/tutorial.md). Missing in older saves. */
+  completedLessons: string[];
   /** Mutations drafted at least once (fills the codex entry, SPEC §11.3). */
   drafted: MutationId[];
   achievements: string[];
@@ -22,6 +24,7 @@ export function emptyProgress(): Progress {
   return {
     version: 1,
     completedNodes: [],
+    completedLessons: [],
     drafted: [],
     achievements: [],
     rewards: [],
@@ -35,6 +38,7 @@ export function mergeProgress(a: Progress, b: Progress): Progress {
   return {
     version: 1,
     completedNodes: union(a.completedNodes, b.completedNodes),
+    completedLessons: union(a.completedLessons ?? [], b.completedLessons ?? []),
     drafted: union(a.drafted, b.drafted),
     achievements: union(a.achievements, b.achievements),
     rewards: union(a.rewards, b.rewards),

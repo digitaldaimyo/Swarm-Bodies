@@ -280,6 +280,8 @@ const Id = z.string().min(1).max(32);
 export const ProgressSchema = z.object({
   version: z.literal(1),
   completedNodes: z.array(Id).max(64),
+  /** Absent in progress saved before the Training grounds. */
+  completedLessons: z.array(Id).max(32).default([]),
   drafted: z.array(z.enum(MUTATION_IDS as [MutationId, ...MutationId[]])).max(32),
   achievements: z.array(Id).max(128),
   rewards: z.array(Id).max(64),

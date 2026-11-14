@@ -51,10 +51,12 @@ Coordinates are axial `(q, r)`. "b" is biomass. The outcomes marked **verified**
   - **Rock:** a ridge across the middle, leaving a 3-cell chokepoint. Rock cells are listed when this is built.
   - **Deposit:** one in the gap.
   - **You:** core (-4,0) b5, then (-3,0) b3, (-2,0) b3, (-1,0) b4, and a thin cell in the gap at (0,0) b1.
-  - **Enemy:** core (4,0) b5, then (3,0) b3, (2,0) b3, (1,0) b3.
-- **Turn 1:** you submit nothing. The enemy attacks (1,0)→(0,0): attack 3 vs defense 1 + 1 support = 2. **Captured:** the gap cell and its deposit are lost.
-- **Turn 2:** you retake it from (-1,0) b4 into (0,0): 4 vs 1 + 1 = 2. **Captured,** with b2.
-- **Turn 3:** you Reinforce (0,0) to 5, and the enemy repeats the same attack. Reinforce resolves before growth, so it is 3 vs 5 + 1 = 6. **Repelled:** your cell keeps 4 (5 − ⌊3/2⌋).
+  - **Enemy:** core (4,0) b5, then (3,0) b3, (2,0) b3, (1,0) b4.
+- **Turn 1:** you submit nothing. The enemy attacks (1,0)→(0,0): attack 4 vs defense 1 + 1 support = 2. **Captured,** and the deposit is lost.
+- **Turn 2:** you retake it from (-1,0) b4 into (0,0): 4 vs 2 + 1 support = 3. **Captured,** with b1.
+- **Turn 3, as taught:** you Reinforce (0,0) to 4, and the enemy repeats the same attack. Reinforce resolves before growth, so it is 4 vs 4 + 1 = 5. **Repelled.**
+- **Turn 3, without Reinforce:** the same attack, 4 vs 1 + 1, **captures** the gap again. So the lesson only succeeds if you reinforce.
+- **Why the enemy feeder is b4, not b3 as first planned:** with b3, the turn-3 attack tied your unreinforced defense of 3 (2 + 1), and ties go to the defender. It failed even without Reinforce, so the lesson proved nothing (found while building step 2, 2026-11-14).
 - **Along the way:**
   - A step asks you to **zoom in**, which reveals the biomass numbers.
   - The drag label (attack vs defense) is pointed out.
@@ -274,6 +276,27 @@ Coordinates are axial `(q, r)`. "b" is biomass. The outcomes marked **verified**
    - A field note on every entry.
    - The Journal tab.
    - Unlock tracking in progress, with the same union merge as the campaign.
+
+## Progress
+
+**Step 1 is done (PR #20).** The Novice opponent plays campaign nodes 1–3 (DECISIONS #122).
+
+**Step 2 is done.** Lesson groundwork and Lessons 1–3 (DECISIONS #123–#125).
+
+- **Engine:** `authoredGame()` in `packages/sim` builds a game from a hand-placed board. It is unit tested.
+- **Content:** Lessons 1–3, with boards, scripts, tutorial steps and goals, live in `packages/content/src/lessons.ts`.
+  - **Proven completable:** a unit test plays each lesson's intended moves through `resolveTurn` with the scripted opponent.
+  - **Proven to fail when it should:** Lesson 2 also fails if you skip Reinforce.
+- **Progress:** finished lessons go in `completedLessons`, synced with the same union merge as the campaign. Progress saved before this field existed still loads.
+- **Client:**
+  - **Opening:** "Training grounds" on the title screen opens a simple lesson list. Step 3 replaces it with a map.
+  - **Board:** a lesson opens framed on the whole board, with its goal shown above the tutorial text.
+  - **Opponent:** it follows the script.
+  - **Restart:** "Restart lesson" starts over.
+  - **Completion:** once the goal holds after a turn, a "Lesson complete" card offers the next lesson.
+  - **No rewards:** lessons never replace a saved skirmish and earn no achievements.
+- **New trigger:** `zoomIn`, which completes when the board is zoomed in far enough to show biomass.
+- **Tests:** e2e plays all three lessons through the UI, and axe checks the Training grounds screen.
 
 ## Still to discuss
 

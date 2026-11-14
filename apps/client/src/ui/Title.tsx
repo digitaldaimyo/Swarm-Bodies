@@ -9,6 +9,8 @@ interface Props {
   onCampaign(): void;
   onDaily(): void;
   onCodex(): void;
+  /** The Training grounds (docs/plans/tutorial.md). */
+  onTraining(): void;
 }
 
 /** Title screen with an animated slime backdrop (SPEC §10.1), drawn as SVG, no bitmaps. */
@@ -21,6 +23,7 @@ export function Title({
   onCampaign,
   onDaily,
   onCodex,
+  onTraining,
 }: Props) {
   const click = (fn: () => void) => () => {
     audio.unlock();
@@ -54,6 +57,9 @@ export function Title({
           </button>
           <button class="btn" onClick={click(onDaily)}>
             Daily Seed
+          </button>
+          <button class="btn" onClick={click(onTraining)}>
+            Training grounds
           </button>
           <div class="menu-row">
             <button class="btn btn-ghost" onClick={click(onCodex)}>
