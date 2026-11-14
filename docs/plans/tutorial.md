@@ -7,7 +7,7 @@
 1. **Training grounds:** mini-world lessons. This document, settled below.
 2. **The narrator:** Dr. Ottoline Purr, a space-cat xenobiologist. Settled below.
 3. **A deeper Codex,** written as Dr. Purr's field journal. Settled below.
-4. **Easier opponents on early campaign nodes** (DECISIONS #121). To plan with this pass.
+4. **Easier opponents on early campaign nodes** (DECISIONS #121). Settled below.
 
 ## Decisions (2026-11-14)
 
@@ -207,6 +207,44 @@ Coordinates are axial `(q, r)`. "b" is biomass. The outcomes marked **verified**
 - **A new Journal tab** holds lore entries unlocked by lessons, campaign nodes and achievements. Over time it tells the story of the survey, the belt and the "clever or hungry?" question.
 - **Content:** all text is data in `packages/content`, so writing can grow without code changes.
 
+## Easier early opponents: a Novice bot (decided 2026-11-14)
+
+- **Why a new level:** nodes 1–4 already use the Easy bot, and playtests still find it too strong. Easy stays as it is: skirmish players and the balance checks rely on it.
+- **What Novice is:** a new difficulty, used by the campaign only.
+  - **Fewer orders:** at most 2–3 a turn, so it grows slowly.
+  - **No attacks on thick cells:** it only attacks when it would capture by a clear margin.
+  - **No early aggression:** it starts no fights in the first few turns.
+  - **Looser choices:** it picks among a wider set of good moves.
+- **Where:**
+  - Nodes 1–3 move to Novice.
+  - Nodes 4 and 8 stay Easy, as the step up.
+  - Nodes 5 and later are unchanged.
+- **How we'll know it's right:** the balance tool plays Easy-bot "players" against each early node's opponent on that node's map.
+  - First, measure the win rate against today's Easy opponents.
+  - Target: the stand-in player wins at least 80% against Novice.
+
+## Order of work (one PR each, playtested between)
+
+1. **The Novice opponent on nodes 1–3.**
+2. **Lesson groundwork:**
+   - Hand-placed boards in the engine.
+   - The scripted opponent and lesson goals.
+   - Lessons 1–3.
+3. **The Training grounds screen** (from the title screen), Lessons 4–7, and "Try that turn again".
+4. **Dr. Purr:**
+   - Portrait, bubble and chirp.
+   - Her lesson lines.
+   - Campaign-map introductions and the results-screen line.
+   - The setting.
+   - The old tutorial cards come off campaign nodes 1–3.
+5. **In-game moments:**
+   - The detectors.
+   - A frequency measurement over bot games.
+   - Her lines during play.
+6. **The Codex as her field journal:** field notes on every entry, and the Journal tab.
+
+**Writing:** Claude drafts all of Dr. Purr's lines and the lore entries as editable data. The user reviews the first batch to lock in her voice.
+
 ## What needs building
 
 1. **Authored maps (sim):** a production way to build a game from a hand-placed board: radius, rock, deposits, cells and nutrients. Today only the test helper `scenario()` can do this. Golden replays stay unaffected.
@@ -239,6 +277,5 @@ Coordinates are axial `(q, r)`. "b" is biomass. The outcomes marked **verified**
 
 ## Still to discuss
 
-- Easier early-campaign opponents (DECISIONS #121).
-- Order of work: which parts ship first, and in which PRs.
+- Achievements for the Training grounds and the Journal: decide when step 3 lands.
 - Achievements for completing the Training grounds.
