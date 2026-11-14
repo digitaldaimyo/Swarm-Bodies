@@ -4,10 +4,12 @@
  *   pnpm balance -- --games 200 [--players normal,random] [--seed prefix] [--strains a,b]
  *                   [--map singleRock|system] [--rules JSON] [--json]
  *   pnpm balance -- --matrix --games 200 --map system [--gate] [--jobs 4] [--rules JSON]
+ *   pnpm balance -- --beginner --games 40
  *
  * `--matrix` plays every pair of playable strains (Normal vs Normal) and checks the SPEC §12.4
  * targets; `--gate` exits non-zero if any pair leaves 30–70% (the CI gate). `--jobs N` splits
- * the pairs over N processes. `--rules` overrides tunables for experiments.
+ * the pairs over N processes. `--rules` overrides tunables for experiments. `--beginner` measures
+ * how often an Easy-bot stand-in for a new player wins the early campaign nodes.
  *
  * Seats alternate every game so neither policy always moves as player 0. `--strains a,b` gives
  * side A strain a and side B strain b; each strain follows its side when seats swap.
@@ -20,7 +22,10 @@ import {
   type Rules,
   type StrainId,
 } from "@swarm/sim";
+import type { Difficulty } from "@swarm/bot";
+import { CAMPAIGN } from "@swarm/content";
 import { execFile } from "node:child_process";
+import { beginnerWinRate } from "./campaign-play";
 import { checkTargets, formatMatrix, mergeMatrices, runMatrix, type MatrixReport } from "./matrix";
 import { isPolicyName, playGame, policyByName, type PlayedGame, type PolicyName } from "./play";
 
@@ -36,6 +41,7 @@ interface Options {
   jobs: number;
   shard: { index: number; of: number } | null;
   rules: Partial<Rules> | null;
+  beginner: boolean;
 }
 
 export function parseArgs(argv: readonly string[]): Options {
@@ -51,6 +57,7 @@ export function parseArgs(argv: readonly string[]): Options {
     jobs: 1,
     shard: null,
     rules: null,
+    beginner: false,
   };
   const args = argv.filter((a) => a !== "--");
   for (let i = 0; i < args.length; i++) {
@@ -109,6 +116,9 @@ export function parseArgs(argv: readonly string[]): Options {
         break;
       case "--gate":
         opts.gate = true;
+        break;
+      case "--beginner":
+        opts.beginner = true;
         break;
       case "--jobs": {
         const n = Number(value());
@@ -332,9 +342,29 @@ function execFileAsync(cmd: string, args: string[]): Promise<string> {
   });
 }
 
+/**
+ * Early-campaign gentleness (DECISIONS #122): an Easy-bot stand-in for a new player, against each
+ * early node's bots at Novice, Easy and the node's own difficulty, `--games` plays each.
+ */
+function beginnerMain(opts: Options): void {
+  const nodes = CAMPAIGN.filter((n) => n.index <= 4 || n.index === 8);
+  console.log(`Beginner stand-in (Easy bot) win rate, ${opts.games} games per cell`);
+  console.log("  node                      novice   easy     (node's own)");
+  for (const node of nodes) {
+    const cell = (d: Difficulty) => {
+      const r = beginnerWinRate(node, d, opts.games);
+      return `${((100 * r.wins) / r.games).toFixed(0).padStart(3)}% ${r.meanTurns.toFixed(0).padStart(2)}t`;
+    };
+    console.log(
+      `  ${`${node.index}. ${node.name}`.padEnd(24)} ${cell("novice")}  ${cell("easy")}  (${node.opponent.difficulty})`,
+    );
+  }
+}
+
 function main(): void {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.matrix) return matrixMain(opts);
+  if (opts.beginner) return beginnerMain(opts);
   const started = performance.now();
   const report = runBatch({
     games: opts.games,

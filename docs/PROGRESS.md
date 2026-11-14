@@ -24,7 +24,7 @@
      - "Mini-world" challenges in small, contrived scenarios: zooming in reveals biomass, using terrain, battle mechanics.
      - A narrator character, a space-cat xenobiologist, who appears now and then. The same voice would enrich the Codex.
      - A deeper Codex that brings the universe to life.
-2. **Easier bots on early campaign nodes** (DECISIONS #121).
+2. **Easier bots on early campaign nodes:** done for nodes 1–3, with the Novice bot (DECISIONS #122). Nodes 4 and 8 are a cliff, awaiting a decision.
 3. Then the open items below.
 
 ### Open items
