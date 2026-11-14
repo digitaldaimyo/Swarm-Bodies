@@ -78,3 +78,13 @@ export function lighten(color: number, amount: number): number {
   };
   return (ch(16) << 16) | (ch(8) << 8) | ch(0);
 }
+
+export function darken(color: number, amount: number): number {
+  const ch = (shift: number) => Math.round(((color >> shift) & 255) * (1 - amount));
+  return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+}
+
+/** Positive amounts lighten toward white, negative ones darken toward black. */
+export function shade(color: number, amount: number): number {
+  return amount >= 0 ? lighten(color, amount) : darken(color, -amount);
+}

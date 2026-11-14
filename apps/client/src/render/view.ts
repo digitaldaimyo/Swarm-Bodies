@@ -38,12 +38,14 @@ import {
   SPACE,
   trailColor,
   veinScale,
+  shade,
 } from "./palette";
 import { SpritePool } from "./pool";
 import { drawPattern } from "./patterns";
 import { resourceRoutes, vascular, vesselWidth, type Vascular } from "../game/vascular";
 import { beat, pulse, starveTurnsLeft, strength, WAVE_STEP } from "../game/heartbeat";
 import { defenseParts, defenseText, fruitableCells, supplyPath } from "../game/readout";
+import { frontier, spread, strainStyle, type StrainStyle } from "../game/personality";
 import { SystemLayer } from "./system";
 
 export interface ViewCallbacks {
@@ -195,7 +197,7 @@ export class MatchView {
   inspectRoute = 0;
   private vasc: Vascular | null = null;
   private pending: readonly Order[] = [];
-  private fruitHints = false;
+  private planHints = false;
   /** Whether the board shows the live state (not a replay frame). */
   private boardLive = false;
   private readonly sparkLayer = new Container();
@@ -203,7 +205,29 @@ export class MatchView {
   private sparks: { sprite: Sprite; phase: number }[] = [];
   /** Cells sparkling as able to fruit (tests read this). */
   fruitable = 0;
-  /** Colony detail "Calm": no motes. Vessels, badges and rims stay. */
+  /**
+   * Personality (colony life, phase 5): each strain's vessels, webbing and heartbeat follow its
+   * style; Sporer colonies shed drifting specks; the viewer's frontier cells put out feelers
+   * toward the empty cells they could grow into, twitching at their strain's pace.
+   */
+  private styles = new Map<PlayerId, StrainStyle>();
+  private readonly feelerLayer = new Container();
+  private feelerTex: Texture | null = null;
+  private feelerSprites: { sprite: Sprite; phase: number; len: number; angle: number }[] = [];
+  private feelerPace = 1;
+  /** Feelers shown (tests read this). */
+  feelers = 0;
+  private readonly speckLayer = new Container();
+  private speckCells: { x: number; y: number; tint: number }[] = [];
+  private speckSprites: Sprite[] = [];
+  private specksLive: { sprite: Sprite; x: number; y: number; age: number; drift: number }[] = [];
+  private speckClock = 0;
+  private speckNext = 0;
+  /** Spore specks drifting now (tests read this). */
+  get specks(): number {
+    return this.specksLive.length;
+  }
+  /** Colony detail "Calm": no motes, feelers or specks. Vessels, badges and rims stay. */
   calm = false;
   /** Draining rims on cut-off cells: the turns each has left before it starves. */
   private readonly starveMarks = new Graphics();
@@ -324,8 +348,10 @@ export class MatchView {
       this.goo,
       this.depositMarks,
       this.starveMarks,
+      this.feelerLayer,
       this.flow,
       this.moteLayer,
+      this.speckLayer,
       this.sparkLayer,
       this.cores,
       this.inspectG,
@@ -354,6 +380,17 @@ export class MatchView {
         .circle(8, 8, 8)
         .fill({ color: 0x070b1a, alpha: 0.7 })
         .circle(8, 8, 5.5)
+        .fill(0xffffff),
+      resolution: 2,
+    });
+    // A feeler: a soft pseudopod, narrowing from its root to a rounded bulb at the tip.
+    this.feelerTex = this.app.renderer.generateTexture({
+      target: new Graphics()
+        .poly([3, 0.5, 19, 2.2, 19, 5.8, 3, 7.5])
+        .fill(0xffffff)
+        .circle(3, 4, 3.5)
+        .fill(0xffffff)
+        .circle(20, 4, 2.6)
         .fill(0xffffff),
       resolution: 2,
     });
@@ -904,18 +941,36 @@ export class MatchView {
       if (p < 0 || !c || (v.load[i] as number) < 2) continue;
       const a = hexToPixel(board.cells[i] as Hex);
       const b = hexToPixel(board.cells[p] as Hex);
-      const w = vesselWidth(v.load[i] as number) * veinScale(c.owner);
+      const style = this.styles.get(c.owner) ?? strainStyle(undefined);
+      const w = vesselWidth(v.load[i] as number) * veinScale(c.owner) * style.vein;
 
       // Arteries stand out; capillaries toward the edges all but vanish.
       const load = v.load[i] as number;
       const alpha = 0.16 + 0.36 * Math.min(1, Math.log2(load) / 5);
-      const s = this.vesselPool.takeRaw(lighten(playerColor(c.owner), 0.45), alpha);
-      s.anchor.set(0.5);
-      s.position.set((a.x + b.x) / 2, (a.y + b.y) / 2);
-      s.rotation = Math.atan2(b.y - a.y, b.x - a.x);
-      // Overshoot by the width so neighbouring vessels overlap into one continuous line.
-      s.width = Math.hypot(b.x - a.x, b.y - a.y) + w;
-      s.height = w;
+      const tint = shade(playerColor(c.owner), style.shade);
+      // A jagged strain kinks each vessel sideways at its middle, alternating by cell.
+      const len = Math.hypot(b.x - a.x, b.y - a.y);
+      const off = style.jag * len * (i % 2 === 0 ? 1 : -1);
+      const mid = {
+        x: (a.x + b.x) / 2 + (-(b.y - a.y) / len) * off,
+        y: (a.y + b.y) / 2 + ((b.x - a.x) / len) * off,
+      };
+      const legs: [Point, Point][] =
+        style.jag > 0
+          ? [
+              [a, mid],
+              [mid, b],
+            ]
+          : [[a, b]];
+      for (const [from, to] of legs) {
+        const s = this.vesselPool.takeRaw(tint, alpha);
+        s.anchor.set(0.5);
+        s.position.set((from.x + to.x) / 2, (from.y + to.y) / 2);
+        s.rotation = Math.atan2(to.y - from.y, to.x - from.x);
+        // Overshoot by the width so neighbouring vessels overlap into one continuous line.
+        s.width = Math.hypot(to.x - from.x, to.y - from.y) + w;
+        s.height = w;
+      }
       this.vessels++;
     }
   }
@@ -941,6 +996,7 @@ export class MatchView {
     this.boardSwaps++;
     this.boardLive = false;
     this.colony = colony.slice();
+    this.styles = new Map(state.players.map((p) => [p.id, strainStyle(p.strain)]));
     const body = (state.bodies[this.bodyId] ?? state.bodies[0]) as Body;
     const board = getBoard(body.radius);
     const g = this.gooG;
@@ -1009,7 +1065,10 @@ export class MatchView {
         bar.rotation = Math.atan2(q.y - p.y, q.x - p.x);
         bar.width = Math.hypot(q.x - p.x, q.y - p.y);
         bar.height =
-          (12 + 1.6 * Math.min(c.biomass, o.biomass)) * veinScale(c.owner) * (severed ? 0.55 : 1);
+          (12 + 1.6 * Math.min(c.biomass, o.biomass)) *
+          veinScale(c.owner) *
+          (1 + ((this.styles.get(c.owner)?.vein ?? 1) - 1) * 0.5) *
+          (severed ? 0.55 : 1);
       }
     });
     colony.forEach((c, i) => {
@@ -1051,6 +1110,7 @@ export class MatchView {
     this.rebuildFlow(v, defense, colony, board, body, state);
     this.rebuildCores(defense, colony, board);
     this.rebuildMotes(v, colony, board, body, state);
+    this.rebuildSpecks(colony, board);
     this.vasc = v;
     this.refreshSparks();
     this.drawStarveMarks(colony, board, state);
@@ -1093,10 +1153,11 @@ export class MatchView {
       s.tint = c.connected ? lighten(playerColor(c.owner), 0.5) : 0x9aa3ad;
       const root = v.root[i] as number;
       const b = beat(root >= 0 ? (defense[root] as number) : 0);
+      const pace = (this.styles.get(c.owner) ?? strainStyle(undefined)).pace;
       this.flowSprites.push({
         sprite: s,
         depth: Math.max(0, v.depth[i] as number),
-        period: b.period,
+        period: b.period * pace,
         depthAmp: b.depth,
         own: strength(defense[i] as number),
         base,
@@ -1146,7 +1207,8 @@ export class MatchView {
       this.cores.addChild(n);
       // A core beats with its own defense: slow and deep when it is hard to take.
       const b = beat(defense[i] as number);
-      this.coreSprites.push({ g: n, cell: i, period: b.period, depthAmp: b.depth, fed: 0 });
+      const period = b.period * (this.styles.get(c.owner) ?? strainStyle(undefined)).pace;
+      this.coreSprites.push({ g: n, cell: i, period, depthAmp: b.depth, fed: 0 });
     });
   }
 
@@ -1398,22 +1460,20 @@ export class MatchView {
     });
   }
 
-  /** Fruiting hints are shown only while the viewer can still plan orders. */
-  setFruitHints(on: boolean): void {
-    if (on === this.fruitHints) return;
-    this.fruitHints = on;
+  /** Fruiting hints and feelers are shown only while the viewer can still plan orders. */
+  setPlanHints(on: boolean): void {
+    if (on === this.planHints) return;
+    this.planHints = on;
     this.refreshSparks();
   }
 
   /** The viewer's cells that could fruit now (after queued orders) sparkle faintly. */
   private refreshSparks(): void {
     if (!this.state || !this.sparkTex) return;
-    const cells =
-      this.fruitHints && this.inputEnabled
-        ? fruitableCells(this.state, this.body, this.viewer, this.pending)
-        : [];
-    // Only when the board shows the live state, not a replay frame.
-    const live = this.boardLive;
+    // Only while planning, on the live state (not a replay frame).
+    const live = this.boardLive && this.planHints && this.inputEnabled;
+    const cells = live ? fruitableCells(this.state, this.body, this.viewer, this.pending) : [];
+    this.refreshFeelers(live);
     const board = getBoard(this.body.radius);
     let used = 0;
     if (live) {
@@ -1438,6 +1498,157 @@ export class MatchView {
     for (let k = used; k < this.sparks.length; k++)
       (this.sparks[k] as { sprite: Sprite }).sprite.visible = false;
     this.fruitable = used;
+  }
+
+  /** Feelers from the viewer's frontier toward the empty cells it could grow into. */
+  private refreshFeelers(live: boolean): void {
+    const board = getBoard(this.body.radius);
+    const list = live ? spread(frontier(this.body, this.colony, this.viewer), MAX_FEELERS) : [];
+    const color = lighten(playerColor(this.viewer), 0.15);
+    this.feelerPace = (this.styles.get(this.viewer) ?? strainStyle(undefined)).pace;
+    let used = 0;
+    for (const f of list) {
+      if (!this.feelerTex) break;
+      let fs = this.feelerSprites[used];
+      if (!fs) {
+        const sprite = new Sprite(this.feelerTex);
+        sprite.anchor.set(0, 0.5);
+        this.feelerLayer.addChild(sprite);
+        fs = { sprite, phase: 0, len: 0, angle: 0 };
+        this.feelerSprites.push(fs);
+      }
+      used++;
+      const a = hexToPixel(board.cells[f.from] as Hex);
+      const b = hexToPixel(board.cells[f.to] as Hex);
+      const d = Math.hypot(b.x - a.x, b.y - a.y);
+      fs.angle = Math.atan2(b.y - a.y, b.x - a.x);
+      // From the cell's edge, reaching toward (never into) the empty cell.
+      fs.sprite.position.set(a.x + (b.x - a.x) * 0.4, a.y + (b.y - a.y) * 0.4);
+      fs.sprite.rotation = fs.angle;
+      fs.sprite.tint = color;
+      fs.sprite.visible = true;
+      fs.len = d * 0.3;
+      fs.phase = ((f.from * 7 + f.to * 13) % 97) / 97;
+      fs.sprite.width = fs.len * 0.6;
+      fs.sprite.height = 6;
+      fs.sprite.alpha = 0.75;
+    }
+    for (let k = used; k < this.feelerSprites.length; k++) {
+      (this.feelerSprites[k] as { sprite: Sprite }).sprite.visible = false;
+    }
+    this.feelers = used;
+  }
+
+  /** Where Sporer colonies shed specks: their cells, spread under a cap. */
+  private rebuildSpecks(
+    colony: readonly (Colony | null)[],
+    board: ReturnType<typeof getBoard>,
+  ): void {
+    const cells: { x: number; y: number; tint: number }[] = [];
+    colony.forEach((c, i) => {
+      if (!c || !this.styles.get(c.owner)?.specks) return;
+      const p = hexToPixel(board.cells[i] as Hex);
+      cells.push({ x: p.x, y: p.y, tint: lighten(playerColor(c.owner), 0.6) });
+    });
+    this.speckCells = spread(cells, 60);
+    // Specks already drifting finish their drift; still specks are placed afresh.
+    if (this.reduceMotion) this.stillSpecks();
+  }
+
+  private takeSpeck(): Sprite | null {
+    let s = this.speckSprites.pop();
+    if (!s) {
+      if (this.speckLayer.children.length >= MAX_SPECKS || !this.dot) return null;
+      s = new Sprite(this.dot);
+      s.anchor.set(0.5);
+      s.blendMode = "add";
+      this.speckLayer.addChild(s);
+    }
+    s.visible = true;
+    return s;
+  }
+
+  private clearSpecks(): void {
+    for (const sp of this.specksLive) {
+      sp.sprite.visible = false;
+      this.speckSprites.push(sp.sprite);
+    }
+    this.specksLive = [];
+  }
+
+  /** Reduce motion: one still speck above each of the first Sporer cells, no drift. */
+  private stillSpecks(): void {
+    this.clearSpecks();
+    for (const c of spread(this.speckCells, MAX_SPECKS)) {
+      const sprite = this.takeSpeck();
+      if (!sprite) break;
+      sprite.tint = c.tint;
+      sprite.alpha = 0.55;
+      sprite.scale.set(0.16);
+      sprite.position.set(c.x + 6, c.y - 12);
+      this.specksLive.push({ sprite, x: c.x + 6, y: c.y - 12, age: 0, drift: 0 });
+    }
+  }
+
+  /** Feelers twitch and specks drift; both rest in Calm, and hold still with reduce motion. */
+  private tickPersonality(dt: number, t: number): void {
+    const calm = this.calm;
+    this.feelerLayer.visible = !calm;
+    this.speckLayer.visible = !calm;
+    if (calm) return;
+    const period = FEELER_PERIOD * this.feelerPace;
+    for (const f of this.feelerSprites) {
+      if (!f.sprite.visible) continue;
+      if (this.reduceMotion) {
+        f.sprite.width = f.len * 0.6;
+        f.sprite.rotation = f.angle;
+        continue;
+      }
+      const u = (t / period + f.phase) * Math.PI * 2;
+      // A slow reach with a quick flick on top: alive, but never past the cell's edge.
+      const reach = 0.6 + 0.25 * Math.sin(u) + 0.15 * Math.max(0, Math.sin(u * 3.1)) ** 4;
+      f.sprite.width = f.len * Math.min(1, reach);
+      f.sprite.rotation = f.angle + 0.14 * Math.sin(u * 1.7 + f.phase * 5);
+    }
+    if (this.reduceMotion) {
+      if (this.specksLive.length === 0 && this.speckCells.length) this.stillSpecks();
+      return;
+    }
+    if (this.specksLive.length && this.specksLive[0]?.drift === 0) this.clearSpecks();
+    this.speckClock += dt;
+    while (this.speckCells.length && this.speckClock >= SPECK_EVERY) {
+      this.speckClock -= SPECK_EVERY;
+      const c = this.speckCells[this.speckNext++ % this.speckCells.length] as {
+        x: number;
+        y: number;
+        tint: number;
+      };
+      const sprite = this.takeSpeck();
+      if (!sprite) break;
+      sprite.tint = c.tint;
+      const k = this.speckNext * 0.618;
+      const x = c.x + ((k % 1) - 0.5) * HEX_SIZE;
+      this.specksLive.push({ sprite, x, y: c.y, age: 0, drift: 0.6 + (k % 0.4) });
+    }
+    if (!this.speckCells.length) this.speckClock = 0;
+    const live: typeof this.specksLive = [];
+    for (const sp of this.specksLive) {
+      sp.age += dt / SPECK_LIFE;
+      if (sp.age >= 1) {
+        sp.sprite.visible = false;
+        this.speckSprites.push(sp.sprite);
+        continue;
+      }
+      // Rise and sway, fading in and out.
+      sp.sprite.position.set(
+        sp.x + Math.sin(sp.age * 6 + sp.drift * 9) * 4,
+        sp.y - sp.age * 26 * sp.drift,
+      );
+      sp.sprite.alpha = 0.7 * Math.sin(sp.age * Math.PI);
+      sp.sprite.scale.set(0.16 + 0.08 * (1 - sp.age));
+      live.push(sp);
+    }
+    this.specksLive = live;
   }
 
   /** Traces a held cell's supply route to its core and shows its defense. */
@@ -1518,6 +1729,7 @@ export class MatchView {
       return;
     }
     this.tickMotes(dt / 1000);
+    this.tickPersonality(dt / 1000, t);
     // Fruiting hints twinkle; with reduce motion they hold still.
     for (const sp of this.sparks) {
       if (!sp.sprite.visible) continue;
@@ -2060,3 +2272,11 @@ function depositColor(kind: DepositKind | null | undefined): number {
   if (kind === "mineral") return DEPOSIT_COLORS.mineral;
   return 0x5fbf5c;
 }
+
+/** Feelers: at most this many, spread over the frontier; one twitch cycle in seconds. */
+const MAX_FEELERS = 32;
+const FEELER_PERIOD = 1.8;
+/** Spore specks: the pool cap, seconds between specks, and how long each drifts. */
+const MAX_SPECKS = 24;
+const SPECK_EVERY = 0.22;
+const SPECK_LIFE = 2.4;
