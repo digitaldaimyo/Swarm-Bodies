@@ -71,8 +71,25 @@ test("a turn's replay tours every body with action, then returns to yours", asyn
     ),
   ).toBeGreaterThan(0);
   await expect.poll(motes, { timeout: 10_000 }).toBeGreaterThan(0);
-  await page.evaluate(() => ((window as unknown as { __swarm: Hook }).__swarm.view!.calm = true));
-  await expect.poll(motes, { timeout: 5_000 }).toBe(0);
+  // Calm takes effect at once, not on the next frame: with the ticker stopped (as frames can
+  // stall on a loaded runner, PR #19 CI in WebKit), the motes are already gone.
+  expect(
+    await page.evaluate(() => {
+      const v = (
+        window as unknown as {
+          __swarm: { view: { calm: boolean; motes: number; app: { ticker: { stop(): void } } } };
+        }
+      ).__swarm.view;
+      v.app.ticker.stop();
+      v.calm = true;
+      return v.motes;
+    }),
+  ).toBe(0);
+  await page.evaluate(() =>
+    (
+      window as unknown as { __swarm: { view: { app: { ticker: { start(): void } } } } }
+    ).__swarm.view.app.ticker.start(),
+  );
   await page.evaluate(() => ((window as unknown as { __swarm: Hook }).__swarm.view!.calm = false));
 
   const strip = page.getByRole("navigation", { name: "Bodies" });

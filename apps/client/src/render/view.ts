@@ -234,7 +234,21 @@ export class MatchView {
     return this.specksLive.length;
   }
   /** Colony detail "Calm": no motes, feelers or specks. Vessels, badges and rims stay. */
-  calm = false;
+  get calm(): boolean {
+    return this.calmOn;
+  }
+  /** Takes effect at once, not on the next frame (frames can stall; PR #19 CI in WebKit). */
+  set calm(on: boolean) {
+    this.calmOn = on;
+    if (!on) return;
+    this.rebuildMotesPool();
+    this.clearSpecks();
+    for (const c of this.coreSprites) c.fed = 0;
+    this.moteLayer.visible = false;
+    this.feelerLayer.visible = false;
+    this.speckLayer.visible = false;
+  }
+  private calmOn = false;
   /** Draining rims on cut-off cells: the turns each has left before it starves. */
   private readonly starveMarks = new Graphics();
   /** How many starvation rims the board shows (tests read this). */
