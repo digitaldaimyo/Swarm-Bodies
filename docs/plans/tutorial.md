@@ -5,8 +5,8 @@
 **Parts of this pass:**
 
 1. **Training grounds:** mini-world lessons. This document, settled below.
-2. **The narrator:** a space-cat xenobiologist. To discuss.
-3. **A deeper Codex** that brings the universe to life. To discuss.
+2. **The narrator:** Dr. Ottoline Purr, a space-cat xenobiologist. Settled below.
+3. **A deeper Codex,** written as Dr. Purr's field journal. Settled below.
 4. **Easier opponents on early campaign nodes** (DECISIONS #121). To plan with this pass.
 
 ## Decisions (2026-11-14)
@@ -139,6 +139,74 @@ Coordinates are axial `(q, r)`. "b" is biomass. The outcomes marked **verified**
 - **Turn 3:** both of you grow into (0,0) again, 5 vs 2. **You claim it;** the enemy's path halts.
 - **Goal:** take (0,0).
 
+## The narrator: Dr. Ottoline Purr (decided 2026-11-14)
+
+### Who she is
+
+- **Role:** Senior Xenobiologist aboard the survey ship _Third Nap_. She studies slime colonies across a dying star's asteroid belt.
+- **Your role:** the player is her research assistant, issued a chemotactic guidance beam. This explains why you can steer a slime.
+- **The running question:** are the swarms intelligent, or just very, very hungry? Dr. Purr is certain of the answer, and the answer changes from one journal entry to the next.
+
+### Voice
+
+- **A little smug, as cats are, and never mean.** She looks down on the slime, the universe and mildly on you, always in the tone of "keep up, assistant".
+- **The fact comes first, plain and correct.** The smugness is garnish, and a joke never makes a rule unclear.
+- **At most two short sentences per bubble.**
+- **Sample lines:**
+  - "Drag from the colony to grow. Three cells a turn: the specimen is ambitious, not fast."
+  - "A single cell, biomass one, guarding a feeding ground. I've seen better strategy from a hairball."
+  - "Same feeder, two results. Friends help. Even for slime."
+  - "You both reached for it at the same moment. Neither got it. I relate to this deeply."
+
+### Look and sound
+
+- **A vector SVG portrait,** drawn in the page itself: a cat head in a round survey helmet beside a speech bubble. No bitmap art (CLAUDE.md).
+- **Three expressions:**
+
+  | Expression         | When                     | Look                              |
+  | ------------------ | ------------------------ | --------------------------------- |
+  | **Smug** (default) | explaining, neutral      | half-lidded eyes, one-sided smirk |
+  | **Intrigued**      | discoveries, good play   | ears forward, wide pupils         |
+  | **Unimpressed**    | mistakes, failed attacks | flat ears, a slow blink           |
+
+- **Motion:** a blink every few seconds, and a small pop on an expression change. Both hold still with reduce motion.
+- **Sound:** a very quiet synthesized "mrrp" chirp when a bubble opens, made with WebAudio. It follows the effects volume.
+
+### Where she speaks
+
+- **Lessons:** throughout. She hosts every Training-grounds lesson.
+- **Campaign map:** she introduces each node in its briefing. These lines replace or extend the current blurbs.
+- **Results screen:** a closing line on a win or a loss.
+- **In other games:** only at moments we can detect reliably and that are worth a line.
+  - **Detectors:** each moment is a pure function of the previous state, the turn's events and the new state, and each is unit tested.
+  - **Measured before shipping:** run the detectors over hundreds of bot games to measure how often they fire. The target is about 3–5 lines in a typical game.
+  - **Candidate moments,** each at most once per game:
+
+    | Moment                     | How it's detected                                                   |
+    | -------------------------- | ------------------------------------------------------------------- |
+    | Your first capture         | your first `CellCaptured`                                           |
+    | Your first repelled attack | `AssaultRepelled` with you attacking (cue: neighbours or Reinforce) |
+    | You cut their supply       | your capture this turn, plus ≥ 2 enemy cells newly disconnected     |
+    | Your supply is cut         | ≥ 2 of your cells newly disconnected                                |
+    | A core falls               | `CoreDestroyed`, yours or theirs                                    |
+    | First stalemate            | `CellStalemate` involving you                                       |
+    | First spore landing        | your `SporeLanded`                                                  |
+    | First flare or comet       | its warning event                                                   |
+    | A comeback                 | you were at ≤ 50% of the leader's cells, and now you lead           |
+
+  - **Taste rules:**
+    - At most one line per turn, with a cooldown of a few turns between lines.
+    - When several moments fire together, a priority order picks one.
+    - Lines appear after the replay, never while planning, and dismiss with a tap.
+- **Setting:** "Dr. Purr: On / Lessons only / Off". It defaults to On in campaign and skirmish, and to Lessons only in online play.
+
+## The Codex: Dr. Purr's field journal (decided 2026-11-14)
+
+- **The rules stay plain.** "How to play" stays a factual reference, lightly framed as Dr. Purr's "Guide for assistants".
+- **Field notes:** each entry (strains, mutations, body types, deposits, flares and comets) gains a short note in her voice. It unlocks when the player first meets that thing, the way mutation entries already fill in when drafted.
+- **A new Journal tab** holds lore entries unlocked by lessons, campaign nodes and achievements. Over time it tells the story of the survey, the belt and the "clever or hungry?" question.
+- **Content:** all text is data in `packages/content`, so writing can grow without code changes.
+
 ## What needs building
 
 1. **Authored maps (sim):** a production way to build a game from a hand-placed board: radius, rock, deposits, cells and nutrients. Today only the test helper `scenario()` can do this. Golden replays stay unaffected.
@@ -158,10 +226,19 @@ Coordinates are axial `(q, r)`. "b" is biomass. The outcomes marked **verified**
    - Lesson completion is stored in progress, with the same union merge as the campaign.
    - Lesson replays need no server: everything is offline.
 6. **Campaign cleanup:** remove the tutorial cards from nodes 1–3 once the lessons ship.
+7. **The narrator:**
+   - The portrait component (three expressions) and the speech bubble.
+   - The chirp.
+   - The moment detectors (client, pure, unit tested) and a measuring script over bot games.
+   - The setting.
+   - Campaign-map introductions.
+8. **The Codex:**
+   - A field note on every entry.
+   - The Journal tab.
+   - Unlock tracking in progress, with the same union merge as the campaign.
 
 ## Still to discuss
 
-- The narrator: a space-cat xenobiologist. Voice, look, when they speak, and how text is shown.
-- The deeper Codex: field notes, lore and unlocks.
 - Easier early-campaign opponents (DECISIONS #121).
+- Order of work: which parts ship first, and in which PRs.
 - Achievements for completing the Training grounds.
