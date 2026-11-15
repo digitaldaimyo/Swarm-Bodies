@@ -28,9 +28,10 @@
    Next: the user reviews the Journal's first draft, then the open items below.
    - **Settled:** seven optional lessons, Dr. Ottoline Purr as narrator, and the Codex as her field journal.
 
-2. **Client updates (playtest):** the installed app now checks for updates on resume, installs them outside matches, and heals stale pages (DECISIONS #140). Settings shows the build. The playtest bugs "Start does nothing" and "one body replaces another" need retesting on a current build.
-3. **Easier bots on early campaign nodes:** done for nodes 1–3, with the Novice bot (DECISIONS #122). Nodes 4 and 8 are a cliff, awaiting a decision.
-4. Then the open items below.
+2. **Beta readiness** (`docs/plans/beta.md`): Google sign-in linked to guests, beta hygiene (rate limits, waking server, error reports, feedback), legal pages and a domain, then a Paddle Supporter Pack. A $4.99 unlock comes later on the same pipeline.
+3. **Client updates (playtest):** the installed app now checks for updates on resume, installs them outside matches, and heals stale pages (DECISIONS #140). Settings shows the build. The playtest bugs "Start does nothing" and "one body replaces another" need retesting on a current build.
+4. **Easier bots on early campaign nodes:** done for nodes 1–3, with the Novice bot (DECISIONS #122). Nodes 4 and 8 are a cliff, awaiting a decision.
+5. Then the open items below.
 
 ### Open items
 

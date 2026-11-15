@@ -21,6 +21,19 @@ export const accounts = pgTable("accounts", {
   /** sha-256 of the bearer token; the token itself is never stored. */
   tokenHash: text("token_hash").notNull().unique(),
   name: text("name").notNull(),
+  /** Google's subject ID once linked with Sign in with Google (beta plan, step 1). */
+  googleSub: text("google_sub").unique(),
+  /** Set when the player deleted the account: the row stays so finished games still replay. */
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** More tokens for an account: each device that signs in with Google gets its own. */
+export const accountTokens = pgTable("account_tokens", {
+  tokenHash: text("token_hash").primaryKey(),
+  accountId: uuid("account_id")
+    .notNull()
+    .references(() => accounts.id, { onDelete: "cascade" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

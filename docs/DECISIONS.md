@@ -481,3 +481,34 @@ The plan, the user's decisions and the per-phase results are in `docs/plans/colo
      - **The fix:** `showBody` no longer turns the colony container's texture cache off and on again. It releases the old cache, moves the layers into a new container, and caches that one.
      - **A hint the cache lifecycle is fragile:** moving the layers out of a container still cached made them stop drawing even headless.
      - **Still to confirm on a phone**, together with #140.
+
+## 2026-11-15 — Beta readiness (docs/plans/beta.md)
+
+142. **Identity, payments and the first paid stage.**
+     - **Identity:** Sign in with Google links an existing guest, and is optional. Guests keep working. Signing in on a new device restores the account.
+     - **Payments:** Paddle, as merchant of record.
+     - **Stage one is a Supporter Pack, a one-time purchase of real content, not a donation.** Paddle does not process donations.
+     - **Purchases attach to signed-in accounts only.**
+     - **Later:** a $4.99 unlock of more campaign and Skirmish on the same entitlement pipeline. What stays free is decided then.
+
+## 2026-11-15 — Beta step 1: identity
+
+143. **How Google sign-in, names and deletion behave.**
+     - **Linking:**
+       - A Google account seen for the first time is linked to this device's guest, which keeps its token.
+       - With no guest yet, a new account is made and linked.
+     - **Restoring:** a Google account already linked elsewhere is the same player on another device.
+       - The device gets its own new token, kept in `account_tokens`, so other devices stay signed in.
+       - The device's own guest progress is merged in by union. Its rating and games stay with the old guest.
+       - The page reloads onto the restored account.
+     - **One Google account per device:** a device already linked to one Google account that signs in with another gets a new account. It never moves an existing link.
+     - **The server keeps only Google's subject ID.** No email.
+     - **Names** come from the protocol's word lists, with a number from 100 to 999. The server validates them, so there's nothing to moderate.
+     - **Deleting an account scrubs the row instead of removing it:**
+       - It keeps no name ("Deleted player"), no Google link, and a token nobody holds.
+       - Progress, push subscriptions, Daily scores, ratings and extra tokens are deleted.
+       - Seats in running games pass to the bot.
+       - The row stays only so finished games still replay.
+       - Progress on the device itself stays.
+     - **Google's script** loads only when Settings → Account is open, and never in e2e. Offline, the section says sign-in needs a connection.
+     - **The OAuth client ID is in the code as a default.** It's public by design, and `GOOGLE_CLIENT_ID` (server) or `VITE_GOOGLE_CLIENT_ID` (client) override it.

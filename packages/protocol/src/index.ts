@@ -191,6 +191,58 @@ export const GuestResponseSchema = z.object({
   accountId: z.string(),
   name: z.string(),
 });
+
+// Accounts (docs/plans/beta.md, step 1): names from word lists, Google sign-in, deletion.
+
+/** Player names are built from these lists, so there is nothing to moderate. */
+export const NAME_FIRST = [
+  "Amber",
+  "Basalt",
+  "Cobalt",
+  "Dusky",
+  "Ember",
+  "Frost",
+  "Glow",
+  "Hazy",
+  "Ion",
+  "Jade",
+  "Kelp",
+  "Lumen",
+] as const;
+export const NAME_SECOND = [
+  "Spore",
+  "Mote",
+  "Bloom",
+  "Tendril",
+  "Colony",
+  "Mycel",
+  "Vesicle",
+  "Cilia",
+] as const;
+export const NameChangeRequestSchema = z.object({
+  first: z.enum(NAME_FIRST),
+  second: z.enum(NAME_SECOND),
+  number: z.number().int().min(100).max(999),
+});
+export type NameChange = z.infer<typeof NameChangeRequestSchema>;
+export const playerName = (n: NameChange): string => `${n.first} ${n.second} ${n.number}`;
+
+/** A Google ID token from Sign in with Google. */
+export const GoogleSignInRequestSchema = z.object({ credential: z.string().min(20).max(4096) });
+export const AccountResponseSchema = z.object({
+  accountId: z.string(),
+  name: z.string(),
+  /** Linked to a Google account. */
+  google: z.boolean(),
+});
+/**
+ * After Google sign-in: the token to use from now on. `switched` is true when the Google
+ * account already belonged to another account than the caller's guest (a new device).
+ */
+export const GoogleSignInResponseSchema = GuestResponseSchema.extend({
+  google: z.literal(true),
+  switched: z.boolean(),
+});
 export const CreateGameRequestSchema = z.object({
   settings: GameSettingsSchema,
   strain: StrainSchema,

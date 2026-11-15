@@ -3,6 +3,7 @@ import { useState } from "preact/hooks";
 import type { ReplayFile } from "../game/replay";
 import { Cosmetics } from "./Cosmetics";
 import { BUILD, checkForUpdate } from "../net/update";
+import { AccountSection } from "./Account";
 import { TEXT_SCALES, updateSettings, useSettings, type Settings } from "./settings";
 
 export function SettingsScreen({
@@ -163,6 +164,7 @@ export function SettingsScreen({
           </p>
         )}
       </section>
+      <AccountSection />
       <section class="card" aria-labelledby="version-title">
         <h3 id="version-title">Version</h3>
         <p class="muted">
