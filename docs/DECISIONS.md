@@ -420,3 +420,26 @@ The plan, the user's decisions and the per-phase results are in `docs/plans/colo
      - **Off** replaces campaign introductions with the plain blurb, and hides the results line.
      - **Lessons** keeps campaign introductions but hides the results line.
      - **One setting everywhere:** the plan's "Lessons only by default in online play" is left to step 5, the in-game moments, which is the only place it matters.
+
+## 2026-11-14 — Training grounds, step 5: Dr. Purr's in-game moments
+
+132. **Moments are pure functions in `packages/content/src/moments.ts`** (docs/plans/tutorial.md, "In other games").
+     - **Why content:** the client and the balance tool share the same detectors, and so does any later use.
+     - **Its thresholds stay in that file, not in `sim/config.ts`:** the cooldown, the two-cell cut and the 50% comeback are presentation, not game rules. The sim never reads them.
+     - **Moments:** your core lost, their core taken, your supply cut, theirs cut, a comeback, a spore founding a new core, a capture, a repel, a stalemate, a flare warning, a comet warning.
+     - **Priority**, when several fire in a turn, follows that order.
+     - **Spore landings** count only when they found a new core. Captures by spore are already captures.
+     - **No "first" in the lines:** a moment can be spoken some turns late, after the cooldown.
+133. **The cooldown is 4 turns, measured with `pnpm balance -- --moments`.**
+     - **The run:** every campaign node, ten games each. An Easy-bot stand-in plays seat 0, against the node's own bots.
+     - **Cooldown 3:** 4.7 lines a game on average, and 39% of games had 6 or more.
+     - **Cooldown 4:** 4.1 lines on average, 64% of games had 3–5, and only 3% had 7. That is on the plan's 3–5 target.
+     - **The comeback almost never fires** against these bots (0% of games). It is kept, because a human comeback is exactly the moment she should notice.
+134. **Online games have no in-game moments.**
+     - **Why:** this meets the plan's "Lessons only by default in online play" without a second setting (#131).
+     - **Where she speaks:** in skirmish and campaign games, when the setting is On, never in lessons.
+135. **How the remark behaves.**
+     - **When:** after the replay, with the chirp.
+     - **It goes away:** with "Noted", on submit, or after 12 seconds.
+     - **It waits:** behind tutorial cards and the draft.
+     - **Resumed skirmishes:** what she has said is not saved, so after a resume she may repeat a moment. This is accepted.

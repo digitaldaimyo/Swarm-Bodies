@@ -58,6 +58,41 @@ test("campaign: Dr. Purr introduces node 1, then a win opens node 2 and records 
   await expect(page.locator(".achievement.got")).toContainText(["First Bloom"]);
 });
 
+test("Dr. Purr remarks on a moment in an offline game, and the remark can be dismissed", async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+  await page.goto("/?e2e");
+  await page.getByRole("button", { name: "Campaign" }).click();
+  await page.getByRole("listitem", { name: /1\. First Contact, open/ }).click();
+  await page.getByRole("button", { name: "Play" }).click();
+  await inMatch(page);
+  // The scripted player stops by itself as soon as she speaks, so the remark stays on screen.
+  await page.evaluate(() => {
+    const h = (window as unknown as { __swarm: Hook & { stopAtPurr?: boolean } }).__swarm;
+    h.stopAtPurr = true;
+    h.autoplay = true;
+  });
+  const remark = page.locator(".purr-moment");
+  const draft = page.getByRole("dialog", { name: /Mutation draft/ });
+  // A remark waits behind a draft; pick a card (tap to read, tap to pick) to reveal it.
+  await expect(remark.or(draft)).toBeVisible({ timeout: 200_000 });
+  if (await draft.isVisible()) {
+    const card = draft.getByRole("button").first();
+    await card.click();
+    await card.click();
+  }
+  await expect(remark).toBeVisible({ timeout: 15_000 });
+  await expect(remark).toContainText("Dr. Purr");
+  const said = await page.evaluate(
+    () => (window as unknown as { __swarm: { purr?: string[] } }).__swarm.purr ?? [],
+  );
+  expect(said).toHaveLength(1);
+  await expect(remark).toContainText(said[0]!);
+  await remark.getByRole("button", { name: "Dismiss Dr. Purr" }).click();
+  await expect(remark).toHaveCount(0);
+});
+
 test("Daily Seed: a run is validated by the server and appears on the leaderboard", async ({
   page,
 }) => {

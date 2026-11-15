@@ -1634,3 +1634,11 @@ h3 {
   font-weight: 700;
   letter-spacing: 0.02em;
 }
+/* Dr. Purr's in-game remark (tutorial step 5): smaller than a tutorial card, still dismissible. */
+.tutorial-card.purr-moment {
+  padding: 8px 12px;
+  gap: 4px;
+}
+.tutorial-card.purr-moment .tutorial-actions {
+  justify-content: flex-end;
+}

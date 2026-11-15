@@ -58,3 +58,13 @@ export {
   type LessonGoal,
 } from "./lessons";
 export { NARRATOR, RESULT_LINES, type Line, type Mood } from "./narrator";
+export {
+  MOMENT_COOLDOWN,
+  MOMENT_LINES,
+  MOMENT_PRIORITY,
+  detectMoments,
+  newMomentTracker,
+  nextMoment,
+  type MomentId,
+  type MomentTracker,
+} from "./moments";
