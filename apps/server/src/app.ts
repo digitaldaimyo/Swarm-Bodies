@@ -6,6 +6,9 @@ import type { ZodType } from "zod";
 import {
   CreateGameRequestSchema,
   DailySubmitRequestSchema,
+  GoogleSignInRequestSchema,
+  NameChangeRequestSchema,
+  playerName,
   LadderModeSchema,
   ProgressSchema,
   JoinGameRequestSchema,
@@ -18,6 +21,7 @@ import {
 import { z } from "zod";
 import { GameEngine, GameError, type Account, type Connection } from "./engine";
 import type { Progression } from "./progression";
+import type { GoogleVerifier } from "./google";
 
 const MAX_WS_MESSAGE = 64 * 1024;
 
@@ -29,6 +33,8 @@ export interface AppOptions {
   clientDir?: string | undefined;
   /** Other origins allowed to call the API (the GitHub Pages copy of the client). */
   corsOrigins?: readonly string[];
+  /** Checks Sign in with Google tokens (beta plan, step 1); tests pass a fake. */
+  googleVerify?: GoogleVerifier;
 }
 
 /** HTTP and WebSocket front end (SPEC §9.4). All game logic lives in GameEngine. */
@@ -38,6 +44,7 @@ export async function buildApp({
   logger = false,
   clientDir,
   corsOrigins = [],
+  googleVerify,
 }: AppOptions): Promise<FastifyInstance> {
   const app = Fastify({ logger, bodyLimit: 64 * 1024 });
   await app.register(websocket, { options: { maxPayload: MAX_WS_MESSAGE } });
@@ -97,10 +104,12 @@ export async function buildApp({
       );
     return r.data;
   };
-  const auth = async (req: FastifyRequest): Promise<Account> => {
+  const bearer = (req: FastifyRequest): string | null => {
     const header = req.headers.authorization ?? "";
-    const token = header.startsWith("Bearer ") ? header.slice(7) : null;
-    const account = await engine.authenticate(token);
+    return header.startsWith("Bearer ") ? header.slice(7) : null;
+  };
+  const auth = async (req: FastifyRequest): Promise<Account> => {
+    const account = await engine.authenticate(bearer(req));
     if (!account) throw new GameError("unauthorized", "Sign in as a guest first", 401);
     return account;
   };
@@ -109,6 +118,44 @@ export async function buildApp({
 
   app.get("/api/health", async () => ({ ok: true }));
   app.post("/api/guest", async (_req, reply) => ok(reply, await engine.createGuest()));
+  // Accounts (docs/plans/beta.md, step 1).
+  app.get("/api/me", async (req, reply) => ok(reply, await engine.me(await auth(req))));
+  app.put("/api/me/name", async (req, reply) => {
+    const account = await auth(req);
+    const name = playerName(parse(NameChangeRequestSchema, req.body));
+    await engine.rename(account, name);
+    return ok(reply, await engine.me({ ...account, name }));
+  });
+  app.delete("/api/me", async (req, reply) => {
+    await engine.deleteAccount(await auth(req));
+    return ok(reply, { ok: true });
+  });
+  app.post("/api/auth/google", async (req, reply) => {
+    if (!googleVerify) throw new GameError("unavailable", "Google sign-in is not set up", 503);
+    const { credential } = parse(GoogleSignInRequestSchema, req.body);
+    let sub: string;
+    try {
+      sub = await googleVerify(credential);
+    } catch {
+      throw new GameError("unauthorized", "Google sign-in could not be verified", 401);
+    }
+    const callerToken = bearer(req);
+    const caller = await engine.authenticate(callerToken);
+    const r = await engine.googleSignIn(caller, sub);
+    // Another device's guest signing in to an existing account: its progress comes along
+    // (union merge, as everywhere); its rating and games stay where they were.
+    if (r.switched && caller) {
+      const theirs = await progression.syncProgress(caller, null);
+      await progression.syncProgress({ id: r.accountId, name: r.name }, theirs);
+    }
+    return ok(reply, {
+      token: r.token ?? callerToken,
+      accountId: r.accountId,
+      name: r.name,
+      google: true,
+      switched: r.switched,
+    });
+  });
   app.post("/api/games", async (req, reply) => {
     const account = await auth(req);
     const body = parse(CreateGameRequestSchema, req.body);

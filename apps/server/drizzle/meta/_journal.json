@@ -15,6 +15,13 @@
       "when": 1794475356889,
       "tag": "0001_m7_progression",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794714658358,
+      "tag": "0002_accounts_google",
+      "breakpoints": true
     }
   ]
 }

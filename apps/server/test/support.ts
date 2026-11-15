@@ -5,6 +5,7 @@ import WebSocket from "ws";
 import type { FastifyInstance } from "fastify";
 import { parseServerMessage, type ClientMessage, type ServerMessage } from "@swarm/protocol";
 import { buildApp } from "../src/app";
+import type { GoogleVerifier } from "../src/google";
 import { openDatabase, type Database } from "../src/db";
 import { GameEngine, type Scheduler } from "../src/engine";
 import { Progression } from "../src/progression";
@@ -109,7 +110,7 @@ export interface Harness {
 export async function startServer(
   url: string,
   clock = new ManualClock(),
-  appOptions: { clientDir?: string; corsOrigins?: string[] } = {},
+  appOptions: { clientDir?: string; corsOrigins?: string[]; googleVerify?: GoogleVerifier } = {},
 ): Promise<Harness> {
   const database = await openDatabase(url);
   const scheduler = new ManualScheduler();

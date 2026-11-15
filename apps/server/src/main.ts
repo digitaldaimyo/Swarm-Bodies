@@ -5,6 +5,7 @@ import { buildApp } from "./app";
 import { Progression } from "./progression";
 import { GameEngine, realScheduler } from "./engine";
 import { webPushFromEnv } from "./push";
+import { googleVerifier } from "./google";
 
 /** Server entry point. Configuration comes from the environment. */
 const port = Number(process.env["PORT"] ?? 8787);
@@ -45,6 +46,7 @@ const app = await buildApp({
     .split(",")
     .map((o) => o.trim())
     .filter(Boolean),
+  googleVerify: googleVerifier(process.env["GOOGLE_CLIENT_ID"] || undefined),
 });
 
 // Catch up on anything that expired while the server was down, then keep sweeping (SPEC §9.4).

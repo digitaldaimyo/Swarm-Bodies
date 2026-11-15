@@ -8,7 +8,7 @@ import {
   type Strain,
 } from "@swarm/protocol";
 import { audio } from "../audio/sfx";
-import { api, ApiError, ensureGuest } from "../net/api";
+import { currentGuest, api, ApiError, ensureGuest } from "../net/api";
 import { gameSocket } from "../net/socket";
 import { enablePush, pushState } from "../net/push";
 import { loadStrain, storeStrain, StrainPicker } from "./StrainPicker";
@@ -284,6 +284,11 @@ export function Online({ onBack, onOpen }: Props) {
 
       <section class="card ranked">
         <h3>Ranked</h3>
+        {!currentGuest()?.google && (
+          <p class="hint">
+            Sign in with Google in Settings so your rating survives a new phone or cleared data.
+          </p>
+        )}
         {ladder && (
           <p class="muted">
             Season {ladder.season + 1} · {ladder.sector.name}: {ladder.sector.description} Ends{" "}

@@ -20,17 +20,21 @@ import type {
   ServerMessage,
   Strain,
 } from "@swarm/protocol";
-import { DEFAULT_SETTINGS } from "@swarm/protocol";
+import { DEFAULT_SETTINGS, NAME_FIRST, NAME_SECOND } from "@swarm/protocol";
 import { sectorFor } from "@swarm/content";
 import type { Db } from "./db";
 import type { PushSender } from "./push";
 import type { Progression } from "./progression";
 import {
+  accountTokens,
   accounts,
+  dailyScores,
   gamePlayers,
   games,
   gameSnapshots,
+  progress,
   pushSubscriptions,
+  ratings,
   turnOrders,
   turnResults,
 } from "./schema";
@@ -125,22 +129,6 @@ const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const SNAPSHOT_EVERY = 10;
 const MISSES_BEFORE_BOT = 3;
 const REMINDER_BEFORE_MS = 3600_000;
-const NAME_A = [
-  "Amber",
-  "Basalt",
-  "Cobalt",
-  "Dusky",
-  "Ember",
-  "Frost",
-  "Glow",
-  "Hazy",
-  "Ion",
-  "Jade",
-  "Kelp",
-  "Lumen",
-];
-const NAME_B = ["Spore", "Mote", "Bloom", "Tendril", "Colony", "Mycel", "Vesicle", "Cilia"];
-
 export const hashToken = (token: string): string =>
   createHash("sha256").update(token).digest("hex");
 
@@ -175,7 +163,7 @@ export class GameEngine {
 
   async createGuest(): Promise<{ token: string; accountId: string; name: string }> {
     const token = randomBytes(32).toString("base64url");
-    const name = `${NAME_A[randomInt(NAME_A.length)]} ${NAME_B[randomInt(NAME_B.length)]} ${randomInt(100, 1000)}`;
+    const name = `${NAME_FIRST[randomInt(NAME_FIRST.length)]} ${NAME_SECOND[randomInt(NAME_SECOND.length)]} ${randomInt(100, 1000)}`;
     const [row] = await this.db
       .insert(accounts)
       .values({ tokenHash: hashToken(token), name })
@@ -185,10 +173,109 @@ export class GameEngine {
 
   async authenticate(token: string | undefined | null): Promise<Account | null> {
     if (!token || token.length < 16 || token.length > 128) return null;
-    const row = await this.db.query.accounts.findFirst({
-      where: eq(accounts.tokenHash, hashToken(token)),
+    const hash = hashToken(token);
+    let row = await this.db.query.accounts.findFirst({ where: eq(accounts.tokenHash, hash) });
+    if (!row) {
+      // A device that signed in with Google has its own token (beta plan, step 1).
+      const extra = await this.db.query.accountTokens.findFirst({
+        where: eq(accountTokens.tokenHash, hash),
+      });
+      if (extra)
+        row = await this.db.query.accounts.findFirst({ where: eq(accounts.id, extra.accountId) });
+    }
+    return row && !row.deletedAt ? { id: row.id, name: row.name } : null;
+  }
+
+  async me(account: Account): Promise<{ accountId: string; name: string; google: boolean }> {
+    const row = await this.db.query.accounts.findFirst({ where: eq(accounts.id, account.id) });
+    return { accountId: account.id, name: row?.name ?? account.name, google: !!row?.googleSub };
+  }
+
+  /**
+   * Sign in with Google. A Google account not seen before is linked to the caller's guest (or
+   * to a new account when there is no caller). One already linked elsewhere is the same player
+   * on another device: they get a new token for that account, and `switched` says so.
+   */
+  async googleSignIn(
+    caller: Account | null,
+    googleSub: string,
+  ): Promise<{ token: string | null; accountId: string; name: string; switched: boolean }> {
+    const linked = await this.db.query.accounts.findFirst({
+      where: eq(accounts.googleSub, googleSub),
     });
-    return row ? { id: row.id, name: row.name } : null;
+    if (linked && !linked.deletedAt) {
+      const token = randomBytes(32).toString("base64url");
+      await this.db
+        .insert(accountTokens)
+        .values({ tokenHash: hashToken(token), accountId: linked.id });
+      return { token, accountId: linked.id, name: linked.name, switched: caller?.id !== linked.id };
+    }
+    if (linked) {
+      // A deleted account freed this Google ID: it may sign up again.
+      await this.db.update(accounts).set({ googleSub: null }).where(eq(accounts.id, linked.id));
+    }
+    // A caller already linked to another Google account is not a guest to adopt.
+    const callerRow = caller
+      ? await this.db.query.accounts.findFirst({ where: eq(accounts.id, caller.id) })
+      : undefined;
+    let target = callerRow?.googleSub ? null : caller;
+    let token: string | null = null;
+    if (!target) {
+      const guest = await this.createGuest();
+      target = { id: guest.accountId, name: guest.name };
+      token = guest.token;
+    }
+    await this.db.update(accounts).set({ googleSub }).where(eq(accounts.id, target.id));
+    // `null`: the caller keeps the token they already hold.
+    return { token, accountId: target.id, name: target.name, switched: false };
+  }
+
+  async rename(account: Account, name: string): Promise<void> {
+    await this.db.update(accounts).set({ name }).where(eq(accounts.id, account.id));
+  }
+
+  /**
+   * Deletes the account (beta plan, step 1). The row stays, scrubbed, so finished games still
+   * replay with a "Deleted player" seat; everything else about the player goes. Seats in running
+   * games pass to the bot, as a long absence would.
+   */
+  async deleteAccount(account: Account): Promise<void> {
+    this.dequeue(account);
+    const seats = await this.db
+      .select({ gameId: gamePlayers.gameId })
+      .from(gamePlayers)
+      .innerJoin(games, eq(games.id, gamePlayers.gameId))
+      .where(and(eq(gamePlayers.accountId, account.id), eq(games.status, "active")));
+    for (const { gameId } of seats)
+      await this.withGame(gameId, async (g) => {
+        const seat = g.seats.find((s) => s.accountId === account.id);
+        if (!seat) return;
+        seat.botControlled = true;
+        seat.name = "Deleted player";
+        await this.db
+          .update(gamePlayers)
+          .set({ botControlled: true })
+          .where(and(eq(gamePlayers.gameId, g.id), eq(gamePlayers.seat, seat.seat)));
+        this.broadcastStatus(g, seat.seat);
+        if (g.state && this.everyoneReady(g)) await this.resolveLocked(g, g.state.turn);
+      });
+    await this.db.transaction(async (tx) => {
+      await tx.delete(accountTokens).where(eq(accountTokens.accountId, account.id));
+      await tx.delete(pushSubscriptions).where(eq(pushSubscriptions.accountId, account.id));
+      await tx.delete(progress).where(eq(progress.accountId, account.id));
+      await tx.delete(dailyScores).where(eq(dailyScores.accountId, account.id));
+      await tx.delete(ratings).where(eq(ratings.accountId, account.id));
+      await tx
+        .update(accounts)
+        .set({
+          name: "Deleted player",
+          googleSub: null,
+          // A token nobody holds: the old one stops working.
+          tokenHash: hashToken(randomBytes(32).toString("base64url")),
+          deletedAt: new Date(this.deps.clock.now()),
+        })
+        .where(eq(accounts.id, account.id));
+    });
   }
 
   // ----------------------------------------------------------------------------------------

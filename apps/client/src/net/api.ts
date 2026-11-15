@@ -6,6 +6,8 @@ import {
   ErrorResponseSchema,
   GameListResponseSchema,
   GameMetaSchema,
+  AccountResponseSchema,
+  GoogleSignInResponseSchema,
   GuestResponseSchema,
   JoinGameResponseSchema,
   ProgressResponseSchema,
@@ -24,6 +26,7 @@ import {
   type DailySubmitResponse,
   type LadderMode,
   type LadderResponse,
+  type NameChange,
   type ReplayResponse,
   type Strain,
 } from "@swarm/protocol";
@@ -36,6 +39,8 @@ export interface Guest {
   token: string;
   accountId: string;
   name: string;
+  /** Linked with Sign in with Google (beta plan, step 1). Absent in older saves. */
+  google?: boolean;
 }
 
 export class ApiError extends Error {
@@ -135,7 +140,58 @@ export async function ensureGuest(): Promise<Guest> {
   return creating;
 }
 
+/** This device's account, if it has one (never creates a guest). */
+export function currentGuest(): Guest | null {
+  guest ??= loadGuest();
+  return guest;
+}
+
+function remember(g: Guest): void {
+  guest = g;
+  storeGuest(g);
+}
+
+/** Forgets this device's account. The next online action starts a new guest. */
+export function forgetGuest(): void {
+  guest = null;
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Sign in with Google: links this device's guest, or, when the Google account already belongs
+ * to another account, switches this device to it (`switched`).
+ */
+export async function signInWithGoogle(credential: string): Promise<{ switched: boolean }> {
+  const r = await request(
+    "POST",
+    "/auth/google",
+    GoogleSignInResponseSchema,
+    { credential },
+    hasGuest(),
+  );
+  remember({ token: r.token, accountId: r.accountId, name: r.name, google: true });
+  return { switched: r.switched };
+}
+
+export async function renameAccount(n: NameChange): Promise<string> {
+  const me = await request("PUT", "/me/name", AccountResponseSchema, n);
+  const g = currentGuest();
+  if (g) remember({ ...g, name: me.name });
+  return me.name;
+}
+
+/** Deletes the online account (rating, synced progress, push) and forgets it on this device. */
+export async function deleteAccount(): Promise<void> {
+  await request("DELETE", "/me", OkResponseSchema);
+  forgetGuest();
+}
+
 export const api = {
+  me: () => request("GET", "/me", AccountResponseSchema),
   createGame: (settings: GameSettings, strain: Strain) =>
     request("POST", "/games", CreateGameResponseSchema, { settings, strain }),
   joinGame: (code: string, strain: Strain) =>

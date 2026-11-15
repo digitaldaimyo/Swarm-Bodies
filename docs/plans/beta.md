@@ -127,4 +127,15 @@
 
 ## Progress
 
-Not started.
+**Step 1 is built** (DECISIONS #143).
+
+- **Server:**
+  - `POST /api/auth/google`, `GET /api/me`, `PUT /api/me/name` and `DELETE /api/me`.
+  - An `account_tokens` table, and `google_sub` and `deleted_at` on accounts (migration 0002).
+  - ID tokens are verified with `jose` against Google's keys.
+- **Client:**
+  - **Settings → Account:** name, Sign in with Google, change name, sign out, delete account.
+  - **Online hub:** the ranked section prompts players to sign in.
+- **Tests:** server tests (with a fake Google verifier) and an e2e test for names and deletion.
+- **Still to do on devices:** sign in for real, including in an installed iPhone home-screen app.
+- **Your part:** the OAuth client's **authorised JavaScript origins** must list every address the game is served from: the Render site, the GitHub Pages site, and later the custom domain.

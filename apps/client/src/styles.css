@@ -1659,3 +1659,38 @@ h3 {
   margin: 0;
   font-style: italic;
 }
+/* Settings → Account (beta plan, step 1). */
+.account {
+  display: grid;
+  gap: 10px;
+}
+.account p {
+  margin: 0;
+}
+.google-button {
+  min-height: 44px;
+}
+.google-button:empty {
+  min-height: 0;
+}
+.name-picker {
+  display: grid;
+  gap: 8px;
+}
+.row-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.btn.danger,
+.btn-ghost.danger {
+  color: var(--bad);
+  border-color: var(--bad);
+}
+.account .confirm {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--bad);
+  border-radius: var(--radius);
+}
