@@ -64,7 +64,14 @@ export async function buildApp({
     // SPA fallback: app routes such as /replay/:id get the shell; unknown API paths stay 404.
     app.setNotFoundHandler((req, reply) => {
       const url = req.url.split("?")[0] ?? "";
-      if (req.method === "GET" && !url.startsWith("/api/") && url !== "/ws")
+      // A missing hashed asset is a stale page asking for an old build: say so plainly (the
+      // client reloads), rather than answering a script request with the HTML shell.
+      if (
+        req.method === "GET" &&
+        !url.startsWith("/api/") &&
+        !url.startsWith("/assets/") &&
+        url !== "/ws"
+      )
         return reply.header("cache-control", "no-cache").sendFile("index.html");
       return reply.status(404).send({ code: "notFound", message: "Not found" });
     });

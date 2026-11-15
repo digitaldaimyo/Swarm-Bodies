@@ -47,6 +47,10 @@ describe.skipIf(!databaseAvailable)("deployment: static client, SPA fallback, CO
     const replay = await h.app.inject({ method: "GET", url: "/replay/0000-abc?x=1" });
     expect(replay.statusCode).toBe(200);
     expect(replay.body).toContain("Swarm Bodies");
+    // A stale page asking for an old build's chunk gets a real 404, not the HTML shell.
+    const stale = await h.app.inject({ method: "GET", url: "/assets/session-OLD.js" });
+    expect(stale.statusCode).toBe(404);
+    expect(stale.body).not.toContain("Swarm Bodies");
     const api = await h.app.inject({ method: "GET", url: "/api/nope" });
     expect(api.statusCode).toBe(404);
     expect(api.json()).toMatchObject({ code: "notFound" });

@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { defineConfig, type Plugin } from "vite";
@@ -58,13 +59,31 @@ function serverProxy() {
 // GitHub Pages serves the app under /<repo>/ (VITE_BASE); everywhere else it is at "/".
 const base = process.env["VITE_BASE"] ?? "/";
 
+/** The commit being built (Render and GitHub Actions set one of these), for Settings. */
+function buildCommit(): string {
+  const env = process.env["RENDER_GIT_COMMIT"] ?? process.env["GITHUB_SHA"];
+  if (env) return env.slice(0, 7);
+  try {
+    return execSync("git rev-parse --short HEAD", { stdio: ["ignore", "pipe", "ignore"] })
+      .toString()
+      .trim();
+  } catch {
+    return "dev";
+  }
+}
+
 export default defineConfig({
   base,
+  define: {
+    __BUILD_COMMIT__: JSON.stringify(buildCommit()),
+    __BUILD_DATE__: JSON.stringify(new Date().toISOString().slice(0, 10)),
+  },
   plugins: [
     preact(),
     generatedIcons(),
     VitePWA({
-      registerType: "autoUpdate",
+      // net/update.ts decides when a waiting version installs (never under a match).
+      registerType: "prompt",
       injectRegister: false,
       manifest: {
         name: "Swarm Bodies",
@@ -90,6 +109,7 @@ export default defineConfig({
         ],
       },
       workbox: {
+        cleanupOutdatedCaches: true,
         globPatterns: ["**/*.{js,css,html,svg,png,webmanifest}"],
         navigateFallback: `${base}index.html`,
         navigateFallbackDenylist: [/^\/api\//, /^\/ws/],
