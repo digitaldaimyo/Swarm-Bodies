@@ -512,3 +512,25 @@ The plan, the user's decisions and the per-phase results are in `docs/plans/colo
        - Progress on the device itself stays.
      - **Google's script** loads only when Settings → Account is open, and never in e2e. Offline, the section says sign-in needs a connection.
      - **The OAuth client ID is in the code as a default.** It's public by design, and `GOOGLE_CLIENT_ID` (server) or `VITE_GOOGLE_CLIENT_ID` (client) override it.
+
+## 2026-11-15 — Beta step 2: hygiene
+
+144. **Rate limits, the waking server, error reports and feedback.**
+     - **Hosting:** Render's free tier for now (the user's call); a paid instance later.
+     - **Rate limits** (`@fastify/rate-limit`), per client address, on `/api/*` only:
+       - 300 requests a minute overall;
+       - 30 guest creations an hour;
+       - 30 Google sign-ins per 10 minutes;
+       - 30 error reports per 10 minutes.
+     - **WebSocket:** a connection gets 100 messages per 10 seconds, then is closed (code 1008).
+     - **No limits in tests and e2e,** which make hundreds of guests from one address.
+     - **Client address:** behind Render's proxy the server trusts exactly one hop, so the address is the one Render saw. Render sets `RENDER`; `TRUST_PROXY` overrides. Without a trusted proxy, `X-Forwarded-For` is ignored, so it can't be forged for a fresh budget.
+     - **Waking:** the Online hub tells "offline" from "the free server is waking".
+       - A refused connection is offline, shown at once.
+       - A slow answer or a 502–504 is waking. The hub shows "Waking the server… N s" and retries for up to 90 seconds, then reloads what failed.
+     - **Error reports** (`POST /api/errors`):
+       - **What's sent:** the message, stack, build, screen and a coarse device class ("Android Chrome", "iPhone Safari (app)"). No token, account or full user agent.
+       - **Limits:** at most 10 reports per page load and 30 per device per day. Repeats of the same message are dropped.
+       - **Storage:** kept 30 days, at most 5,000 rows.
+       - **Reading them:** `pnpm --filter @swarm/server errors [days]`.
+     - **Feedback:** Settings → Version → "Send feedback" opens a GitHub issue with the build and device class filled in. `VITE_FEEDBACK_URL` points it elsewhere.

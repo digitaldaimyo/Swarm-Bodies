@@ -1,8 +1,10 @@
 import { render } from "preact";
 import { healStaleChunks, startUpdates } from "./net/update";
+import { installErrorReporting } from "./net/errors";
 import { App } from "./ui/App";
 import "./styles.css";
 
+installErrorReporting();
 healStaleChunks();
 render(<App />, document.getElementById("app") as HTMLElement);
 

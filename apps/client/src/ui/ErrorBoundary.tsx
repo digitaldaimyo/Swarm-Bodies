@@ -1,4 +1,5 @@
 import { Component, type ComponentChildren } from "preact";
+import { reportError } from "../net/errors";
 
 interface State {
   error: Error | null;
@@ -17,6 +18,10 @@ export class ErrorBoundary extends Component<
 
   static override getDerivedStateFromError(error: unknown): State {
     return { error: error instanceof Error ? error : new Error(String(error)) };
+  }
+
+  override componentDidCatch(error: unknown): void {
+    reportError(error);
   }
 
   override render() {

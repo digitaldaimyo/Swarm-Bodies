@@ -25,6 +25,33 @@ test("Online with the server unreachable: retry state, ladder notice, no endless
   await expect(page.getByText("Your games will appear here")).toBeHidden();
 });
 
+test("a sleeping server: the Online hub says it is waking, then loads", async ({ page }) => {
+  // The free Render server answers 503 while it boots (docs/plans/beta.md, step 2).
+  let health = 0;
+  await page.route("**/api/health", (r) =>
+    ++health <= 3 ? r.fulfill({ status: 503, body: "" }) : r.continue(),
+  );
+  await page.goto("/?e2e");
+  await page.getByRole("button", { name: "Play online" }).click();
+  await expect(page.getByRole("heading", { name: /Waking the server/ })).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect(page.getByRole("heading", { name: /Waking the server/ })).toBeHidden({
+    timeout: 20_000,
+  });
+  await expect(page.getByText(/No games yet|Your games/).first()).toBeVisible();
+  expect(health).toBeGreaterThanOrEqual(4);
+});
+
+test("Settings: Send feedback opens a GitHub issue with the build filled in", async ({ page }) => {
+  await page.goto("/?e2e");
+  await page.getByRole("button", { name: "Settings" }).click();
+  const link = page.getByRole("link", { name: "Send feedback" });
+  const href = (await link.getAttribute("href")) ?? "";
+  expect(href).toContain("github.com/digitaldaimyo/Swarm-Bodies/issues/new");
+  expect(decodeURIComponent(href.replace(/\+/g, " "))).toMatch(/Build \w+ · \d{4}-\d{2}-\d{2}/);
+});
+
 test("Daily offline: still playable, leaderboard explains why it is missing", async ({ page }) => {
   await page.route("**/api/**", (r) => r.abort());
   await page.goto("/?e2e");

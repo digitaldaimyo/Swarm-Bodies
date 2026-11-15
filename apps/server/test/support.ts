@@ -4,7 +4,8 @@ import postgres from "postgres";
 import WebSocket from "ws";
 import type { FastifyInstance } from "fastify";
 import { parseServerMessage, type ClientMessage, type ServerMessage } from "@swarm/protocol";
-import { buildApp } from "../src/app";
+import { buildApp, type Limits } from "../src/app";
+import { ErrorLog } from "../src/errors";
 import type { GoogleVerifier } from "../src/google";
 import { openDatabase, type Database } from "../src/db";
 import { GameEngine, type Scheduler } from "../src/engine";
@@ -110,7 +111,13 @@ export interface Harness {
 export async function startServer(
   url: string,
   clock = new ManualClock(),
-  appOptions: { clientDir?: string; corsOrigins?: string[]; googleVerify?: GoogleVerifier } = {},
+  appOptions: {
+    clientDir?: string;
+    corsOrigins?: string[];
+    googleVerify?: GoogleVerifier;
+    limits?: Limits | false;
+    trustProxy?: number | false;
+  } = {},
 ): Promise<Harness> {
   const database = await openDatabase(url);
   const scheduler = new ManualScheduler();
@@ -118,7 +125,9 @@ export async function startServer(
   const silent = { info: () => undefined, warn: () => undefined, error: () => undefined };
   const progression = new Progression(database.db, { clock, log: silent });
   const engine = new GameEngine(database.db, { clock, scheduler, push, log: silent, progression });
-  const app = await buildApp({ engine, progression, ...appOptions });
+  const errorLog = new ErrorLog(database.db, clock);
+  // Tests make many guests from one address: no budgets unless a test asks for them.
+  const app = await buildApp({ engine, progression, errorLog, limits: false, ...appOptions });
   await app.listen({ port: 0, host: "127.0.0.1" });
   const address = app.server.address();
   const port = typeof address === "object" && address ? address.port : 0;

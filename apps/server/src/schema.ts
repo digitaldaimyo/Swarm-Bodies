@@ -192,3 +192,14 @@ export const ratings = pgTable(
     index("ratings_board").on(t.mode, t.season, t.rating),
   ],
 );
+
+/** Client error reports (beta plan, step 2): nothing personal; pruned to 30 days. */
+export const clientErrors = pgTable("client_errors", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  message: text("message").notNull(),
+  stack: text("stack"),
+  build: text("build").notNull(),
+  screen: text("screen").notNull(),
+  device: text("device").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
