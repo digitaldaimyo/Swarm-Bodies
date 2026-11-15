@@ -37,11 +37,33 @@ test("a screen whose code cannot load shows a recoverable error, not a blank pag
   page,
 }) => {
   await page.goto("/?e2e");
-  await page.route(/\/assets\/Codex-[^/]*\.js$/, (r) => r.abort());
+  await page.context().setOffline(true);
   await page.getByRole("button", { name: "Codex" }).click();
   await expect(page.getByRole("heading", { name: "You're offline" })).toBeVisible();
   await page.getByRole("button", { name: "Back to title" }).click();
   await expect(page.getByRole("button", { name: "Campaign" })).toBeVisible();
+  await page.context().setOffline(false);
+});
+
+test("a page from an older build heals itself: a missing chunk while online reloads once", async ({
+  page,
+}) => {
+  await page.goto("/?e2e");
+  // After a deploy, the old page's lazy chunks are gone from the server.
+  let requests = 0;
+  await page.route(/\/assets\/Codex-[^/]*\.js$/, (r) =>
+    requests++ === 0 ? r.fulfill({ status: 404, body: "" }) : r.continue(),
+  );
+  // Mark this page; a reload replaces it, and the mark with it.
+  await page.evaluate(() => ((window as unknown as { stale?: boolean }).stale = true));
+  await page.getByRole("button", { name: "Codex" }).click();
+  await page.waitForFunction(() => !(window as unknown as { stale?: boolean }).stale, null, {
+    timeout: 15_000,
+  });
+  await expect(page.getByRole("button", { name: "Campaign" })).toBeVisible({ timeout: 15_000 });
+  await page.getByRole("button", { name: "Codex" }).click();
+  await expect(page.getByRole("heading", { name: "Codex" })).toBeVisible({ timeout: 15_000 });
+  expect(requests).toBe(2);
 });
 
 test("empty states: no games yet, no Daily runs, an unknown replay link", async ({ page }) => {

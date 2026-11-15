@@ -460,3 +460,24 @@ The plan, the user's decisions and the per-phase results are in `docs/plans/colo
 139. **The Codex keeps her voice at every narrator setting.**
      - **Why:** the setting governs when she interrupts. Reading her journal is your choice.
      - **One portrait:** only the Journal tab shows her portrait, at the top, so a long list doesn't fill with blinking cats. Field notes get her gold name instead.
+
+## 2026-11-15 — Keeping the installed client current (playtest)
+
+140. **The client now updates itself instead of needing its site data cleared.**
+     - **The problem:**
+       - An installed app on a phone is mostly resumed, not relaunched, so it rarely checked for a new version.
+       - When a new version did arrive, it took over at once and deleted the old cached files. A page still running the old build then failed to load its lazy chunks, which broke Start in skirmish and online.
+       - The server answered a request for a missing `/assets/` file with the HTML shell, not a 404.
+     - **The fix** (`apps/client/src/net/update.ts`):
+       - **Checks:** at launch, whenever the app returns to the foreground, and hourly.
+       - **When it installs:** a new version waits, so the running page keeps its own cached files. It installs on the title screen, never under a match or a lobby (the service worker is in "prompt" mode).
+       - **Stale chunk:** if a lazy chunk fails to load and the server is reachable, the page is stale, so it reloads once (at most once a minute). Offline, the "You're offline" screen stays as before.
+       - **Server:** a missing `/assets/` file is a real 404.
+       - **Settings:** shows the build (commit and date), with a "Check for updates" button.
+     - **One last manual step:** phones still on the old worker need one full close and reopen to pick up this one. After that, no more clearing data.
+141. **Switching bodies builds a fresh colony container** (playtest: after System view, one body's colonies were drawn on every body).
+     - **The symptom:** on an Android phone, every colony layer froze on one body's colonies. That covered the colony body, cores and markers. The rock surface, rebuilt as a new container on each switch, stayed correct.
+     - **Not reproduced headless:** the colony data was always right, over a full random game with System-view visits and real pinch gestures. That points at the GPU-side texture cache, not the game state.
+     - **The fix:** `showBody` no longer turns the colony container's texture cache off and on again. It releases the old cache, moves the layers into a new container, and caches that one.
+     - **A hint the cache lifecycle is fragile:** moving the layers out of a container still cached made them stop drawing even headless.
+     - **Still to confirm on a phone**, together with #140.

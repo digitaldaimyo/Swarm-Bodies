@@ -2,6 +2,7 @@ import { audio } from "../audio/sfx";
 import { useState } from "preact/hooks";
 import type { ReplayFile } from "../game/replay";
 import { Cosmetics } from "./Cosmetics";
+import { BUILD, checkForUpdate } from "../net/update";
 import { TEXT_SCALES, updateSettings, useSettings, type Settings } from "./settings";
 
 export function SettingsScreen({
@@ -13,6 +14,9 @@ export function SettingsScreen({
 }) {
   const s = useSettings();
   const [fileError, setFileError] = useState<string | null>(null);
+  const [update, setUpdate] = useState<"idle" | "checking" | "current" | "offline" | "updating">(
+    "idle",
+  );
   const slider = (key: "master" | "sfx" | "ambience", label: string) => (
     <label class="field slider">
       <span>{label}</span>
@@ -158,6 +162,34 @@ export function SettingsScreen({
             {fileError}
           </p>
         )}
+      </section>
+      <section class="card" aria-labelledby="version-title">
+        <h3 id="version-title">Version</h3>
+        <p class="muted">
+          Build {BUILD.commit} · {BUILD.date}
+        </p>
+        <button
+          class="btn"
+          disabled={update === "checking" || update === "updating"}
+          onClick={() => {
+            audio.click();
+            setUpdate("checking");
+            void checkForUpdate().then(setUpdate);
+          }}
+        >
+          Check for updates
+        </button>
+        <p class="hint" role="status">
+          {update === "checking"
+            ? "Checking…"
+            : update === "current"
+              ? "You have the latest version."
+              : update === "offline"
+                ? "Couldn't reach the server. Try again when you're online."
+                : update === "updating"
+                  ? "Updating…"
+                  : ""}
+        </p>
       </section>
     </main>
   );
