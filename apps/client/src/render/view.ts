@@ -94,7 +94,7 @@ export class MatchView {
   readonly app = new Application();
   private readonly stars: Graphics[] = [];
   private readonly world = new Container();
-  private readonly goo = new Container();
+  private goo = new Container();
   private readonly gooG = new Graphics();
   private readonly glowLayer = new Container();
   private readonly triLayer = new Container();
@@ -490,8 +490,11 @@ export class MatchView {
     this.bodyId = id;
     if (changed) {
       this.buildGround();
-      // The colony texture is pinned to the body's extent: start it over for the new size.
-      if (this.goo.isCachedAsTexture) this.goo.cacheAsTexture(false);
+      // The colony texture is pinned to the body's extent: start it over for the new size, in
+      // a new container. Turning the old one's cache off and on again froze every colony layer
+      // on a phone's GPU (playtest: one body's colonies drawn on all of them); the ground,
+      // rebuilt fresh on every switch, never did.
+      this.renewGoo();
       this.gooG.clear();
       // Queued orders on the newly shown body are drawn again (playtest: they vanished).
       if (this.plan) this.setPlan(this.plan.orders, this.plan.player, this.plan.previews);
@@ -503,6 +506,21 @@ export class MatchView {
       this.fit(true);
     }
     this.setMode("body");
+  }
+
+  /** Moves the colony layers into a fresh, uncached container in the same place. */
+  private renewGoo(): void {
+    const old = this.goo;
+    // Release the old cache before its children move: they must leave its render group.
+    if (old.isCachedAsTexture) old.cacheAsTexture(false);
+    const fresh = new Container();
+    fresh.alpha = old.alpha;
+    fresh.addChild(...old.children);
+    const at = this.world.getChildIndex(old);
+    this.world.removeChild(old);
+    old.destroy();
+    this.world.addChildAt(fresh, at);
+    this.goo = fresh;
   }
 
   setMode(mode: ViewMode): void {
