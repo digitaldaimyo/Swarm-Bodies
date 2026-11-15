@@ -50,15 +50,20 @@ test("a page from an older build heals itself: a missing chunk while online relo
 }) => {
   await page.goto("/?e2e");
   // After a deploy, the old page's lazy chunks are gone from the server.
-  let misses = 0;
+  let requests = 0;
   await page.route(/\/assets\/Codex-[^/]*\.js$/, (r) =>
-    misses++ === 0 ? r.fulfill({ status: 404, body: "" }) : r.continue(),
+    requests++ === 0 ? r.fulfill({ status: 404, body: "" }) : r.continue(),
   );
-  const reloaded = page.waitForEvent("load");
+  // Mark this page; a reload replaces it, and the mark with it.
+  await page.evaluate(() => ((window as unknown as { stale?: boolean }).stale = true));
   await page.getByRole("button", { name: "Codex" }).click();
-  await reloaded;
+  await page.waitForFunction(() => !(window as unknown as { stale?: boolean }).stale, null, {
+    timeout: 15_000,
+  });
+  await expect(page.getByRole("button", { name: "Campaign" })).toBeVisible({ timeout: 15_000 });
   await page.getByRole("button", { name: "Codex" }).click();
-  await expect(page.getByRole("heading", { name: "Codex" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Codex" })).toBeVisible({ timeout: 15_000 });
+  expect(requests).toBe(2);
 });
 
 test("empty states: no games yet, no Daily runs, an unknown replay link", async ({ page }) => {
