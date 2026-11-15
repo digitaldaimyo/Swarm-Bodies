@@ -18,13 +18,14 @@
 
 ### Next
 
-1. **Tutorial pass** (`docs/plans/tutorial.md`): the plan is settled. Steps 1–5 are done:
+1. **Tutorial pass** (`docs/plans/tutorial.md`): **done.** All six steps are merged or in review:
    - the Novice opponent;
    - the Training grounds, with all seven lessons and "Try that turn again";
    - Dr. Ottoline Purr in lessons, campaign introductions and results;
-   - her in-game moments, measured at about 4 lines a game (`pnpm balance -- --moments`).
+   - her in-game moments, measured at about 4 lines a game (`pnpm balance -- --moments`);
+   - the Codex as her field journal: field notes, a World tab, and the Journal.
 
-   Next is step 6: the Codex as her field journal.
+   Next: the user reviews the Journal's first draft, then the open items below.
    - **Settled:** seven optional lessons, Dr. Ottoline Purr as narrator, and the Codex as her field journal.
 
 2. **Easier bots on early campaign nodes:** done for nodes 1–3, with the Novice bot (DECISIONS #122). Nodes 4 and 8 are a cliff, awaiting a decision.

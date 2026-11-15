@@ -341,6 +341,15 @@ Coordinates are axial `(q, r)`. "b" is biomass. The outcomes marked **verified**
 - **Client:** after the replay, in skirmish and campaign games with the setting On, a small bubble with the chirp. "Noted" dismisses it. Online games and lessons have none.
 - **Tests:** unit tests for each detector and the taste rules; e2e for a remark in campaign node 1 and its dismissal.
 
+**Step 6 is done.** The Codex as Dr. Purr's field journal (DECISIONS #136–#139). The tutorial pass is complete.
+
+- **Field notes:** in her voice, on every strain, mutation, body type, deposit, flare and comet. Each opens once you meet it in play.
+- **World tab:** body types, deposits, flares and comets, with plain facts from the rules.
+- **Journal tab:** 15 lore pages opened by lessons, campaign nodes and feats. A locked page says where to find it.
+- **How to play:** framed as her "guide for assistants". The rules themselves are unchanged.
+- **Content:** all of it is data in `packages/content/src/journal.ts`.
+- **Tests:** unit tests for coverage, unlocks, hints and `met` tracking. The e2e campaign test checks the Journal, notes and World after a win, and axe checks the new tabs.
+
 ## Still to discuss
 
 - Achievements for the Training grounds and the Journal: decide when step 3 lands.

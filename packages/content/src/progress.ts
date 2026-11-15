@@ -13,6 +13,8 @@ export interface Progress {
   completedLessons: string[];
   /** Mutations drafted at least once (fills the codex entry, SPEC §11.3). */
   drafted: MutationId[];
+  /** Strains, body types, deposits and events met in play (Dr. Purr's field notes). Missing in older saves. */
+  met: string[];
   achievements: string[];
   /** Cosmetics earned outside achievements (season rewards). */
   rewards: string[];
@@ -26,6 +28,7 @@ export function emptyProgress(): Progress {
     completedNodes: [],
     completedLessons: [],
     drafted: [],
+    met: [],
     achievements: [],
     rewards: [],
     selected: { palette: "default", vein: "default", trail: "default" },
@@ -40,6 +43,7 @@ export function mergeProgress(a: Progress, b: Progress): Progress {
     completedNodes: union(a.completedNodes, b.completedNodes),
     completedLessons: union(a.completedLessons ?? [], b.completedLessons ?? []),
     drafted: union(a.drafted, b.drafted),
+    met: union(a.met ?? [], b.met ?? []),
     achievements: union(a.achievements, b.achievements),
     rewards: union(a.rewards, b.rewards),
     selected: a.selected,

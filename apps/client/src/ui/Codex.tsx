@@ -4,6 +4,13 @@ import {
   ALL_MUTATIONS,
   CAMPAIGN,
   GUIDE,
+  JOURNAL,
+  MUTATION_NOTES,
+  NARRATOR,
+  STRAIN_NOTES,
+  WORLD,
+  journalHint,
+  journalUnlocked,
   strainInfo,
   strainUnlockNode,
   unlockedMutations,
@@ -11,21 +18,38 @@ import {
 } from "@swarm/content";
 import { PLAYABLE_STRAINS, type MutationId } from "@swarm/sim";
 import { useProgress } from "./progress";
+import { PurrSays } from "./Purr";
 
-type Tab = "howto" | "strains" | "mutations" | "achievements";
+type Tab = "howto" | "strains" | "mutations" | "world" | "achievements" | "journal";
+const TABS: readonly Tab[] = ["howto", "strains", "mutations", "world", "achievements", "journal"];
+
+/** One of Dr. Purr's field notes on a Codex entry (docs/plans/tutorial.md, step 6). */
+function FieldNote({ text }: { text: string | null }) {
+  return text ? (
+    <p class="field-note">
+      <span class="purr-name">{NARRATOR.name}</span> {text}
+    </p>
+  ) : (
+    <p class="hint">Dr. Purr hasn't seen one in the field yet.</p>
+  );
+}
 
 const mutationUnlockNode = (m: MutationId) =>
   CAMPAIGN.find((n) => n.unlocks.mutations?.includes(m))?.index ?? null;
 
 /**
- * Codex (SPEC §11.3, screen 8): strains, mutations and achievements. A mutation's entry fills
- * in once you have drafted it; until then only its name shows.
+ * Codex (SPEC §11.3, screen 8), kept as Dr. Purr's field journal (docs/plans/tutorial.md): the
+ * rules, strains, mutations, the world, feats, and her Journal. Her field note on an entry opens
+ * once you have met it in play; a mutation's entry fills in once you have drafted it.
  */
 export default function Codex({ onBack }: { onBack(): void }) {
   const progress = useProgress();
   const [tab, setTab] = useState<Tab>("howto");
   const strains = unlockedStrains(progress);
   const pool = unlockedMutations(progress);
+  const met = progress.met ?? [];
+  const journalOpen = JOURNAL.filter((j) => journalUnlocked(j, progress)).length;
+  const worldMet = WORLD.filter((w) => met.includes(w.id)).length;
   return (
     <main class="panel-screen codex">
       <header class="screen-header">
@@ -35,7 +59,7 @@ export default function Codex({ onBack }: { onBack(): void }) {
         <h2>Codex</h2>
       </header>
       <div class="segmented wrap" role="tablist" aria-label="Codex sections">
-        {(["howto", "strains", "mutations", "achievements"] as const).map((t) => (
+        {TABS.map((t) => (
           <button
             key={t}
             role="tab"
@@ -49,10 +73,19 @@ export default function Codex({ onBack }: { onBack(): void }) {
                 ? "Strains"
                 : t === "mutations"
                   ? `Mutations ${progress.drafted.length}/${ALL_MUTATIONS.length}`
-                  : `Feats ${progress.achievements.length}/${ACHIEVEMENTS.length}`}
+                  : t === "world"
+                    ? `World ${worldMet}/${WORLD.length}`
+                    : t === "achievements"
+                      ? `Feats ${progress.achievements.length}/${ACHIEVEMENTS.length}`
+                      : `Journal ${journalOpen}/${JOURNAL.length}`}
           </button>
         ))}
       </div>
+      {tab === "howto" && (
+        <p class="muted guide-frame">
+          {NARRATOR.fullName}'s guide for assistants: the rules, plainly. She insisted on the title.
+        </p>
+      )}
       {tab === "howto" &&
         GUIDE.map((section) => (
           <section key={section.id} class="card guide" aria-labelledby={`guide-${section.id}`}>
@@ -77,6 +110,7 @@ export default function Codex({ onBack }: { onBack(): void }) {
                   <li key={r}>{r}</li>
                 ))}
               </ul>
+              <FieldNote text={met.includes(`strain:${id}`) ? STRAIN_NOTES[id] : null} />
               {!open && (
                 <p class="hint">
                   Unlocks at campaign system {strainUnlockNode(id)}. Online: always.
@@ -106,6 +140,7 @@ export default function Codex({ onBack }: { onBack(): void }) {
                 <>
                   <p class="flavour">“{m.flavour}”</p>
                   <p class="note">{m.note}</p>
+                  <FieldNote text={MUTATION_NOTES[m.id]} />
                 </>
               ) : (
                 <p class="hint">Draft it once to fill this entry.</p>
@@ -116,6 +151,53 @@ export default function Codex({ onBack }: { onBack(): void }) {
             </section>
           );
         })}
+      {tab === "world" &&
+        WORLD.map((w) => {
+          const known = met.includes(w.id);
+          return (
+            <section
+              key={w.id}
+              class={known ? "card codex-entry" : "card codex-entry locked"}
+              data-world={w.id}
+            >
+              <h3>{w.name}</h3>
+              <ul class="facts">
+                {w.facts.map((f) => (
+                  <li key={f}>{f}</li>
+                ))}
+              </ul>
+              <FieldNote text={known ? w.note : null} />
+            </section>
+          );
+        })}
+      {tab === "journal" && (
+        <>
+          <PurrSays
+            line={{
+              mood: "smug",
+              text: "My field journal. Read what you've earned; the rest is none of your business yet.",
+            }}
+          />
+          {JOURNAL.map((j) => {
+            const open = journalUnlocked(j, progress);
+            return (
+              <section
+                key={j.id}
+                class={open ? "card codex-entry journal-entry" : "card codex-entry locked"}
+                data-journal={j.id}
+                aria-labelledby={`journal-${j.id}`}
+              >
+                <h3 id={`journal-${j.id}`}>{open ? j.title : "Unread page"}</h3>
+                {open ? (
+                  j.text.map((t) => <p key={t}>{t}</p>)
+                ) : (
+                  <p class="hint">{journalHint(j.unlock)}</p>
+                )}
+              </section>
+            );
+          })}
+        </>
+      )}
       {tab === "achievements" && (
         <ul class="achievements" aria-label="Achievements">
           {ACHIEVEMENTS.map((a) => {

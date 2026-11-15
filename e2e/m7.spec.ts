@@ -56,6 +56,16 @@ test("campaign: Dr. Purr introduces node 1, then a win opens node 2 and records 
   await page.getByRole("button", { name: "Codex" }).click();
   await page.getByRole("tab", { name: /Feats/ }).click();
   await expect(page.locator(".achievement.got")).toContainText(["First Bloom"]);
+
+  // Dr. Purr's field journal: the game opened her Journal pages and her notes on what it met.
+  await page.getByRole("tab", { name: /Journal/ }).click();
+  await expect(page.getByRole("heading", { name: "First contact" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "A result" })).toBeVisible();
+  await expect(page.getByText("Complete campaign system 12: Bloom.")).toBeVisible();
+  await page.getByRole("tab", { name: /Strains/ }).click();
+  await expect(page.locator(".field-note").first()).toContainText("Dr. Purr");
+  await page.getByRole("tab", { name: /World/ }).click();
+  await expect(page.locator("[data-world] .field-note").first()).toBeVisible();
 });
 
 test("Dr. Purr remarks on a moment in an offline game, and the remark can be dismissed", async ({

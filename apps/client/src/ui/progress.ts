@@ -164,6 +164,7 @@ export async function recordGame(summary: GameSummary): Promise<GameRewards> {
       ...p,
       achievements: earned,
       drafted: discovered,
+      met: summary.met,
       completedNodes: completes && node ? [node.id] : [],
     }),
   );
