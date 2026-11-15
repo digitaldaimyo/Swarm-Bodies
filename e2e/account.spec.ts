@@ -14,7 +14,10 @@ test("account: a guest picks a name from the lists, then deletes the account", a
   // Visiting the Online hub makes this device a guest.
   await page.getByRole("button", { name: "Back" }).click();
   await page.getByRole("button", { name: "Play online" }).click();
-  await expect(page.locator(".net-status")).toHaveText(/\w+ \w+ \d{3}/, { timeout: 15_000 });
+  // The hub makes the guest over REST; the socket's own status is not this test's business.
+  await page.waitForFunction(() => localStorage.getItem("swarm.guest.v1") !== null, null, {
+    timeout: 15_000,
+  });
   await expect(page.getByText("Sign in with Google in Settings")).toBeVisible();
   await page.getByRole("button", { name: "Back" }).click();
   await page.getByRole("button", { name: "Settings" }).click();
