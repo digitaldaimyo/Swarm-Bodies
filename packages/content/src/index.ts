@@ -68,3 +68,15 @@ export {
   type MomentId,
   type MomentTracker,
 } from "./moments";
+export {
+  JOURNAL,
+  MUTATION_NOTES,
+  STRAIN_NOTES,
+  WORLD,
+  journalHint,
+  journalUnlocked,
+  type JournalEntry,
+  type JournalUnlock,
+  type MetId,
+  type WorldEntry,
+} from "./journal";

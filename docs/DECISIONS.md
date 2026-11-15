@@ -443,3 +443,20 @@ The plan, the user's decisions and the per-phase results are in `docs/plans/colo
      - **It goes away:** with "Noted", on submit, or after 12 seconds.
      - **It waits:** behind tutorial cards and the draft.
      - **Resumed skirmishes:** what she has said is not saved, so after a resume she may repeat a moment. This is accepted.
+
+## 2026-11-15 — Training grounds, step 6: the Codex as Dr. Purr's field journal
+
+136. **Field notes open when you meet the thing in play.**
+     - **What counts:** every strain in the game (yours and the rivals'), every body type and deposit kind on the map, and any flare or comet warning. A mutation's note opens when you draft it, as its entry already did.
+     - **Where it's recorded:** the game summary gains `met`, and progress gains `met`, merged by union like everything else. Older saves and the server schema default it to empty.
+     - **Every game counts,** online included: meeting something doesn't depend on who you played.
+137. **A new World tab** holds body types, deposits, flares and comets.
+     - **Why a tab:** these had no Codex entries before. Each now has plain facts (numbers from `BASE_RULES`) and her note.
+     - **The Codex now has six tabs:** How to play, Strains, Mutations, World, Feats and Journal. They wrap to three rows on a phone.
+138. **The Journal opens from progress the game already keeps.**
+     - **Unlocks:** lessons, finishing every lesson, campaign nodes and feats. Nothing new is stored for it.
+     - **15 entries** tell the survey's story and answer "clever or hungry?" at node 12. They are Claude's first draft, for the user to review.
+     - **A locked page** says exactly where to find it.
+139. **The Codex keeps her voice at every narrator setting.**
+     - **Why:** the setting governs when she interrupts. Reading her journal is your choice.
+     - **One portrait:** only the Journal tab shows her portrait, at the top, so a long list doesn't fill with blinking cats. Field notes get her gold name instead.

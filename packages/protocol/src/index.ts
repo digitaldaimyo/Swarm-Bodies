@@ -283,6 +283,8 @@ export const ProgressSchema = z.object({
   /** Absent in progress saved before the Training grounds. */
   completedLessons: z.array(Id).max(32).default([]),
   drafted: z.array(z.enum(MUTATION_IDS as [MutationId, ...MutationId[]])).max(32),
+  /** Absent in progress saved before Dr. Purr's field notes. */
+  met: z.array(Id).max(64).default([]),
   achievements: z.array(Id).max(128),
   rewards: z.array(Id).max(64),
   selected: z.object({ palette: Id, vein: Id, trail: Id }),

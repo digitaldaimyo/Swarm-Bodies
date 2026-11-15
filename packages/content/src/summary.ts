@@ -63,6 +63,8 @@ export interface GameSummary {
   nutrientsFromCaptures: number;
   maxNutrients: number;
   ordersIssued: number;
+  /** Strains, body types, deposits and events seen in the game (Dr. Purr's field notes). */
+  met: string[];
 }
 
 export function summarizeGame(
@@ -105,7 +107,17 @@ export function summarizeGame(
     nutrientsFromCaptures: 0,
     maxNutrients: 0,
     ordersIssued: 0,
+    met: [],
   };
+  const met = new Set<string>();
+  const meet = (st: GameState) => {
+    for (const p of st.players) if (p.strain !== "base") met.add(`strain:${p.strain}`);
+    for (const b of st.bodies) {
+      met.add(`body:${b.type}`);
+      for (const d of b.deposits) if (d) met.add(`deposit:${d}`);
+    }
+  };
+  meet(state);
   const touched = new Set<number>();
   for (const orders of turns) {
     if (state.result) break;
@@ -118,6 +130,12 @@ export function summarizeGame(
     }
     for (const e of events) {
       switch (e.type) {
+        case "FlareWarning":
+          met.add("event:flare");
+          break;
+        case "CometWarning":
+          met.add("event:comet");
+          break;
         case "CellClaimed":
           if (e.player === player) s.cellsClaimed++;
           break;
@@ -164,6 +182,7 @@ export function summarizeGame(
       }
     }
     state = next;
+    meet(state);
     let cells = 0;
     let bodies = 0;
     let onComet = false;
@@ -192,6 +211,7 @@ export function summarizeGame(
   const ps = state.players.find((p) => p.id === player);
   s.mutations = ps?.mutations.slice() ?? [];
   s.bodiesTouched = touched.size;
+  s.met = [...met].sort();
   const result = state.result as GameResult | null;
   s.turns = result?.turn ?? state.turn;
   s.reason = result?.reason ?? "draw";
