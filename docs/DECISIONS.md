@@ -490,6 +490,7 @@ The plan, the user's decisions and the per-phase results are in `docs/plans/colo
      - **Stage one is a Supporter Pack, a one-time purchase of real content, not a donation.** Paddle does not process donations.
      - **Purchases attach to signed-in accounts only.**
      - **Later:** a $4.99 unlock of more campaign and Skirmish on the same entitlement pipeline. What stays free is decided then.
+
 ## 2026-11-15 — Beta step 1: identity
 
 143. **How Google sign-in, names and deletion behave.**
