@@ -39,6 +39,7 @@ import { Title } from "./Title";
 import { useSettings } from "./settings";
 import { loadStrain } from "./StrainPicker";
 import { applyUpdateIfIdle, onUpdateState } from "../net/update";
+import { setErrorScreen } from "../net/errors";
 
 // The match, results and replay viewer pull in PixiJS and the sim; load them on demand
 // so the title screen stays small (SPEC §10.7).
@@ -130,6 +131,7 @@ export function App() {
 
   useEffect(() => audio.applyLevels(), [settings]);
   // A new version installs on the title screen, never under a match or a lobby.
+  setErrorScreen(screen.name);
   const onTitle = screen.name === "title";
   useEffect(() => {
     applyUpdateIfIdle(!onTitle);

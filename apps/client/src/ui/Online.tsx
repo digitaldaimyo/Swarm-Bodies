@@ -11,6 +11,7 @@ import { audio } from "../audio/sfx";
 import { currentGuest, api, ApiError, ensureGuest } from "../net/api";
 import { gameSocket } from "../net/socket";
 import { enablePush, pushState } from "../net/push";
+import { wakeServer } from "../net/wake";
 import { loadStrain, storeStrain, StrainPicker } from "./StrainPicker";
 
 interface Props {
@@ -39,6 +40,9 @@ export function Online({ onBack, onOpen }: Props) {
   const [listFailed, setListFailed] = useState(false);
   const ladderMode = rankedPlayers === 2 ? "duel" : "ffa";
   const [status, setStatus] = useState(gameSocket().status);
+  // The free server sleeps when idle (beta plan, step 2): seconds spent waking it, or null.
+  const [waking, setWaking] = useState<number | null>(null);
+  const [wokeAt, setWokeAt] = useState(0);
   const [push, setPush] = useState(pushState());
   const queueTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -53,6 +57,24 @@ export function Online({ onBack, onOpen }: Props) {
         setListFailed(true);
         setError(e instanceof ApiError ? e.message : String(e));
       });
+
+  useEffect(() => {
+    let live = true;
+    void wakeServer((seconds) => live && setWaking(seconds)).then((state) => {
+      if (!live) return;
+      setWaking(null);
+      if (state === "up") {
+        // Anything that failed while it slept is fetched again.
+        setError(null);
+        setWokeAt(Date.now());
+        void ensureGuest().then((g) => live && setName(g.name));
+        void refresh();
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
 
   useEffect(() => {
     void ensureGuest()
@@ -82,7 +104,7 @@ export function Online({ onBack, onOpen }: Props) {
     return () => {
       live = false;
     };
-  }, [ladderMode]);
+  }, [ladderMode, wokeAt]);
 
   const run = async (fn: () => Promise<void>) => {
     audio.click();
@@ -148,15 +170,26 @@ export function Online({ onBack, onOpen }: Props) {
           ←
         </button>
         <h2>Online</h2>
-        <span class={`net-status ${status}`} role="status">
-          {status === "online"
-            ? name || "Online"
-            : status === "connecting"
-              ? "Connecting…"
-              : "Offline"}
+        <span class={`net-status ${waking !== null ? "connecting" : status}`} role="status">
+          {waking !== null
+            ? "Waking…"
+            : status === "online"
+              ? name || "Online"
+              : status === "connecting"
+                ? "Connecting…"
+                : "Offline"}
         </span>
       </header>
-      {error && (
+      {waking !== null && (
+        <section class="card waking" role="status" aria-live="polite">
+          <h3>Waking the server… {waking} s</h3>
+          <p class="hint">
+            The server sleeps when nobody has played for a while. It takes up to a minute to wake;
+            offline modes work meanwhile.
+          </p>
+        </section>
+      )}
+      {error && waking === null && (
         <p class="error-line" role="alert">
           {error}
         </p>
@@ -164,7 +197,7 @@ export function Online({ onBack, onOpen }: Props) {
 
       <section class="card">
         <h3>Your games</h3>
-        {games === null && listFailed ? (
+        {games === null && listFailed && waking === null ? (
           <div class="empty-state">
             <p class="hint">Your games will appear here once the server is reachable.</p>
             <button

@@ -1694,3 +1694,10 @@ h3 {
   border: 1px solid var(--bad);
   border-radius: var(--radius);
 }
+/* Online hub: the free server waking up (beta plan, step 2). */
+.card.waking {
+  border-color: var(--p0);
+}
+.card.waking h3 {
+  font-variant-numeric: tabular-nums;
+}

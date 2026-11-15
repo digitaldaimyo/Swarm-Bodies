@@ -2,8 +2,10 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import cors from "@fastify/cors";
 import fastifyStatic from "@fastify/static";
 import websocket from "@fastify/websocket";
+import rateLimit from "@fastify/rate-limit";
 import type { ZodType } from "zod";
 import {
+  ClientErrorReportSchema,
   CreateGameRequestSchema,
   DailySubmitRequestSchema,
   GoogleSignInRequestSchema,
@@ -22,6 +24,30 @@ import { z } from "zod";
 import { GameEngine, GameError, type Account, type Connection } from "./engine";
 import type { Progression } from "./progression";
 import type { GoogleVerifier } from "./google";
+import type { ErrorLog } from "./errors";
+
+/** Request budgets per client IP (docs/plans/beta.md, step 2). */
+export interface Limits {
+  /** Every /api request. */
+  api: { max: number; windowMs: number };
+  /** Creating a guest. */
+  guest: { max: number; windowMs: number };
+  /** Google sign-in. */
+  signIn: { max: number; windowMs: number };
+  /** Client error reports. */
+  errors: { max: number; windowMs: number };
+  /** WebSocket messages per connection per 10 s. */
+  wsPer10s: number;
+}
+
+export const DEFAULT_LIMITS: Limits = {
+  api: { max: 300, windowMs: 60_000 },
+  guest: { max: 30, windowMs: 3_600_000 },
+  signIn: { max: 30, windowMs: 600_000 },
+  errors: { max: 30, windowMs: 600_000 },
+  // A busy player sends a few messages a turn; this only stops floods.
+  wsPer10s: 100,
+};
 
 const MAX_WS_MESSAGE = 64 * 1024;
 
@@ -35,6 +61,15 @@ export interface AppOptions {
   corsOrigins?: readonly string[];
   /** Checks Sign in with Google tokens (beta plan, step 1); tests pass a fake. */
   googleVerify?: GoogleVerifier;
+  /** Client error reports (beta plan, step 2). */
+  errorLog?: ErrorLog;
+  /** Request budgets; `false` turns them off (e2e runs make hundreds of guests). */
+  limits?: Limits | false;
+  /**
+   * Proxy hops to trust for the client's address: 1 behind Render's proxy, so the address is
+   * the one Render saw, not one the client wrote into X-Forwarded-For.
+   */
+  trustProxy?: number | false;
 }
 
 /** HTTP and WebSocket front end (SPEC §9.4). All game logic lives in GameEngine. */
@@ -45,8 +80,31 @@ export async function buildApp({
   clientDir,
   corsOrigins = [],
   googleVerify,
+  errorLog,
+  limits = DEFAULT_LIMITS,
+  trustProxy = false,
 }: AppOptions): Promise<FastifyInstance> {
-  const app = Fastify({ logger, bodyLimit: 64 * 1024 });
+  const hops = trustProxy === false ? 0 : trustProxy;
+  // Trust exactly `hops` proxies in front of us (proxy-addr counts them from the server out).
+  const app = Fastify({
+    logger,
+    bodyLimit: 64 * 1024,
+    trustProxy: (_address: string, hop: number) => hop < hops,
+  });
+  if (limits)
+    await app.register(rateLimit, {
+      max: limits.api.max,
+      timeWindow: limits.api.windowMs,
+      // Only the API: the client's own files and the WebSocket upgrade are not budgeted here.
+      allowList: (req) => !req.url.startsWith("/api/"),
+      errorResponseBuilder: (_req, ctx) => ({
+        statusCode: ctx.statusCode,
+        code: "rateLimited",
+        message: `Too many requests. Try again in ${Math.ceil(ctx.ttl / 1000)} s.`,
+      }),
+    });
+  const budget = (l: { max: number; windowMs: number } | undefined) =>
+    l ? { config: { rateLimit: { max: l.max, timeWindow: l.windowMs } } } : {};
   await app.register(websocket, { options: { maxPayload: MAX_WS_MESSAGE } });
   // Auth is a bearer token in a header (never a cookie), so allowing listed origins is safe.
   if (corsOrigins.length > 0)
@@ -87,6 +145,12 @@ export async function buildApp({
   app.setErrorHandler((err, _req, reply) => {
     if (err instanceof GameError)
       return reply.status(err.status).send({ code: err.code, message: err.message });
+    // The rate limiter's own error (errorResponseBuilder above).
+    const limited = err as { statusCode?: number; code?: string; message?: string };
+    if (limited.statusCode === 429)
+      return reply
+        .status(429)
+        .send({ code: "rateLimited", message: limited.message ?? "Too many requests" });
     if ((err as { validation?: unknown }).validation)
       return reply
         .status(400)
@@ -117,7 +181,14 @@ export async function buildApp({
     reply.header("cache-control", "no-store").send(body);
 
   app.get("/api/health", async () => ({ ok: true }));
-  app.post("/api/guest", async (_req, reply) => ok(reply, await engine.createGuest()));
+  app.post("/api/guest", budget(limits ? limits.guest : undefined), async (_req, reply) =>
+    ok(reply, await engine.createGuest()),
+  );
+  app.post("/api/errors", budget(limits ? limits.errors : undefined), async (req, reply) => {
+    const report = parse(ClientErrorReportSchema, req.body);
+    await errorLog?.record(report);
+    return ok(reply, { ok: true });
+  });
   // Accounts (docs/plans/beta.md, step 1).
   app.get("/api/me", async (req, reply) => ok(reply, await engine.me(await auth(req))));
   app.put("/api/me/name", async (req, reply) => {
@@ -130,7 +201,7 @@ export async function buildApp({
     await engine.deleteAccount(await auth(req));
     return ok(reply, { ok: true });
   });
-  app.post("/api/auth/google", async (req, reply) => {
+  app.post("/api/auth/google", budget(limits ? limits.signIn : undefined), async (req, reply) => {
     if (!googleVerify) throw new GameError("unavailable", "Google sign-in is not set up", 503);
     const { credential } = parse(GoogleSignInRequestSchema, req.body);
     let sub: string;
@@ -255,7 +326,22 @@ export async function buildApp({
         send({ type: "error", code: "internal", message: "Something went wrong" });
       }
     };
+    // A flood guard per connection: a budget of messages per 10 s, refilled each window.
+    let windowStart = Date.now();
+    let used = 0;
     socket.on("message", (data) => {
+      if (limits) {
+        const now = Date.now();
+        if (now - windowStart >= 10_000) {
+          windowStart = now;
+          used = 0;
+        }
+        if (++used > limits.wsPer10s) {
+          send({ type: "error", code: "rateLimited", message: "Too many messages" });
+          socket.close(1008, "rate limited");
+          return;
+        }
+      }
       const msg = parseClientMessage(String(data));
       if (!msg) return send({ type: "error", code: "badMessage", message: "Malformed message" });
       void (async () => {

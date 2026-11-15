@@ -139,3 +139,12 @@
 - **Tests:** server tests (with a fake Google verifier) and an e2e test for names and deletion.
 - **Still to do on devices:** sign in for real, including in an installed iPhone home-screen app.
 - **Your part:** the OAuth client's **authorised JavaScript origins** must list every address the game is served from: the Render site, the GitHub Pages site, and later the custom domain.
+- **Confirmed on the user's phones (2026-11-15):** sign-in and Check for updates both work.
+
+**Step 2 is built** (DECISIONS #144). Hosting stays on Render's free tier for now.
+
+- **Rate limits:** budgets on `/api` and a WebSocket flood guard. Behind Render's proxy, the client's real address is used.
+- **Waking server:** "Waking the server… N s" in the Online hub, which retries for up to 90 seconds.
+- **Error reports:** `POST /api/errors`, kept 30 days. `pnpm --filter @swarm/server errors` prints them.
+- **Feedback:** "Send feedback" in Settings, as a GitHub issue with the build filled in.
+- **Tests:** server tests for limits, the trusted proxy, the flood guard and reports; client tests for the device class and waking; e2e for the waking hub and the feedback link.

@@ -4,6 +4,29 @@ import type { ReplayFile } from "../game/replay";
 import { Cosmetics } from "./Cosmetics";
 import { BUILD, checkForUpdate } from "../net/update";
 import { AccountSection } from "./Account";
+import { deviceClass } from "../net/errors";
+
+/** Where "Send feedback" goes (beta plan, step 2). VITE_FEEDBACK_URL points it elsewhere. */
+const FEEDBACK_URL =
+  (import.meta.env["VITE_FEEDBACK_URL"] as string | undefined) ||
+  "https://github.com/digitaldaimyo/Swarm-Bodies/issues/new";
+
+function feedbackLink(): string {
+  const body = [
+    "**What happened?**",
+    "",
+    "",
+    "**What did you expect?**",
+    "",
+    "",
+    "**Screenshots help a lot.**",
+    "",
+    "---",
+    `Build ${BUILD.commit} · ${BUILD.date} · ${deviceClass()}`,
+  ].join("\n");
+  const q = new URLSearchParams({ title: "Feedback: ", body, labels: "feedback" });
+  return `${FEEDBACK_URL}?${q.toString()}`;
+}
 import { TEXT_SCALES, updateSettings, useSettings, type Settings } from "./settings";
 
 export function SettingsScreen({
@@ -181,6 +204,16 @@ export function SettingsScreen({
         >
           Check for updates
         </button>
+        <a
+          class="btn"
+          href={feedbackLink()}
+          target="_blank"
+          rel="noopener"
+          onClick={() => audio.click()}
+        >
+          Send feedback
+        </a>
+        <p class="hint">Opens a GitHub issue with your build filled in (needs a GitHub account).</p>
         <p class="hint" role="status">
           {update === "checking"
             ? "Checking…"

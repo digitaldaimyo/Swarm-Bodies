@@ -6,6 +6,7 @@ import { Progression } from "./progression";
 import { GameEngine, realScheduler } from "./engine";
 import { webPushFromEnv } from "./push";
 import { googleVerifier } from "./google";
+import { ErrorLog } from "./errors";
 
 /** Server entry point. Configuration comes from the environment. */
 const port = Number(process.env["PORT"] ?? 8787);
@@ -47,6 +48,15 @@ const app = await buildApp({
     .map((o) => o.trim())
     .filter(Boolean),
   googleVerify: googleVerifier(process.env["GOOGLE_CLIENT_ID"] || undefined),
+  errorLog: new ErrorLog(database.db, clock),
+  // e2e runs make hundreds of guests from one address.
+  ...(process.env["NODE_ENV"] === "test" ? { limits: false as const } : {}),
+  // Render puts one proxy in front of the server (it sets RENDER=true); TRUST_PROXY overrides.
+  trustProxy: process.env["TRUST_PROXY"]
+    ? Number(process.env["TRUST_PROXY"])
+    : process.env["RENDER"]
+      ? 1
+      : false,
 });
 
 // Catch up on anything that expired while the server was down, then keep sweeping (SPEC §9.4).

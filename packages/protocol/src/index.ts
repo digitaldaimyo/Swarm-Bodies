@@ -297,6 +297,20 @@ export type ReplayResponse = z.infer<typeof ReplayResponseSchema>;
 export const ErrorResponseSchema = z.object({ code: z.string(), message: z.string() });
 export const OkResponseSchema = z.object({ ok: z.literal(true) });
 
+/**
+ * A client error report (docs/plans/beta.md, step 2). No token, no account, nothing personal:
+ * what broke, in which build, on which screen, on what kind of device.
+ */
+export const ClientErrorReportSchema = z.object({
+  message: z.string().min(1).max(500),
+  stack: z.string().max(4000).optional(),
+  build: z.string().max(40),
+  screen: z.string().max(40),
+  /** Coarse: "iPhone Safari", "Android Chrome", "Desktop Firefox". */
+  device: z.string().max(60),
+});
+export type ClientErrorReport = z.infer<typeof ClientErrorReportSchema>;
+
 /** Orders arrive keyed by seat as strings (JSON); the sim wants numeric player ids. */
 export function ordersBySeat(record: Record<string, Order[]>): Record<number, Order[]> {
   const out: Record<number, Order[]> = {};

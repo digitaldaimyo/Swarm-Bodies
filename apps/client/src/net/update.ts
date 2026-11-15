@@ -11,8 +11,7 @@ import { registerSW } from "virtual:pwa-register";
  * - A page whose lazy chunk fails to load (the chunk is from an older build) reloads once.
  */
 
-/** Build identity, injected by vite.config.ts: the commit and the build date. */
-export const BUILD = { commit: __BUILD_COMMIT__, date: __BUILD_DATE__ };
+export { BUILD } from "./build";
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
