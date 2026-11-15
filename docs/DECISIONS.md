@@ -481,3 +481,12 @@ The plan, the user's decisions and the per-phase results are in `docs/plans/colo
      - **The fix:** `showBody` no longer turns the colony container's texture cache off and on again. It releases the old cache, moves the layers into a new container, and caches that one.
      - **A hint the cache lifecycle is fragile:** moving the layers out of a container still cached made them stop drawing even headless.
      - **Still to confirm on a phone**, together with #140.
+
+## 2026-11-15 — Beta readiness (docs/plans/beta.md)
+
+142. **Identity, payments and the first paid stage.**
+     - **Identity:** Sign in with Google links an existing guest, and is optional. Guests keep working. Signing in on a new device restores the account.
+     - **Payments:** Paddle, as merchant of record.
+     - **Stage one is a Supporter Pack, a one-time purchase of real content, not a donation.** Paddle does not process donations.
+     - **Purchases attach to signed-in accounts only.**
+     - **Later:** a $4.99 unlock of more campaign and Skirmish on the same entitlement pipeline. What stays free is decided then.
